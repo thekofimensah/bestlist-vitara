@@ -1,0 +1,11 @@
+{
+  "appId": "com.test.bestlist",
+  "appName": "bestlist",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "minVersion": "13.0"
+  }
+}

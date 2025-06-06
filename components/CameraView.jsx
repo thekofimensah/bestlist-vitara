@@ -9,20 +9,27 @@ const CameraView = ({ lists, onAddItem, onSelectList }) => {
   const [showModal, setShowModal] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
+  const [error, setError] = useState(null);
 
   const handleCapture = async () => {
-    const photoUrl = await takeAndUploadPhoto();
-    if (photoUrl) {
-      setCapturedImage({
-        url: photoUrl,
-        detected: {
-          name: 'Captured Photo',
-          type: 'Unknown',
-          species: 'Unlabeled',
-          certainty: 50
-        }
-      });
-      setShowModal(true);
+    try {
+      setError(null);
+      const photoUrl = await takeAndUploadPhoto();
+      if (photoUrl) {
+        setCapturedImage({
+          url: photoUrl,
+          detected: {
+            name: 'Captured Photo',
+            type: 'Unknown',
+            species: 'Unlabeled',
+            certainty: 50
+          }
+        });
+        setShowModal(true);
+      }
+    } catch (err) {
+      console.error('Error capturing photo:', err);
+      setError(err.message || 'Failed to access camera. Please check permissions and try again.');
     }
   };
 
@@ -36,6 +43,12 @@ const CameraView = ({ lists, onAddItem, onSelectList }) => {
 
   return (
     <div className="p-6 h-full">
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-xl">
+          {error}
+        </div>
+      )}
+
       <motion.div
         className="relative bg-gradient-to-br from-gray-900 to-gray-700 rounded-3xl h-96 mb-6 overflow-hidden shadow-2xl"
         initial={{ scale: 0.9, opacity: 0 }}
@@ -81,23 +94,25 @@ const CameraView = ({ lists, onAddItem, onSelectList }) => {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.3 }}
       >
-        <motion.button
-          onClick={handleCapture}
-          className="w-20 h-20 bg-gradient-to-br from-pink-400 to-orange-400 rounded-full flex items-center justify-center shadow-lg"
-          whileTap={{ scale: 0.9 }}
-          whileHover={{ scale: 1.1 }}
-        >
-          <Camera className="text-white" size={32} />
-        </motion.button>
+        <div className="relative">
+          <motion.button
+            onClick={handleCapture}
+            className="w-20 h-20 bg-gradient-to-br from-pink-400 to-orange-400 rounded-full flex items-center justify-center shadow-lg"
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.1 }}
+          >
+            <Camera className="text-white" size={32} />
+          </motion.button>
 
-        <motion.button
-          onClick={handleBulkImport}
-          className="absolute left-1/2 transform translate-x-16 w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center shadow-lg"
-          whileTap={{ scale: 0.9 }}
-          whileHover={{ scale: 1.1 }}
-        >
-          <ImageIcon className="text-white" size={20} />
-        </motion.button>
+          <motion.button
+            onClick={handleBulkImport}
+            className="absolute -right-16 bottom-0 w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center shadow-lg"
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.1 }}
+          >
+            <ImageIcon className="text-white" size={20} />
+          </motion.button>
+        </div>
       </motion.div>
 
       <motion.div

@@ -13,5 +13,8 @@ export const readFile = async (filename: string): Promise<string> => {
     path: filename,
     directory: Directory.Data,
   });
-  return contents.data;
+  if (typeof contents.data === 'string') {
+    return contents.data;
+  }
+  throw new Error('File content is not a string');
 };

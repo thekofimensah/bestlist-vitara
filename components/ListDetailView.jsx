@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Filter, Star, X, Heart, Frown } from 'lucide-react';
 import ProductCard from './ProductCard';
 
-const ListDetailView = ({ list, onBack }) => {
+const ListDetailView = ({ list, onBack, onEditItem }) => {
   const [sortBy, setSortBy] = useState('rating');
   const [showStayAways, setShowStayAways] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -155,6 +155,10 @@ const ListDetailView = ({ list, onBack }) => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
+                onClick={() => {
+                  if (onEditItem) onEditItem(item, list);
+                }}
+                style={{ cursor: 'pointer' }}
               >
                 <ProductCard 
                   item={item} 

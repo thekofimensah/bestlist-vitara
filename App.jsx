@@ -9,6 +9,7 @@ import ProfileView from './components/ProfileView';
 import { Camera, List, Compass, User } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { useLists } from './hooks/useLists';
+import AddItemModal from './components/AddItemModal';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -16,7 +17,9 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('camera');
   const [selectedList, setSelectedList] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
-  const { lists, addItemToList, refreshLists, createList } = useLists(user?.id);
+  const { lists, addItemToList, updateItemInList, refreshLists, createList } = useLists(user?.id);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editingList, setEditingList] = useState(null);
 
   useEffect(() => {
     const getSession = async () => {
@@ -41,6 +44,13 @@ const App = () => {
 
     return () => subscription?.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (selectedList) {
+      const updated = lists.find(l => l.id === selectedList.id);
+      if (updated) setSelectedList(updated);
+    }
+  }, [lists]);
 
   if (loading) {
     return (
@@ -91,10 +101,35 @@ const App = () => {
       <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100">
         <div className="max-w-md mx-auto bg-white min-h-screen">
           <ListDetailView 
+            key={selectedList.id}
             list={selectedList} 
             onBack={() => setSelectedList(null)}
             onAddItem={addItemToList}
+            onEditItem={(item, list) => {
+              setEditingItem(item);
+              setEditingList(list);
+            }}
           />
+          {editingItem && (
+            <AddItemModal
+              image={editingItem?.image_url || editingItem?.image}
+              item={editingItem}
+              lists={lists}
+              onClose={() => {
+                setEditingItem(null);
+                setEditingList(null);
+              }}
+              onSave={async (listsToUpdate, updatedItem, isStayAway) => {
+                if (editingItem && editingItem.id) {
+                  await updateItemInList(listsToUpdate, { ...updatedItem, id: editingItem.id }, isStayAway);
+                } else {
+                  await addItemToList(listsToUpdate, updatedItem, isStayAway);
+                }
+                setEditingItem(null);
+                setEditingList(null);
+              }}
+            />
+          )}
         </div>
       </div>
     );
@@ -103,7 +138,7 @@ const App = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100">
       <div className="max-w-md mx-auto bg-white min-h-screen relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5 pointer-events-none">
+        <div className="absolute inset-0 opacity-5">
           <div className="absolute top-0 left-0 w-full h-full bg-repeat" 
                style={{
                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ff6b9d' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
@@ -164,7 +199,12 @@ const App = () => {
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.3 }}
               >
-                <CameraView lists={lists} onAddItem={addItemToList} onSelectList={setSelectedList} />
+                <CameraView lists={lists} onAddItem={addItemToList} onSelectList={list => {
+                  const latest = lists.find(l => l.id === list.id);
+                  if (latest) {
+                    setSelectedList({...latest});
+                  }
+                }} />
               </motion.div>
             )}
             {activeTab === 'lists' && (
@@ -175,7 +215,19 @@ const App = () => {
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.3 }}
               >
-                <ListsView lists={lists} onSelectList={setSelectedList} onCreateList={handleCreateList} />
+                <ListsView
+                  lists={lists}
+                  onSelectList={list => {
+                    const latest = lists.find(l => l.id === list.id);
+                    if (latest) {
+                      setSelectedList({...latest});
+                    }
+                  }}
+                  onCreateList={handleCreateList}
+                  onEditItem={(item, list) => {
+                    console.log('Edit item:', item, 'in list:', list);
+                  }}
+                />
               </motion.div>
             )}
             {activeTab === 'discover' && (

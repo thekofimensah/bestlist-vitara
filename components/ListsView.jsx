@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 import { Share2, Star, X } from 'lucide-react';
 import CreateListModal from './CreateListModal';
 
-const ListsView = ({ lists, onSelectList, onCreateList }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const createImageCollage = (items, stayAways) => {
+  const createImageCollage = (items, stayAways, onItemClick) => {
     const allItems = [...items, ...stayAways];
     const displayItems = allItems.slice(0, 4);
     
@@ -29,13 +29,24 @@ const ListsView = ({ lists, onSelectList, onCreateList }) => {
             className={`relative overflow-hidden ${
               displayItems.length === 1 ? 'col-span-2' :
               displayItems.length === 3 && index === 0 ? 'col-span-2' : ''
-            }`}
+            } group`}
+            onClick={e => {
+              e.stopPropagation();
+              console.log('Clicked collage item:', item);
+              if (onItemClick) onItemClick(item);
+            }}
+            style={{ cursor: 'pointer' }}
           >
             <img 
-              src={item.image} 
+              src={item.image_url || item.image} 
               alt={item.name}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover group-hover:opacity-70 transition-opacity duration-200"
             />
+            {/* Test button for click debug */}
+            <button 
+              style={{ position: 'absolute', top: 4, left: 4, zIndex: 20, background: 'rgba(255,255,255,0.7)', borderRadius: 4, padding: '2px 6px', fontSize: 10 }}
+              onClick={e => { e.stopPropagation(); console.log('Test button clicked', item); }}
+            >Test</button>
             {stayAways.includes(item) && (
               <div className="absolute top-1 right-1 bg-red-500 rounded-full p-1">
                 <X size={8} className="text-white" />
@@ -80,11 +91,15 @@ const ListsView = ({ lists, onSelectList, onCreateList }) => {
             <motion.div
               key={list.id}
               className="bg-white rounded-3xl shadow-lg overflow-hidden cursor-pointer"
+              style={{ backgroundColor: list.color, zIndex: 10, position: 'relative' }}
               initial={{ x: -50, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: index * 0.1 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => onSelectList(list)}
+              onClick={() => {
+                console.log('Clicked list:', list);
+                onSelectList(list);
+              }}
             >
               {/* List Header */}
               <div 
@@ -121,7 +136,9 @@ const ListsView = ({ lists, onSelectList, onCreateList }) => {
 
               {/* Image Collage */}
               <div className="p-4">
-                {createImageCollage(list.items, list.stayAways)}
+                {createImageCollage(list.items, list.stayAways, (item) => {
+                  if (onEditItem) onEditItem(item, list);
+                })}
               </div>
             </motion.div>
           ))}

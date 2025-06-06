@@ -1,17 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, Check } from 'lucide-react';
 
-const AddItemModal = ({ image, lists, onClose, onSave }) => {
-  const [selectedLists, setSelectedLists] = useState([lists[0]?.id || '']);
-  const [rating, setRating] = useState(0);
-  const [notes, setNotes] = useState('');
-  const [productName, setProductName] = useState('Delicious Discovery');
-  const [productType, setProductType] = useState('Dessert');
-  const [tags, setTags] = useState(['Sweet', 'Creamy', 'Cold']);
-  const [species, setSpecies] = useState('Vanilla Gelato');
-  const [certainty, setCertainty] = useState(87);
-  const [location, setLocation] = useState('Current Location');
+const AddItemModal = ({ image, lists, onClose, onSave, item }) => {
+  const [selectedLists, setSelectedLists] = useState(() => {
+    if (item) {
+      // When editing, use the item's current list
+      return [item.list_id];
+    }
+    // When adding new, default to first list
+    if (lists && lists.length > 0) return [lists[0].id];
+    return [];
+  });
+  const [rating, setRating] = useState(item?.rating ?? 0);
+  const [notes, setNotes] = useState(item?.notes ?? '');
+  const [productName, setProductName] = useState(item?.name ?? 'Delicious Discovery');
+  const [productType, setProductType] = useState(item?.type ?? 'Dessert');
+  const [tags, setTags] = useState(item?.tags ?? ['Sweet', 'Creamy', 'Cold']);
+  const [species, setSpecies] = useState(item?.species ?? 'Vanilla Gelato');
+  const [certainty, setCertainty] = useState(item?.certainty ?? 87);
+  const [location, setLocation] = useState(item?.location ?? 'Current Location');
+
+  // Update selectedLists when editing a different item
+  useEffect(() => {
+    if (item) {
+      setSelectedLists([item.list_id]);
+    } else if (lists && lists.length > 0) {
+      setSelectedLists([lists[0].id]);
+    } else {
+      setSelectedLists([]);
+    }
+  }, [item, lists]);
 
   const handleSave = () => {
     if (selectedLists.length === 0 || rating === 0) return;
@@ -188,7 +207,7 @@ const AddItemModal = ({ image, lists, onClose, onSave }) => {
                     )}
                   </div>
                   <p className="font-semibold text-xs text-gray-800">{list.name}</p>
-                  <p className="text-xs text-gray-500">{list.items?.length || 0} items</p>
+                  <p className="text-xs text-gray-500">{(list.items?.length || 0) + (list.stayAways?.length || 0)} items</p>
                 </motion.button>
               ))}
             </div>

@@ -1,30 +1,29 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+const DEFAULT_LISTS = [
+  {
+    name: 'Best Gelato',
+    color: '#FF6B9D',
+    items: [],
+    stayAways: []
+  },
+  {
+    name: 'Amazing Fish',
+    color: '#4ECDC4',
+    items: [],
+    stayAways: []
+  },
+  {
+    name: 'Perfect Milk', 
+    color: '#FFE66D',
+    items: [],
+    stayAways: []
+  }
+];
+
 export const useLists = (userId) => {
-  const [lists, setLists] = useState([
-    {
-      id: '1',
-      name: 'Best Gelato',
-      color: '#FF6B9D',
-      items: [],
-      stayAways: []
-    },
-    {
-      id: '2', 
-      name: 'Amazing Fish',
-      color: '#4ECDC4',
-      items: [],
-      stayAways: []
-    },
-    {
-      id: '3',
-      name: 'Perfect Milk', 
-      color: '#FFE66D',
-      items: [],
-      stayAways: []
-    }
-  ]);
+  const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -32,6 +31,27 @@ export const useLists = (userId) => {
       fetchLists();
     }
   }, [userId]);
+
+  const createDefaultLists = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('lists')
+        .insert(
+          DEFAULT_LISTS.map(list => ({
+            user_id: userId,
+            name: list.name,
+            color: list.color
+          }))
+        )
+        .select();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating default lists:', error);
+      return [];
+    }
+  };
 
   const fetchLists = async () => {
     if (!userId) return;
@@ -45,6 +65,14 @@ export const useLists = (userId) => {
         .order('created_at', { ascending: false });
 
       if (listsError) throw listsError;
+
+      // Create default lists if none exist
+      if (!listsData || listsData.length === 0) {
+        const defaultLists = await createDefaultLists();
+        if (defaultLists.length > 0) {
+          listsData = defaultLists;
+        }
+      }
 
       if (listsData && listsData.length > 0) {
         const listsWithItems = await Promise.all(
@@ -89,12 +117,12 @@ export const useLists = (userId) => {
             type: item.type,
             species: item.species,
             certainty: item.certainty,
-            tags: item.tags,
-            image_url: item.image,
+            image_url: item.url || item.image,
             rating: item.rating,
             notes: item.notes,
             location: item.location,
-            is_stay_away: isStayAway
+            is_stay_away: isStayAway,
+            created_at: new Date().toISOString()
           }])
           .select()
           .single();
@@ -106,7 +134,7 @@ export const useLists = (userId) => {
             const newItem = {
               ...item,
               id: data.id,
-              image: item.image
+              image_url: item.url || item.image
             };
             return {
               ...list,
@@ -119,6 +147,68 @@ export const useLists = (userId) => {
       }
     } catch (error) {
       console.error('Error adding item:', error);
+      throw error;
+    }
+  };
+
+  const updateItemInList = async (listIds, updatedItem, isStayAway = false) => {
+    if (!userId) return;
+
+    try {
+      // Update in Supabase
+      const { data, error } = await supabase
+        .from('items')
+        .update({
+          name: updatedItem.name,
+          type: updatedItem.type,
+          species: updatedItem.species,
+          certainty: updatedItem.certainty,
+          tags: updatedItem.tags,
+          image_url: updatedItem.image_url || updatedItem.image,
+          rating: updatedItem.rating,
+          notes: updatedItem.notes,
+          location: updatedItem.location,
+          is_stay_away: isStayAway,
+          list_id: Array.isArray(listIds) && listIds.length > 0 ? listIds[0] : undefined,
+        })
+        .eq('id', updatedItem.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Optimistically update local state
+      setLists(prevLists =>
+        prevLists.map(list => {
+          // Remove the item from all lists
+          let newItems = list.items.filter(item => item.id !== updatedItem.id);
+          let newStayAways = list.stayAways.filter(item => item.id !== updatedItem.id);
+
+          // If this is the new list, add the updated item
+          if (list.id === (Array.isArray(listIds) && listIds.length > 0 ? listIds[0] : list.id)) {
+            const newItem = {
+              ...updatedItem,
+              id: updatedItem.id,
+              image_url: updatedItem.image_url || updatedItem.image,
+              is_stay_away: isStayAway,
+            };
+            if (isStayAway) {
+              newStayAways = [...newStayAways, newItem];
+            } else {
+              newItems = [...newItems, newItem];
+            }
+          }
+
+          return {
+            ...list,
+            items: newItems,
+            stayAways: newStayAways,
+          };
+        })
+      );
+    } catch (error) {
+      console.error('Error updating item:', error);
+      throw error;
     }
   };
 
@@ -132,6 +222,7 @@ export const useLists = (userId) => {
     lists,
     loading,
     addItemToList,
+    updateItemInList,
     refreshLists
   };
 };

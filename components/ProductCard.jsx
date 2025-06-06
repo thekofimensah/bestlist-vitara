@@ -12,7 +12,7 @@ const ProductCard = ({ item }) => {
       {/* Product Image */}
       <div className="relative h-24 bg-gray-100 overflow-hidden">
         <img 
-          src={item.image} 
+          src={item.image_url || item.image} 
           alt={item.name}
           className="w-full h-full object-cover"
         />

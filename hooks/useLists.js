@@ -58,7 +58,7 @@ export const useLists = (userId) => {
     
     setLoading(true);
     try {
-      const { data: listsData, error: listsError } = await supabase
+      let { data: listsData, error: listsError } = await supabase
         .from('lists')
         .select('*')
         .eq('user_id', userId)

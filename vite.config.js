@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
+import tailwindcss from '@tailwindcss/vite';
+
 
 // Plugin to generate assets.json
 const generateAssetsJson = () => {
@@ -46,17 +48,10 @@ const generateAssetsJson = () => {
 export default defineConfig({
   plugins: [
     react(),
-    generateAssetsJson()
+    generateAssetsJson(),
+    tailwindcss()
   ],
   build: {
-    rollupOptions: {
-      external: [
-        '@capacitor/core',
-        '@capacitor/device',
-        '@capacitor/filesystem',
-        '@capacitor/app',
-        '@capacitor/preferences'
-      ]
-    }
+    // No rollupOptions.external!
   }
 }) 

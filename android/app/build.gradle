@@ -22,9 +22,9 @@ def jscFlavor = 'org.webkit:android-jsc:+'
 android {
     ndkVersion rootProject.ext.ndkVersion
     compileSdkVersion rootProject.ext.compileSdkVersion
-    namespace "com.bestlist"
+    namespace "com.test.bestlist"
     defaultConfig {
-        applicationId "com.bestlist"
+        applicationId "com.test.bestlist"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

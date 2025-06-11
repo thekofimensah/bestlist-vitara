@@ -3,7 +3,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Device } from '@capacitor/device';
 import { Preferences } from '@capacitor/preferences';
 import { supabase } from '../lib/supabase';
-import { CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 const VERSION_KEY = 'CURRENT_APP_VERSION';
 const VERSION_HISTORY_KEY = 'VERSION_HISTORY';
@@ -25,7 +25,7 @@ export async function checkForUpdate() {
       
       // Set local update path if it exists
       if (localUpdatePath.uri) {
-        CapacitorApp.setServerBasePath(localUpdatePath.uri);
+        Capacitor.setServerBasePath(localUpdatePath.uri);
         return; // Exit early if local update is found
       }
     } catch (error) {

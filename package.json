@@ -1,36 +1,42 @@
 {
   "name": "bestlist-vitara",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "upload-update": "node scripts/upload-update.js",
+    "setup-updates": "node scripts/setup-updates.js"
   },
   "dependencies": {
-    "@capacitor/android": "^7.0.0",
-    "@capacitor/camera": "^7.0.1",
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/filesystem": "^7.0.1",
-    "@capacitor/ios": "^7.0.0",
-    "@capacitor/live-updates": "^0.4.0",
+    "@capacitor/android": "5.0.5",
+    "@capacitor/app": "5.0.5",
+    "@capacitor/camera": "5.0.5",
+    "@capacitor/core": "5.0.5",
+    "@capacitor/device": "5.0.5",
+    "@capacitor/filesystem": "5.0.5",
+    "@capacitor/ios": "5.0.5",
+    "@capacitor/live-updates": "0.4.0",
     "@ionic/pwa-elements": "^3.3.0",
-    "@supabase/supabase-js": "^2.39.0",
+    "@react-native/gradle-plugin": "0.72.6",
+    "@supabase/supabase-js": "2.50.0",
     "browser-image-compression": "^2.0.2",
-    "framer-motion": "^10.16.4",
-    "lucide-react": "^0.294.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "framer-motion": "12.16.0",
+    "lucide-react": "0.513.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-native": "0.72.6"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.0.0",
-    "@types/react": "^18.2.15",
-    "@types/react-dom": "^18.2.7",
-    "@vitejs/plugin-react": "^4.0.3",
+    "@capacitor/cli": "5.0.5",
+    "@types/react": "18.2.0",
+    "@types/react-dom": "18.2.0",
+    "@vitejs/plugin-react": "4.5.2",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.31",
-    "tailwindcss": "^3.3.3",
-    "vite": "^4.4.5"
+    "tailwindcss": "4.1.8",
+    "vite": "6.3.5"
   }
 }

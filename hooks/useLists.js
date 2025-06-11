@@ -24,7 +24,7 @@ const DEFAULT_LISTS = [
 
 export const useLists = (userId) => {
   const [lists, setLists] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (userId) {
@@ -55,14 +55,17 @@ export const useLists = (userId) => {
 
   const fetchLists = async () => {
     if (!userId) return;
-    
     setLoading(true);
+    const start = Date.now();
+    console.log('[useLists] Fetching lists from Supabase...');
     try {
       let { data: listsData, error: listsError } = await supabase
         .from('lists')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
+      const afterLists = Date.now();
+      console.log(`[useLists] Lists fetched in ${afterLists - start}ms:`, listsData);
 
       if (listsError) throw listsError;
 
@@ -75,19 +78,18 @@ export const useLists = (userId) => {
       }
 
       if (listsData && listsData.length > 0) {
+        // Only fetch items for the first 4 lists for CameraView (speed up initial load)
+        const listsToFetch = listsData.slice(0, 4);
         const listsWithItems = await Promise.all(
-          listsData.map(async (list) => {
+          listsToFetch.map(async (list) => {
             const { data: itemsData, error: itemsError } = await supabase
               .from('items')
               .select('*')
               .eq('list_id', list.id)
               .order('created_at', { ascending: false });
-
             if (itemsError) throw itemsError;
-
             const items = itemsData?.filter(item => !item.is_stay_away) || [];
             const stayAways = itemsData?.filter(item => item.is_stay_away) || [];
-
             return {
               ...list,
               items,
@@ -95,12 +97,17 @@ export const useLists = (userId) => {
             };
           })
         );
-        setLists(listsWithItems);
+        // For the rest, just return the list meta (could lazy-load items if needed)
+        const rest = listsData.slice(4).map(list => ({ ...list, items: [], stayAways: [] }));
+        setLists([...listsWithItems, ...rest]);
+        const afterItems = Date.now();
+        console.log(`[useLists] Items for first 4 lists fetched in ${afterItems - afterLists}ms`);
       }
     } catch (error) {
-      console.error('Error fetching lists:', error);
+      console.error('[useLists] Error fetching lists:', error);
     } finally {
       setLoading(false);
+      console.log('[useLists] Finished loading lists');
     }
   };
 

@@ -37,7 +37,7 @@ const DiscoverView = () => {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-6 flex-1 min-h-0 flex flex-col">
       <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}

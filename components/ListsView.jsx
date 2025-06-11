@@ -69,12 +69,22 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem }) => {
     );
   };
 
+  const sortItems = (items) => {
+    return [...items].sort((a, b) => {
+      if ((b.rating || 0) !== (a.rating || 0)) {
+        return (b.rating || 0) - (a.rating || 0); // Sort by rating first
+      }
+      return new Date(b.created_at) - new Date(a.created_at); // Then by most recent
+    });
+  };
+
   return (
-    <div className="p-6">
+    <div className="p-6 flex-1 min-h-0 flex flex-col">
       <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5 }}
+        className="flex-1 min-h-0"
       >
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-black text-gray-800">My Lists</h2>
@@ -136,7 +146,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem }) => {
 
               {/* Image Collage */}
               <div className="p-4">
-                {createImageCollage(list.items, list.stayAways, (item) => {
+                {createImageCollage(sortItems(list.items), sortItems(list.stayAways), (item) => {
                   if (onEditItem) onEditItem(item, list);
                 })}
               </div>

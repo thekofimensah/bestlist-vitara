@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward } from 'lucide-react';
 import ModalLayout from './ModalLayout';
 import { buildItem } from './itemUtils';
-import { ListBox, StarRating, NotesInput, ListGrid, ImageAISection } from './Elements';
+import { ListCard, StarRating, NotesInput, ImageAISection } from './Elements';
 
 const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentIndex, totalPhotos, onNext, onPrev, onSkip, initialState, onStateChange }) => {
   const [selectedLists, setSelectedLists] = useState(() => {
@@ -84,6 +84,8 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
       isOpen={true}
       onClose={onClose}
       title={isBulk ? `Rate Imported Photo (${currentIndex} of ${totalPhotos})` : 'Add Product'}
+      headerClassName="pt-8"
+      closeButtonClassName="mt-2"
     >
       {/* Bulk navigation (if in bulk mode) */}
       {isBulk && (
@@ -111,10 +113,10 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
             onClick={onSkip}
             className="p-2 rounded-full bg-gray-100"
             title="Skip this photo"
-          >
+              >
             <SkipForward size={18} />
           </button>
-        </div>
+                </div>
       )}
       {/* Main content (image, fields, etc.) */}
       <ImageAISection
@@ -126,47 +128,48 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
         certainty={certainty}
         tags={tags}
       />
-      <div className="mb-3">
-        <label className="text-sm font-medium text-gray-700 mb-2 block">Your Rating</label>
+          <div className="mb-3">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Your Rating</label>
         <StarRating rating={rating} onRatingChange={setRating} />
-        <div className="text-center mt-2 text-xs text-gray-500">
-          {rating === 0 ? 'Select a rating' : rating <= 2 ? 'Will be added to Stay Aways' : 'Will be added to Favorites'}
-        </div>
-      </div>
-      <div className="mb-3">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <div className="text-center mt-2 text-xs text-gray-500">
+              {rating === 0 ? 'Select a rating' : rating <= 2 ? 'Will be added to Stay Aways' : 'Will be added to Favorites'}
+            </div>
+          </div>
+          <div className="mb-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
         <NotesInput
-          value={notes}
+              value={notes}
           onChange={e => setNotes(e.target.value)}
-          placeholder={rating <= 2 ? "Why avoid this?" : "What did you love about it?"}
-        />
-      </div>
-      <motion.button
-        onClick={handleSave}
-        disabled={selectedLists.length === 0 || rating === 0}
-        className={`w-full py-3 rounded-xl font-bold text-white transition-all ${
-          selectedLists.length > 0 && rating > 0
-            ? rating <= 2 
-              ? 'bg-gradient-to-r from-red-400 to-red-500 shadow-lg'
-              : 'bg-gradient-to-r from-pink-400 to-orange-400 shadow-lg'
-            : 'bg-gray-300 cursor-not-allowed'
+              placeholder={rating <= 2 ? "Why avoid this?" : "What did you love about it?"}
+            />
+          </div>
+          <motion.button
+            onClick={handleSave}
+            disabled={selectedLists.length === 0 || rating === 0}
+            className={`w-full py-3 rounded-xl font-bold text-white transition-all ${
+              selectedLists.length > 0 && rating > 0
+                ? rating <= 2 
+                  ? 'bg-gradient-to-r from-red-400 to-red-500 shadow-lg'
+                  : 'bg-gradient-to-r from-pink-400 to-orange-400 shadow-lg'
+                : 'bg-gray-300 cursor-not-allowed'
         } mb-4`}
-        whileTap={{ scale: 0.98 }}
-      >
+            whileTap={{ scale: 0.98 }}
+          >
         {rating <= 2 ? 'Add to Stay Aways' : 'Add to Favorites'}
-      </motion.button>
+          </motion.button>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Add to Lists</label>
-        <ListGrid className="mb-2">
+        <div className="grid grid-cols-2 gap-3 mb-2">
           {lists.map((list) => (
-            <ListBox
+            <ListCard
               key={list.id}
               list={list}
-              selected={selectedLists.includes(list.id)}
               onClick={() => toggleList(list.id)}
+              selected={selectedLists.includes(list.id)}
+              selectable={true}
             />
           ))}
-        </ListGrid>
+        </div>
       </div>
     </ModalLayout>
   );

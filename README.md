@@ -5,7 +5,9 @@ Update version in `package.json`
 Run `npm run upload-update`
 Script automatically updates version.json in Supabase storage
 
+chrome://inspect/#devices .. go to bottom to see chrome like inspector to see logs
 
+Changes to front end code:  npm run build &&  npx cap sync android 
 Here's a comprehensive list of files and the corresponding commands needed when they change:
 
 1. `npm install` needed when changing:
@@ -71,3 +73,13 @@ Remember:
 - Always run `npm install` before `npx cap update android` if you changed web files
 - Always run `npx cap update android` before `./gradlew build` if you changed web files
 - Use `./gradlew clean assembleDebug` as a last resort when builds fail
+
+
+
+
+
+To do:
+
+Add AI function
+Add cache for lists locally -- every time referesh hapens update teh cache
+The image bucket in supabase doesn't seem to be working correctly

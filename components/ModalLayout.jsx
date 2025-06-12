@@ -48,12 +48,12 @@ const ModalLayout = ({ isOpen, onClose, title, children, footer }) => {
               </motion.button>
             </div>
             {/* Content */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4" style={{ maxHeight: 'calc(100dvh - 120px)', paddingBottom: 88 }}>
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-8 pb-4" style={{ maxHeight: 'calc(100dvh - 120px)', paddingBottom: 88 }}>
               {children}
             </div>
             {/* Footer (fixed above bottom bar) */}
             {footer && (
-              <div className="absolute left-0 right-0 bottom-0 bg-white pt-2 pb-4 z-30 px-4 border-t border-gray-100">
+              <div className="fixed left-0 right-0 bottom-0 bg-white pt-2 pb-4 z-50 px-4 border-t border-gray-100">
                 {footer}
               </div>
             )}

@@ -6,7 +6,7 @@ import ListDetailView from './components/ListDetailView';
 import DiscoverView from './components/DiscoverView';
 import AuthView from './components/AuthView';
 import ProfileView from './components/ProfileView';
-import { Camera, List, Compass, User } from 'lucide-react';
+import { Camera, List, Compass, User, Star, Plus } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import AddItemModal from './components/AddItemModal';
@@ -165,6 +165,7 @@ const App = () => {
               setEditingItem(item);
               setEditingList(list);
             }}
+            refreshList={refreshLists}
           />
           {editingItem && (
             <AddItemModal
@@ -234,7 +235,7 @@ const App = () => {
           </div>
         </motion.div>
 
-        <div className="relative z-10 flex-1 overflow-y-auto pb-24">
+        <div className="relative z-10 flex-1 overflow-y-auto pb-28">
           <AnimatePresence mode="wait">
             {activeTab === 'camera' && (
               <motion.div
@@ -244,18 +245,24 @@ const App = () => {
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.3 }}
               >
-                <CameraView
-                  lists={lists}
-                  loading={listsLoading}
-                  onAddItem={addItemToList}
-                  onSelectList={list => {
-                    const latest = lists.find(l => l.id === list.id);
-                    if (latest) {
-                      setSelectedList({...latest});
+                <div
+                  onTouchStart={e => (window._touchStartY = e.touches[0].clientY)}
+                  onTouchEnd={e => {
+                    if (window._touchStartY && e.changedTouches[0].clientY - window._touchStartY > 60) {
+                      refreshLists();
                     }
+                    window._touchStartY = null;
                   }}
-                  onCreateList={handleCreateList}
-                />
+                  className="flex-1 flex flex-col min-h-0"
+                >
+                  <CameraView
+                    lists={lists}
+                    loading={listsLoading}
+                    onAddItem={addItemToList}
+                    onSelectList={setSelectedList}
+                    onCreateList={handleCreateList}
+                  />
+                </div>
               </motion.div>
             )}
             {activeTab === 'lists' && (
@@ -296,7 +303,7 @@ const App = () => {
         </div>
 
         <motion.div 
-          className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 p-4 z-20"
+          className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 p-4 z-20"
           initial={{ y: 100 }}
           animate={{ y: 0 }}
           transition={{ type: "spring", stiffness: 100, delay: 0.2 }}

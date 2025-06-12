@@ -28,7 +28,7 @@ export const useLists = (userId) => {
 
   useEffect(() => {
     if (userId) {
-      fetchLists();
+      fetchLists(false);
     }
   }, [userId]);
 
@@ -53,9 +53,9 @@ export const useLists = (userId) => {
     }
   };
 
-  const fetchLists = async () => {
+  const fetchLists = async (background = false) => {
     if (!userId) return;
-    setLoading(true);
+    if (!background) setLoading(true);
     const start = Date.now();
     console.log('[useLists] Fetching lists from Supabase...');
     try {
@@ -106,7 +106,7 @@ export const useLists = (userId) => {
     } catch (error) {
       console.error('[useLists] Error fetching lists:', error);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
       console.log('[useLists] Finished loading lists');
     }
   };
@@ -219,9 +219,9 @@ export const useLists = (userId) => {
     }
   };
 
-  const refreshLists = () => {
+  const refreshLists = (background = true) => {
     if (userId) {
-      fetchLists();
+      fetchLists(background);
     }
   };
 

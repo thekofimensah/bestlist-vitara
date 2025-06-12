@@ -60,38 +60,38 @@ const CreateListModal = ({ onClose, onSave }) => {
       footer={footer}
     >
       <div className="flex items-center mb-6">
-        <Palette className="text-pink-400 mr-2" size={20} />
-        <h2 className="text-lg font-bold text-gray-800">Create New List</h2>
-      </div>
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">List Name</label>
-        <input
-          type="text"
-          value={listName}
-          onChange={(e) => setListName(e.target.value)}
-          placeholder="e.g., Best Pizza Places"
-          className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent"
-          maxLength={50}
-        />
-      </div>
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-3">Choose Color</label>
-        <div className="grid grid-cols-6 gap-3">
-          {colors.map((color) => (
-            <motion.button
-              key={color}
-              onClick={() => setSelectedColor(color)}
-              className={`w-10 h-10 rounded-full border-4 transition-all ${
-                selectedColor === color 
-                  ? 'border-gray-400 scale-110' 
-                  : 'border-transparent hover:scale-105'
-              }`}
-              style={{ backgroundColor: color }}
-              whileTap={{ scale: 0.95 }}
+              <Palette className="text-pink-400 mr-2" size={20} />
+              <h2 className="text-lg font-bold text-gray-800">Create New List</h2>
+            </div>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">List Name</label>
+            <input
+              type="text"
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
+              placeholder="e.g., Best Pizza Places"
+              className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent"
+              maxLength={50}
             />
-          ))}
-        </div>
-      </div>
+          </div>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-3">Choose Color</label>
+            <div className="grid grid-cols-6 gap-3">
+              {colors.map((color) => (
+                <motion.button
+                  key={color}
+                  onClick={() => setSelectedColor(color)}
+                  className={`w-10 h-10 rounded-full border-4 transition-all ${
+                    selectedColor === color 
+                      ? 'border-gray-400 scale-110' 
+                      : 'border-transparent hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  whileTap={{ scale: 0.95 }}
+                />
+              ))}
+            </div>
+          </div>
     </ModalLayout>
   );
 };

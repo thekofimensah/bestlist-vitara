@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Camera, Sparkles, Image as ImageIcon, RefreshCw, Plus } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 import BulkImportModal from './BulkImportModal';
-import { ListBox, ListGrid } from './Elements';
+import { ListCard } from './Elements';
 
 const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) => {
   const [showModal, setShowModal] = useState(false);
@@ -12,11 +12,13 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   const [error, setError] = useState(null);
   const [facingMode, setFacingMode] = useState('environment');
   const [visibleCount, setVisibleCount] = useState(4);
+  const [videoReady, setVideoReady] = useState(false);
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
-  // Helper to start the camera with the desired facing mode
   const startCamera = async (mode = 'environment') => {
+    setVideoReady(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -25,15 +27,22 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          setVideoReady(true);
+          videoRef.current?.play();
+        };
       }
       setError(null);
     } catch (err) {
-      // Fallback: try without exact facingMode
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            setVideoReady(true);
+            videoRef.current?.play();
+          };
         }
         setError(null);
       } catch (err2) {
@@ -81,7 +90,6 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
-  // Show more handler
   const handleShowMore = () => {
     setVisibleCount((prev) => prev + 4);
   };
@@ -101,21 +109,32 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
+        {/* Placeholder while loading */}
+        {!videoReady && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white z-10">
+            <div className="text-sm opacity-70 animate-pulse"></div>
+          </div>
+        )}
+
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          className="w-full h-full object-cover rounded-3xl"
+          muted
+          className={`w-full h-full object-cover rounded-3xl transition-opacity duration-300 ${
+            videoReady ? 'opacity-100' : 'opacity-0'
+          }`}
           style={{ background: '#222' }}
         />
-        {/* Flip camera button */}
+
         <button
           onClick={handleFlipCamera}
-          className="absolute top-4 left-4 bg-white/80 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg z-10"
+          className="absolute top-4 left-4 bg-white/80 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg z-20"
           title="Flip camera"
         >
           <RefreshCw size={22} />
         </button>
+
         <motion.div
           className="absolute top-4 right-4"
           animate={{ rotate: 360 }}
@@ -153,43 +172,22 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0">
+      <motion.div 
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.5 }}
+      >
         <h3 className="text-lg font-bold text-gray-800 mb-3">Recent Lists</h3>
-        {loading ? (
-          <div className="flex justify-center items-center py-8">
-            <div className="w-8 h-8 border-4 border-pink-400 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        ) : lists.length === 0 ? (
-          <button
-            onClick={onCreateList}
-            className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-2xl p-6 text-gray-400 bg-gray-50 hover:bg-gray-100 transition mb-4"
-          >
-            <Plus size={32} />
-            <span className="mt-2 font-semibold">Create your first list</span>
-          </button>
-        ) : (
-          <>
-            <ListGrid className="mb-2">
-              {lists.slice(0, visibleCount).map((list) => (
-                <ListBox
-                  key={list.id}
-                  list={list}
-                  selected={false}
-                  onClick={() => handleListClick(list)}
-                />
-              ))}
-            </ListGrid>
-            {lists.length > visibleCount && (
-              <button
-                onClick={handleShowMore}
-                className="w-full py-2 mt-2 rounded-xl border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium"
-              >
-                Show more
-              </button>
-            )}
-          </>
-        )}
-      </div>
+        <div className="grid grid-cols-2 gap-3">
+          {lists.slice(0, 4).map((list) => (
+            <ListCard
+              key={list.id}
+              list={list}
+              onClick={() => handleListClick(list)}
+            />
+          ))}
+        </div>
+      </motion.div>
 
       {showModal && (
         <AddItemModal

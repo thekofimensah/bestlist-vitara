@@ -3,8 +3,9 @@ import { motion } from 'framer-motion';
 import { X, ArrowLeft, ArrowRight, SkipForward, Check } from 'lucide-react';
 import ModalLayout from './ModalLayout';
 import { buildItem } from './itemUtils';
-import { ListBox, StarRating, NotesInput, ListGrid, ImageAISection } from './Elements';
+import { ListBox, StarRating, NotesInput, ListGrid, ImageAISection, ListCard } from './Elements';
 import AddItemModal from './AddItemModal';
+import { Camera } from '@capacitor/camera';
 
 const getDefaultPhotoState = (lists) => ({
   selectedLists: lists && lists.length > 0 ? [lists[0].id] : [],
@@ -23,51 +24,77 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
   const [photoStates, setPhotoStates] = useState([]); // Array of per-photo state
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [savedPhotoIndexes, setSavedPhotoIndexes] = useState([]);
-  const fileInputRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSingleAdd, setShowSingleAdd] = useState(false);
   const [singleAddState, setSingleAddState] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // Form state for current photo
   const currentState = photoStates[currentPhotoIndex] || getDefaultPhotoState(lists);
 
-  // Automatically open file picker when modal mounts
-  useEffect(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = null; // reset
-      fileInputRef.current.click();
-    }
-  }, []);
-
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    console.log('[BulkImportModal] handleFileChange called with', files.length, 'files');
-    if (files.length === 0) {
-      // User cancelled file picker
-      onClose();
-      return;
-    }
-    const photoObjs = files.map(file => ({
-      id: `${file.name}_${Date.now()}_${Math.random()}`,
-      file,
-      url: URL.createObjectURL(file),
-      detected: {
-        name: 'Imported Photo',
-        type: 'Unknown',
-        species: 'Unlabeled',
-        certainty: 50
+  // Native image picker handler
+  const handleNativePickImages = async () => {
+    setLoading(true);
+    try {
+      const result = await Camera.pickImages({
+        quality: 80,
+        limit: 10
+      });
+      if (result && result.photos && result.photos.length > 0) {
+        // Filter out invalid photos
+        const validPhotos = result.photos.filter(photo => photo.webPath);
+        if (validPhotos.length === 0) {
+          if (typeof window !== 'undefined' && window.showToast) {
+            window.showToast('No valid images were selected.');
+          }
+          onClose();
+          return;
+        }
+        const photoObjs = validPhotos.map(photo => ({
+          id: `${photo.webPath}_${Date.now()}_${Math.random()}`,
+          file: null,
+        url: photo.webPath,
+        detected: {
+            name: 'Imported Photo',
+          type: 'Unknown',
+          species: 'Unlabeled',
+          certainty: 50
+        }
+      }));
+        setSelectedPhotos(photoObjs);
+        setPhotoStates(photoObjs.map(() => getDefaultPhotoState(lists)));
+        setCurrentPhotoIndex(0);
+        setErrorMsg(''); // clear any previous error
+      } else {
+        // User cancelled: close modal, do not show error or retry
+        onClose();
+        return;
       }
-    }));
-    setSelectedPhotos(photoObjs);
-    setPhotoStates(photoObjs.map(() => getDefaultPhotoState(lists)));
-    setCurrentPhotoIndex(0);
+    } catch (err) {
+      let msg = 'Failed to pick images. Please try again.';
+      if (err && err.message && err.message.toLowerCase().includes('permission')) {
+        msg = 'Permission denied. Please allow access to your photos.';
+      } else if (err && err.message && err.message.toLowerCase().includes('cancel')) {
+        onClose();
+        return;
+      }
+      if (typeof window !== 'undefined' && window.showToast) {
+        window.showToast(msg);
+      }
+      onClose();
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    console.log('[BulkImportModal] selectedPhotos updated:', selectedPhotos);
+    handleNativePickImages();
+    // eslint-disable-next-line
+  }, []);
+
+  useEffect(() => {
     if (selectedPhotos.length === 1 && !showSingleAdd && selectedPhotos[0]) {
-      console.log('[BulkImportModal] Switching to AddItemModal for single image', selectedPhotos[0]);
       setShowSingleAdd(true);
       setSingleAddState(getDefaultPhotoState(lists));
     }
@@ -100,11 +127,8 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
       return newStates;
     });
     if (!savedPhotoIndexes.includes(currentPhotoIndex)) {
-      const file = selectedPhotos[currentPhotoIndex]?.file;
-      let image = currentState.image;
-      if (file && (!image || !image.startsWith('data:'))) {
-        image = await fileToDataUrl(file);
-      }
+      // Always use the url/webPath for native picker images
+      const image = selectedPhotos[currentPhotoIndex]?.url;
       const newItem = buildItem({ ...currentState, image });
       onSave(currentState.selectedLists, newItem, currentState.rating <= 2);
       setSavedPhotoIndexes(prev => [...prev, currentPhotoIndex]);
@@ -139,7 +163,6 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
   }, [currentPhotoIndex, selectedPhotos.length, savedPhotoIndexes.length]);
 
   const handleModalClose = () => {
-    console.log('[BulkImportModal] handleModalClose called');
     setSelectedPhotos([]);
     setPhotoStates([]);
     setCurrentPhotoIndex(0);
@@ -203,11 +226,8 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
     }
     setIsSaving(true);
     for (let idx = 0; idx < selectedPhotos.length; idx++) {
-      const file = selectedPhotos[idx]?.file;
-      let image = photoStates[idx].image;
-      if (file && (!image || !image.startsWith('data:'))) {
-        image = await fileToDataUrl(file);
-      }
+      // Always use the url/webPath for native picker images
+      const image = selectedPhotos[idx]?.url;
       const newItem = buildItem({ ...photoStates[idx], image });
       await onSave(photoStates[idx].selectedLists, newItem, photoStates[idx].rating <= 2);
     }
@@ -220,15 +240,11 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
 
   // If only one image and showSingleAdd, render AddItemModal
   if (showSingleAdd && selectedPhotos.length === 1 && selectedPhotos[0]) {
-    console.log('[BulkImportModal] Rendering AddItemModal for single image', selectedPhotos[0]);
     return (
       <AddItemModal
         image={selectedPhotos[0].url}
         lists={lists}
-        onClose={() => {
-          console.log('[BulkImportModal] AddItemModal onClose triggered');
-          onClose();
-        }}
+        onClose={onClose}
         onSave={onSave}
         initialState={singleAddState}
       />
@@ -241,14 +257,14 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
       onClose={handleModalClose}
       title="Import Photos"
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      {/* Loading overlay */}
+      {loading && (
+        <div className="fixed inset-0 flex flex-col items-center justify-center bg-white/80 z-50" style={{ minHeight: 200 }}>
+          <span style={{ fontSize: 80, filter: 'drop-shadow(0 4px 16px #ff6b9d88)' }} className="animate-bounce">🍦</span>
+          <div className="w-16 h-3 bg-pink-200 rounded-full blur-md animate-pulse mt-2"></div>
+          <span className="mt-4 text-lg text-gray-600 font-semibold">Loading...</span>
+        </div>
+      )}
       {selectedPhotos.length > 0 && (
         <>
           <div className="flex items-center justify-between px-0 py-2 border-b border-gray-50 bg-gray-50 mb-4 rounded-t-2xl">
@@ -269,15 +285,15 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
                 className="p-2 rounded-full bg-gray-100 disabled:opacity-50"
               >
                 <ArrowRight size={18} />
-              </button>
-            </div>
-            <button
+          </button>
+        </div>
+        <button
               onClick={handleSkipPhoto}
               className="p-2 rounded-full bg-gray-100"
               title="Skip this photo"
-            >
+        >
               <SkipForward size={18} />
-            </button>
+        </button>
             {/* Bulk Save Button (only for multiple images) */}
             {selectedPhotos.length > 1 && photoStates.some(s => s && s.rating > 0) && (
               <motion.button
@@ -289,11 +305,8 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
                 {isSaving && <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
                 Save All Images
               </motion.button>
-            )}
-          </div>
-          {errorMsg && (
-            <div className="mb-2 text-red-500 text-sm text-center font-semibold">{errorMsg}</div>
-          )}
+        )}
+      </div>
           <div className="overflow-visible min-w-0">
             <ImageAISection
               image={selectedPhotos[currentPhotoIndex]?.url}
@@ -322,16 +335,17 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
           </div>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Add to Lists</label>
-            <ListGrid className="mb-2">
+            <div className="grid grid-cols-2 gap-3 mb-2">
               {lists.map((list) => (
-                <ListBox
+                <ListCard
                   key={list.id}
                   list={list}
-                  selected={currentState.selectedLists.includes(list.id)}
                   onClick={() => toggleList(list.id)}
+                  selected={currentState.selectedLists.includes(list.id)}
+                  selectable={true}
                 />
               ))}
-            </ListGrid>
+            </div>
           </div>
         </>
       )}
@@ -346,7 +360,7 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
               className="w-full h-24 object-cover rounded-xl border"
             />
           ))}
-        </div>
+    </div>
       )}
     </ModalLayout>
   );

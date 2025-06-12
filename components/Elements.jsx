@@ -8,8 +8,8 @@ export function ListBox({ list, selected, onClick }) {
     <motion.button
       type="button"
       onClick={onClick}
-      className={`flex flex-col justify-between p-2 rounded-xl border transition-all min-h-[4.5rem] flex-1 bg-white ${
-        selected ? 'border-pink-400 bg-pink-50' : 'border-gray-200'
+      className={`flex flex-col justify-between p-2 rounded-xl border transition-all min-h-[4.5rem] flex-1 ${
+        selected ? 'border-pink-400 bg-pink-50' : 'border-gray-200 bg-white'
       }`}
       whileTap={{ scale: 0.95 }}
     >
@@ -172,5 +172,53 @@ export function ImageAISection({
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export function ListCard({ list, onClick, selected, selectable }) {
+  // Use the list color for background, and darken on select
+  const baseColor = list.color || '#eee';
+  // Simple darken function for hex colors
+  function darken(hex, amt = 20) {
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    let num = parseInt(c, 16);
+    let r = Math.max(0, (num >> 16) - amt);
+    let g = Math.max(0, ((num >> 8) & 0x00FF) - amt);
+    let b = Math.max(0, (num & 0x0000FF) - amt);
+    return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+  }
+  const bgColor = selectable
+    ? baseColor + '22'
+    : baseColor + '22';
+
+  const borderColor = selectable
+    ? selected
+      ? darken(baseColor, 64)
+      : baseColor
+    : baseColor;
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      className={`p-4 rounded-2xl text-left w-full border transition-all duration-150 ${
+        selectable ? 'cursor-pointer' : ''
+      } ${selectable && selected ? 'border-2 border-green-500' : 'border border-gray-200'}`}
+      style={{ backgroundColor: bgColor, position: 'relative' }}
+      whileTap={{ scale: 0.97 }}
+      whileHover={{ scale: selectable ? 1.03 : 1 }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-gray-800">{list.name}</span>
+        {selectable && selected && (
+          <Check size={18} className="text-pink-500" style={{ position: 'absolute', top: 12, right: 12 }} />
+        )}
+      </div>
+      <div className="flex items-center space-x-2 text-xs text-gray-600 mt-1">
+        <span>❤️ {list.items?.length || 0}</span>
+        <span>❌ {list.stayAways?.length || 0}</span>
+      </div>
+    </motion.button>
   );
 } 

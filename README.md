@@ -81,5 +81,5 @@ Remember:
 To do:
 
 Add AI function
-Add cache for lists locally -- every time referesh hapens update teh cache
+Add cache for lists locally -- every time referesh hapens update teh cache -- tried and failed, couldn't get it to work.
 The image bucket in supabase doesn't seem to be working correctly

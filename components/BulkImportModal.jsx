@@ -6,6 +6,11 @@ import { buildItem } from './itemUtils';
 import { ListBox, StarRating, NotesInput, ListGrid, ImageAISection, ListCard } from './Elements';
 import AddItemModal from './AddItemModal';
 import { Camera } from '@capacitor/camera';
+import { supabase } from '../lib/supabase';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import imageCompression from 'browser-image-compression';
+import { dataURLtoFile } from '../lib/imageUtils';
+import { uploadPhotoWithOwner } from '../lib/supabase';
 
 const getDefaultPhotoState = (lists) => ({
   selectedLists: lists && lists.length > 0 ? [lists[0].id] : [],
@@ -51,23 +56,60 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
           onClose();
           return;
         }
-        const photoObjs = validPhotos.map(photo => ({
-          id: `${photo.webPath}_${Date.now()}_${Math.random()}`,
+
+        // 1. Show images instantly using webPath
+        const photoObjs = validPhotos.map((photo, idx) => ({
+          id: `imported_${idx}_${Math.random().toString(36).slice(2)}`,
           file: null,
-        url: photo.webPath,
-        detected: {
+          url: photo.webPath, // show instantly
+          filename: null,     // will be set after upload
+          detected: {
             name: 'Imported Photo',
-          type: 'Unknown',
-          species: 'Unlabeled',
-          certainty: 50
-        }
-      }));
+            type: 'Unknown',
+            species: 'Unlabeled',
+            certainty: 50
+          }
+        }));
+
         setSelectedPhotos(photoObjs);
         setPhotoStates(photoObjs.map(() => getDefaultPhotoState(lists)));
         setCurrentPhotoIndex(0);
-        setErrorMsg(''); // clear any previous error
+        setErrorMsg('');
+
+        // 2. Start upload in background
+        photoObjs.forEach(async (photoObj, idx) => {
+          const photo = validPhotos[idx];
+          const blob = await fetch(photo.webPath).then(r => r.blob());
+          const uniqueStr = Math.random().toString(36).slice(2);
+          const file = new File([blob], `imported_${idx}_${uniqueStr}.jpeg`, { type: 'image/jpeg' });
+
+          // Compress
+          const compressed = await imageCompression(file, {
+            maxSizeMB: 0.8,
+            maxWidthOrHeight: 1280
+          });
+
+          // Upload to Supabase
+          const filename = `imported_${idx}_${uniqueStr}.jpeg`;
+          const { data, error } = await uploadPhotoWithOwner(filename, compressed);
+          let publicUrl = photo.webPath;
+          if (!error) {
+            const { data: urlData } = supabase.storage.from('photos').getPublicUrl(filename);
+            publicUrl = urlData.publicUrl;
+          }
+
+          // Update the photo object in state
+          setSelectedPhotos(prev => {
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              url: publicUrl,
+              filename
+            };
+            return updated;
+          });
+        });
       } else {
-        // User cancelled: close modal, do not show error or retry
         onClose();
         return;
       }
@@ -162,7 +204,17 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
     // eslint-disable-next-line
   }, [currentPhotoIndex, selectedPhotos.length, savedPhotoIndexes.length]);
 
-  const handleModalClose = () => {
+  const handleModalClose = async () => {
+    const deletions = [];
+    for (let idx = 0; idx < selectedPhotos.length; idx++) {
+      if (!savedPhotoIndexes.includes(idx)) {
+        const filename = selectedPhotos[idx]?.filename;
+        if (filename) {
+          deletions.push(deletePhotoEverywhere(filename));
+        }
+      }
+    }
+    await Promise.all(deletions);
     setSelectedPhotos([]);
     setPhotoStates([]);
     setCurrentPhotoIndex(0);
@@ -364,6 +416,18 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
       )}
     </ModalLayout>
   );
+};
+
+const deletePhotoEverywhere = async (filename) => {
+  try {
+    await supabase.storage.from('photos').remove([filename]);
+  } catch (e) {}
+  try {
+    await Filesystem.deleteFile({
+      path: filename,
+      directory: Directory.Data,
+    });
+  } catch (e) {}
 };
 
 export default BulkImportModal;

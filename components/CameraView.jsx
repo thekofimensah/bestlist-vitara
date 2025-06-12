@@ -4,6 +4,12 @@ import { Camera, Sparkles, Image as ImageIcon, RefreshCw, Plus } from 'lucide-re
 import AddItemModal from './AddItemModal';
 import BulkImportModal from './BulkImportModal';
 import { ListCard } from './Elements';
+import { Capacitor } from '@capacitor/core';
+import { takeAndUploadPhoto } from '../lib/camera'; // adjust path as needed
+import imageCompression from 'browser-image-compression';
+import { dataURLtoFile } from '../lib/imageUtils';
+import { uploadPhotoWithOwner, supabase } from '../lib/supabase';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) => {
   const [showModal, setShowModal] = useState(false);
@@ -13,6 +19,7 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   const [facingMode, setFacingMode] = useState('environment');
   const [visibleCount, setVisibleCount] = useState(4);
   const [videoReady, setVideoReady] = useState(false);
+  const [wasSaved, setWasSaved] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -61,7 +68,7 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     // eslint-disable-next-line
   }, [facingMode]);
 
-  const handleCapture = () => {
+  const handleCapture = async () => {
     setError(null);
     try {
       const video = videoRef.current;
@@ -71,10 +78,33 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
       canvas.height = video.videoHeight;
       canvas.getContext('2d').drawImage(video, 0, 0);
       const imageData = canvas.toDataURL('image/png');
-      setCapturedImage({ url: imageData });
+
+      // Show modal immediately with raw base64 image
+      const tempFilename = `photo_${Date.now()}.jpeg`;
+      setCapturedImage({ url: imageData, uploading: true, filename: tempFilename });
       setShowModal(true);
+
+      // Convert to File
+      const file = dataURLtoFile(imageData, tempFilename);
+      console.log('Original file size:', file.size, 'bytes');
+
+      // Compress
+      const compressed = await imageCompression(file, {
+        maxSizeMB: 0.8,
+        maxWidthOrHeight: 1280
+      });
+      console.log('Compressed file size:', compressed.size, 'bytes');
+
+      // Upload to Supabase
+      const { data, error } = await uploadPhotoWithOwner(tempFilename, compressed);
+      if (error) throw error;
+
+      // Get public URL and update modal
+      const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(tempFilename);
+      setCapturedImage(prev => ({ ...prev, url: publicUrl, uploading: false, filename: tempFilename }));
     } catch (err) {
-      setError('Failed to capture photo from camera.');
+      setError('Failed to capture or process photo.');
+      console.error(err);
     }
   };
 
@@ -92,6 +122,34 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
 
   const handleShowMore = () => {
     setVisibleCount((prev) => prev + 4);
+  };
+
+  const deletePhotoEverywhere = async (filename) => {
+    try {
+      await supabase.storage.from('photos').remove([filename]);
+    } catch (e) {}
+    try {
+      await Filesystem.deleteFile({
+        path: filename,
+        directory: Directory.Data,
+      });
+    } catch (e) {}
+  };
+
+  const handleModalClose = async () => {
+    if (capturedImage?.filename && !wasSaved) {
+      await deletePhotoEverywhere(capturedImage.filename);
+    }
+    setShowModal(false);
+    setCapturedImage(null);
+    setWasSaved(false);
+  };
+
+  const handleSave = (...args) => {
+    setWasSaved(true);
+    onAddItem(...args);
+    setShowModal(false);
+    setCapturedImage(null);
   };
 
   return (
@@ -193,8 +251,8 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
         <AddItemModal
           image={capturedImage?.url}
           lists={lists}
-          onClose={() => setShowModal(false)}
-          onSave={onAddItem}
+          onClose={handleModalClose}
+          onSave={handleSave}
         />
       )}
 

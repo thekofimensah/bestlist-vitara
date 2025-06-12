@@ -73,12 +73,17 @@ export const takeAndUploadPhoto = async () => {
 
     const blob = await fetch(image.webPath).then(res => res.blob());
     const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+    console.log('Original file size:', file.size, 'bytes');
+
     const compressed = await imageCompression(file, {
       maxSizeMB: 0.8,
       maxWidthOrHeight: 1280
     });
+    console.log('Compressed file size:', compressed.size, 'bytes');
 
     const base64 = await imageCompression.getDataUrlFromFile(compressed);
+    console.log('Base64 string length:', base64.length);
+
     const filename = `photo_${Date.now()}.jpeg`;
 
     await writeFile(filename, base64);

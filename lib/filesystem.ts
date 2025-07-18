@@ -1,3 +1,5 @@
+// Not used currently
+
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
 export const writeFile = async (filename: string, dataUrl: string): Promise<void> => {

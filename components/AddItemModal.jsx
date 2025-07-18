@@ -5,7 +5,7 @@ import ModalLayout from './ModalLayout';
 import { buildItem } from './itemUtils';
 import { ListCard, StarRating, NotesInput, ImageAISection } from './Elements';
 
-const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentIndex, totalPhotos, onNext, onPrev, onSkip, initialState, onStateChange }) => {
+const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentIndex, totalPhotos, onNext, onPrev, onSkip, initialState, onStateChange, aiMetadata, isAIProcessing }) => {
   const [selectedLists, setSelectedLists] = useState(() => {
     if (initialState && initialState.selectedLists) return initialState.selectedLists;
     if (item) return [item.list_id];
@@ -14,11 +14,26 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
   });
   const [rating, setRating] = useState(initialState?.rating ?? item?.rating ?? 0);
   const [notes, setNotes] = useState(initialState?.notes ?? item?.notes ?? '');
-  const [productName, setProductName] = useState(initialState?.productName ?? item?.name ?? 'Delicious Discovery');
-  const [productType, setProductType] = useState(initialState?.productType ?? item?.type ?? 'Dessert');
-  const [tags, setTags] = useState(initialState?.tags ?? item?.tags ?? ['Sweet', 'Creamy', 'Cold']);
-  const [species, setSpecies] = useState(initialState?.species ?? item?.species ?? 'Vanilla Gelato');
-  const [certainty, setCertainty] = useState(initialState?.certainty ?? item?.certainty ?? 87);
+  const [productName, setProductName] = useState(() => {
+    if (aiMetadata?.productName) return aiMetadata.productName;
+    return initialState?.productName ?? item?.name ?? 'Loading...';
+  });
+  const [productType, setProductType] = useState(() => {
+    if (aiMetadata?.productType) return aiMetadata.productType;
+    return initialState?.productType ?? item?.type ?? 'Unknown';
+  });
+  const [tags, setTags] = useState(() => {
+    if (aiMetadata?.tags) return aiMetadata.tags;
+    return initialState?.tags ?? item?.tags ?? ['Loading...'];
+  });
+  const [species, setSpecies] = useState(() => {
+    if (aiMetadata?.species) return aiMetadata.species;
+    return initialState?.species ?? item?.species ?? 'Analyzing...';
+  });
+  const [certainty, setCertainty] = useState(() => {
+    if (aiMetadata?.certainty) return aiMetadata.certainty;
+    return initialState?.certainty ?? item?.certainty ?? 0;
+  });
   const [location, setLocation] = useState(initialState?.location ?? item?.location ?? 'Current Location');
 
   useEffect(() => {
@@ -26,14 +41,25 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
       setSelectedLists(initialState.selectedLists ?? []);
       setRating(initialState.rating ?? 0);
       setNotes(initialState.notes ?? '');
-      setProductName(initialState.productName ?? 'Delicious Discovery');
-      setProductType(initialState.productType ?? 'Dessert');
-      setTags(initialState.tags ?? ['Sweet', 'Creamy', 'Cold']);
-      setSpecies(initialState.species ?? 'Vanilla Gelato');
-      setCertainty(initialState.certainty ?? 87);
+      setProductName(initialState.productName ?? 'Loading...');
+      setProductType(initialState.productType ?? 'Unknown');
+      setTags(initialState.tags ?? ['Loading...']);
+      setSpecies(initialState.species ?? 'Analyzing...');
+      setCertainty(initialState.certainty ?? 0);
       setLocation(initialState.location ?? 'Current Location');
     }
   }, [initialState]);
+
+  // Update state when AI metadata becomes available
+  useEffect(() => {
+    if (aiMetadata) {
+      setProductName(aiMetadata.productName);
+      setProductType(aiMetadata.productType);
+      setTags(aiMetadata.tags);
+      setSpecies(aiMetadata.species);
+      setCertainty(aiMetadata.certainty);
+    }
+  }, [aiMetadata]);
 
   useEffect(() => {
     if (onStateChange) {
@@ -127,6 +153,7 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
         setSpecies={setSpecies}
         certainty={certainty}
         tags={tags}
+        isAIProcessing={isAIProcessing}
       />
           <div className="mb-3">
             <label className="text-sm font-medium text-gray-700 mb-2 block">Your Rating</label>

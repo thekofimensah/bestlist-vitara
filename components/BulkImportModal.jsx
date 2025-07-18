@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, ArrowLeft, ArrowRight, SkipForward, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, SkipForward } from 'lucide-react';
 import ModalLayout from './ModalLayout';
 import { buildItem } from './itemUtils';
-import { ListBox, StarRating, NotesInput, ListGrid, ImageAISection, ListCard } from './Elements';
+import { StarRating, NotesInput, ImageAISection, ListCard } from './Elements';
 import AddItemModal from './AddItemModal';
 import { Camera } from '@capacitor/camera';
 import { supabase } from '../lib/supabase';
@@ -11,16 +11,17 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
 import { uploadPhotoWithOwner } from '../lib/supabase';
+import { useAI } from '../hooks/useAI';
 
 const getDefaultPhotoState = (lists) => ({
   selectedLists: lists && lists.length > 0 ? [lists[0].id] : [],
   rating: 0,
   notes: '',
-  productName: 'Delicious Discovery',
-  productType: 'Dessert',
-  tags: ['Sweet', 'Creamy', 'Cold'],
-  species: 'Vanilla Gelato',
-  certainty: 87,
+  productName: 'Loading...',
+  productType: 'Unknown',
+  tags: ['Loading...'],
+  species: 'Analyzing...',
+  certainty: 0,
   location: 'Current Location',
 });
 
@@ -34,6 +35,7 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
   const [showSingleAdd, setShowSingleAdd] = useState(false);
   const [singleAddState, setSingleAddState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { analyzeImage } = useAI();
 
   // Form state for current photo
   const currentState = photoStates[currentPhotoIndex] || getDefaultPhotoState(lists);
@@ -63,12 +65,8 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
           file: null,
           url: photo.webPath, // show instantly
           filename: null,     // will be set after upload
-          detected: {
-            name: 'Imported Photo',
-            type: 'Unknown',
-            species: 'Unlabeled',
-            certainty: 50
-          }
+          aiMetadata: null,   // will be populated by AI
+          aiProcessing: true  // start with AI processing state
         }));
 
         setSelectedPhotos(photoObjs);
@@ -76,7 +74,7 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
         setCurrentPhotoIndex(0);
         setErrorMsg('');
 
-        // 2. Start upload in background
+        // 2. Start AI processing and upload in parallel for each image
         photoObjs.forEach(async (photoObj, idx) => {
           const photo = validPhotos[idx];
           const blob = await fetch(photo.webPath).then(r => r.blob());
@@ -89,23 +87,55 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
             maxWidthOrHeight: 1280
           });
 
-          // Upload to Supabase
-          const filename = `imported_${idx}_${uniqueStr}.jpeg`;
-          const { data, error } = await uploadPhotoWithOwner(filename, compressed);
-          let publicUrl = photo.webPath;
-          if (!error) {
-            const { data: urlData } = supabase.storage.from('photos').getPublicUrl(filename);
-            publicUrl = urlData.publicUrl;
-          }
+          // Start AI processing and upload in parallel
+          const aiPromise = analyzeImage(compressed);
+          
+          const uploadPromise = (async () => {
+            const filename = `imported_${idx}_${uniqueStr}.jpeg`;
+            const { data, error } = await uploadPhotoWithOwner(filename, compressed);
+            if (!error) {
+              const { data: urlData } = supabase.storage.from('photos').getPublicUrl(filename);
+              return { url: urlData.publicUrl, filename };
+            }
+            return { url: photo.webPath, filename: null };
+          })();
+
+          // Wait for both and update state
+          const [aiMetadata, uploadResult] = await Promise.all([aiPromise, uploadPromise]);
+          
+          console.log(`📋 Updating states for photo ${idx}:`, {
+            aiMetadata,
+            uploadResult,
+            aiProcessing: false
+          });
+
+          // Update photo states with AI data
+          setPhotoStates(prev => {
+            const updated = [...prev];
+            if (updated[idx]) {
+              updated[idx] = {
+                ...updated[idx],
+                productName: aiMetadata.productName,
+                productType: aiMetadata.productType,
+                tags: aiMetadata.tags,
+                species: aiMetadata.species,
+                certainty: aiMetadata.certainty
+              };
+              console.log(`✅ Photo state ${idx} updated with AI data:`, updated[idx]);
+            }
+            return updated;
+          });
 
           // Update the photo object in state
           setSelectedPhotos(prev => {
             const updated = [...prev];
             updated[idx] = {
               ...updated[idx],
-              url: publicUrl,
-              filename
+              ...uploadResult,
+              aiMetadata,
+              aiProcessing: false
             };
+            console.log(`✅ Selected photo ${idx} updated:`, updated[idx]);
             return updated;
           });
         });
@@ -292,13 +322,21 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
 
   // If only one image and showSingleAdd, render AddItemModal
   if (showSingleAdd && selectedPhotos.length === 1 && selectedPhotos[0]) {
+    const singlePhoto = selectedPhotos[0];
+    console.log('🔄 Rendering single AddItemModal with AI data:', {
+      aiMetadata: singlePhoto.aiMetadata,
+      aiProcessing: singlePhoto.aiProcessing
+    });
+    
     return (
       <AddItemModal
-        image={selectedPhotos[0].url}
+        image={singlePhoto.url}
         lists={lists}
         onClose={onClose}
         onSave={onSave}
         initialState={singleAddState}
+        aiMetadata={singlePhoto.aiMetadata}
+        isAIProcessing={singlePhoto.aiProcessing}
       />
     );
   }
@@ -360,15 +398,28 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
         )}
       </div>
           <div className="overflow-visible min-w-0">
-            <ImageAISection
-              image={selectedPhotos[currentPhotoIndex]?.url}
-              productName={currentState.productName}
-              setProductName={val => setField('productName', val)}
-              species={currentState.species}
-              setSpecies={val => setField('species', val)}
-              certainty={currentState.certainty}
-              tags={currentState.tags}
-            />
+            {(() => {
+              const currentPhoto = selectedPhotos[currentPhotoIndex];
+              const isProcessing = currentPhoto?.aiProcessing;
+              console.log(`🖼️ Rendering ImageAISection for photo ${currentPhotoIndex}:`, {
+                hasPhoto: !!currentPhoto,
+                aiProcessing: isProcessing,
+                aiMetadata: currentPhoto?.aiMetadata,
+                currentState: currentState
+              });
+              return (
+                <ImageAISection
+                  image={currentPhoto?.url}
+                  productName={currentState.productName}
+                  setProductName={val => setField('productName', val)}
+                  species={currentState.species}
+                  setSpecies={val => setField('species', val)}
+                  certainty={currentState.certainty}
+                  tags={currentState.tags}
+                  isAIProcessing={isProcessing}
+                />
+              );
+            })()}
           </div>
           <div className="mb-3">
             <label className="text-sm font-medium text-gray-700 mb-2 block">Your Rating</label>

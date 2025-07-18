@@ -8,3 +8,30 @@
     color: #1a202c; /* or your preferred gray-900 hex */
   }
 }
+
+/* AI Processing Animations */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes scanner {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.scanner-line {
+  animation: scanner 3s ease-in-out infinite;
+}

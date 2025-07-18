@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CameraView from './components/CameraView';
 import ListsView from './components/ListsView';
-import ListDetailView from './components/ListDetailView';
+import ShowItemsInListView from './components/ShowItemsInListView';
 import DiscoverView from './components/DiscoverView';
 import AuthView from './components/AuthView';
 import ProfileView from './components/ProfileView';
 import { Camera, List, Compass, User, Star, Plus } from 'lucide-react';
-import { supabase } from './lib/supabase';
+import { supabase, signOut } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import AddItemModal from './components/AddItemModal';
 
@@ -18,7 +18,7 @@ const steps = [
   { key: 'lists', label: 'Loading lists...' },
 ];
 
-const MultiStepLoadingScreen = ({ listsLoading, appLoading, imagesLoading, profileLoading }) => {
+const MultiStepLoadingScreen = ({ listsLoading, appLoading, imagesLoading, profileLoading, onSignOut }) => {
   // Determine which step is active
   const stepStates = [
     !appLoading,
@@ -28,8 +28,22 @@ const MultiStepLoadingScreen = ({ listsLoading, appLoading, imagesLoading, profi
   ];
   const currentStep = stepStates.findIndex(done => !done);
 
+  const handleSignOut = async () => {
+    if (confirm('Are you sure you want to sign out? This will reset the loading process.')) {
+      await onSignOut();
+    }
+  };
+
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100 relative">
+      {/* Sign Out Button */}
+      <button
+        onClick={handleSignOut}
+        className="absolute top-4 right-4 bg-white/80 hover:bg-white text-gray-700 hover:text-red-600 px-4 py-2 rounded-full shadow-lg transition-all duration-200 font-medium text-sm"
+      >
+        Sign Out
+      </button>
+      
       {/* Centered, large, fashionable icon */}
       <div className="flex flex-col items-center justify-center w-full" style={{ minHeight: 320 }}>
         <div className="relative w-44 h-44 flex items-center justify-center mb-10 mx-auto">
@@ -87,6 +101,22 @@ const App = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingList, setEditingList] = useState(null);
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      // Reset all states
+      setUser(null);
+      setAppLoading(false);
+      setImagesLoading(false);
+      setProfileLoading(false);
+      setSelectedList(null);
+      setEditingItem(null);
+      setEditingList(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   useEffect(() => {
     const getSession = async () => {
       try {
@@ -116,7 +146,13 @@ const App = () => {
   }, [lists]);
 
   if (listsLoading || appLoading || imagesLoading || profileLoading) {
-    return <MultiStepLoadingScreen listsLoading={listsLoading} appLoading={appLoading} imagesLoading={imagesLoading} profileLoading={profileLoading} />;
+    return <MultiStepLoadingScreen 
+      listsLoading={listsLoading} 
+      appLoading={appLoading} 
+      imagesLoading={imagesLoading} 
+      profileLoading={profileLoading} 
+      onSignOut={handleSignOut}
+    />;
   }
 
   if (!user) {
@@ -156,7 +192,7 @@ const App = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100">
         <div className="max-w-md mx-auto bg-white min-h-screen">
-          <ListDetailView 
+          <ShowItemsInListView 
             key={selectedList.id}
             list={selectedList} 
             onBack={() => setSelectedList(null)}

@@ -29,6 +29,10 @@ export const useLists = (userId) => {
   useEffect(() => {
     if (userId) {
       fetchLists(false);
+    } else {
+      // When userId is null (user signed out), reset state
+      setLists([]);
+      setLoading(false);
     }
   }, [userId]);
 

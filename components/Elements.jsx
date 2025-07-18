@@ -112,17 +112,40 @@ export function ImageAISection({
   speciesInputClassName = '',
   tagClassName = '',
   showInputs = true,
+  isAIProcessing = false,
   ...motionProps
 }) {
   return (
     <div className="flex gap-3">
       <div className="w-[70%]">
-        <div className="aspect-square bg-gray-100 rounded-2xl overflow-hidden">
+        <div className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative">
           <img
             src={image}
             alt="Captured product"
             className="w-full h-full object-cover"
           />
+          {/* AI Processing Overlay */}
+          {isAIProcessing && (
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent">
+              {/* Scanning line animation */}
+              <div className="absolute inset-0">
+                <div className="absolute h-full w-1 bg-gradient-to-b from-transparent via-blue-400 to-transparent animate-pulse opacity-70 scanner-line"></div>
+              </div>
+              {/* Shimmer overlay */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                             {/* AI icon in center */}
+               <div className="absolute inset-0 flex items-center justify-center">
+                 <div className="bg-white/95 rounded-full p-3 shadow-xl animate-pulse border-2 border-blue-200">
+                   <div className="w-6 h-6 text-blue-500">
+                     <svg viewBox="0 0 24 24" fill="currentColor">
+                       <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 0 1-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 1 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 1 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 1-3.09 3.09ZM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423L16.5 15.75l.394 1.183a2.25 2.25 0 0 0 1.423 1.423L19.5 18.75l-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z"/>
+                     </svg>
+                   </div>
+                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
+                 </div>
+               </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="flex-[0_0_40%] min-w-[120px] min-w-0">
@@ -134,8 +157,18 @@ export function ImageAISection({
           {...motionProps}
         >
           <div className="flex items-center mb-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
-            <span className="text-xs font-medium text-gray-700">AI Detected</span>
+            <div className={`w-2 h-2 rounded-full mr-2 ${
+              isAIProcessing 
+                ? 'bg-yellow-400 animate-pulse' 
+                : certainty > 70 
+                  ? 'bg-green-400 animate-pulse' 
+                  : certainty > 0 
+                    ? 'bg-orange-400 animate-pulse'
+                    : 'bg-gray-400'
+            }`}></div>
+            <span className="text-xs font-medium text-gray-700">
+              {isAIProcessing ? 'AI Analyzing...' : certainty > 0 ? 'AI Detected' : 'AI Analysis Failed'}
+            </span>
           </div>
           <div className="flex-1 space-y-2">
             {showInputs && setProductName ? (
@@ -168,6 +201,12 @@ export function ImageAISection({
                 <span key={index} className={`px-1.5 py-0.5 bg-white/70 rounded-full text-xs text-gray-600 ${tagClassName}`}>{tag}</span>
               ))}
             </div>
+            {/* Low confidence warning */}
+            {!isAIProcessing && certainty > 0 && certainty < 70 && (
+              <div className="mt-2 text-xs text-red-500 font-medium">
+                AI confidence low. Try retaking for better results.
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

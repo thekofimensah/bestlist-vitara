@@ -12,24 +12,61 @@ const AuthView = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    // Client-side validation
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      setLoading(false);
+      return;
+    }
+
+    if (isSignUp && (!name || name.trim().length < 2)) {
+      setError('Please enter your full name (at least 2 characters)');
+      setLoading(false);
+      return;
+    }
+
     try {
       let result;
       if (isSignUp) {
-        result = await signUpWithEmail(email, password, name);
+        result = await signUpWithEmail(email.trim().toLowerCase(), password, name.trim());
       } else {
-        result = await signInWithEmail(email, password);
+        result = await signInWithEmail(email.trim().toLowerCase(), password);
       }
 
       if (result.error) {
-        setError(result.error.message);
+        // Provide more helpful error messages
+        let errorMessage = result.error.message;
+        
+        if (errorMessage.includes('Invalid email')) {
+          errorMessage = 'Please enter a valid email address. Make sure it includes @ and a domain (e.g., user@example.com)';
+        } else if (errorMessage.includes('Password')) {
+          errorMessage = 'Password must be at least 6 characters long';
+        } else if (errorMessage.includes('User already registered')) {
+          errorMessage = 'An account with this email already exists. Try signing in instead.';
+        }
+        
+        setError(errorMessage);
+        console.error('Auth error:', result.error);
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      console.error('Unexpected auth error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -79,7 +116,16 @@ const AuthView = () => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <p className="text-red-600 text-sm text-center">{error}</p>
+            <p className="text-red-600 text-sm text-center font-medium">{error}</p>
+            {error.includes('Invalid email') && (
+              <div className="mt-2 text-xs text-red-500 text-center">
+                <p>Email format tips:</p>
+                <p>• Must include @ symbol</p>
+                <p>• Must have domain (.com, .org, etc.)</p>
+                <p>• No spaces or invalid characters</p>
+                <p>• Example: user@example.com</p>
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -149,10 +195,28 @@ const AuthView = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email Address"
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent"
+              placeholder="Email Address (e.g., user@example.com)"
+              className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:border-transparent ${
+                email && !validateEmail(email) 
+                  ? 'border-red-300 focus:ring-red-400' 
+                  : 'border-gray-200 focus:ring-pink-400'
+              }`}
               required
             />
+            {email && !validateEmail(email) && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                  <span className="text-red-500 text-xs">✕</span>
+                </div>
+              </div>
+            )}
+            {email && validateEmail(email) && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                  <span className="text-green-500 text-xs">✓</span>
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="relative">

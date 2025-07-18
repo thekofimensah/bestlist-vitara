@@ -10,6 +10,7 @@ import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
 import { uploadPhotoWithOwner, supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { useAI } from '../hooks/useAI';
 
 const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) => {
   const [showModal, setShowModal] = useState(false);
@@ -23,6 +24,7 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const { analyzeImage, isProcessing: aiProcessing } = useAI();
 
   const startCamera = async (mode = 'environment') => {
     setVideoReady(false);
@@ -81,30 +83,44 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
 
       // Show modal immediately with raw base64 image
       const tempFilename = `photo_${Date.now()}.jpeg`;
-      setCapturedImage({ url: imageData, uploading: true, filename: tempFilename });
+      setCapturedImage({ url: imageData, uploading: true, aiProcessing: true, filename: tempFilename });
       setShowModal(true);
 
       // Convert to File
       const file = dataURLtoFile(imageData, tempFilename);
-      console.log('Original file size:', file.size, 'bytes');
 
       // Compress
       const compressed = await imageCompression(file, {
         maxSizeMB: 0.8,
         maxWidthOrHeight: 1280
       });
-      console.log('Compressed file size:', compressed.size, 'bytes');
 
-      // Upload to Supabase
-      const { data, error } = await uploadPhotoWithOwner(tempFilename, compressed);
-      if (error) throw error;
+      // Start AI processing and upload in parallel
+      const aiPromise = analyzeImage(compressed);
+      
+      const uploadPromise = (async () => {
+        const { data, error } = await uploadPhotoWithOwner(tempFilename, compressed);
+        if (error) throw error;
+        const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(tempFilename);
+        return publicUrl;
+      })();
 
-      // Get public URL and update modal
-      const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(tempFilename);
-      setCapturedImage(prev => ({ ...prev, url: publicUrl, uploading: false, filename: tempFilename }));
+      // Wait for both to complete
+      const [aiMetadata, publicUrl] = await Promise.all([aiPromise, uploadPromise]);
+
+      // Update modal with both URL and AI data
+      setCapturedImage(prev => ({ 
+        ...prev, 
+        url: publicUrl, 
+        uploading: false,
+        aiProcessing: false,
+        aiMetadata,
+        filename: tempFilename 
+      }));
     } catch (err) {
       setError('Failed to capture or process photo.');
       console.error(err);
+      setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
     }
   };
 
@@ -253,6 +269,8 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           lists={lists}
           onClose={handleModalClose}
           onSave={handleSave}
+          aiMetadata={capturedImage?.aiMetadata}
+          isAIProcessing={capturedImage?.aiProcessing}
         />
       )}
 

@@ -5,7 +5,7 @@ import ProductCard from './ProductCard';
 import { deleteItemFromList } from '../lib/supabase';
 import { ListGrid } from './Elements';
 
-const ListDetailView = ({ list, onBack, onEditItem, refreshList }) => {
+const ShowItemsInListView = ({ list, onBack, onEditItem, refreshList }) => {
   const [sortBy, setSortBy] = useState('rating');
   const [showStayAways, setShowStayAways] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -241,4 +241,4 @@ const ListDetailView = ({ list, onBack, onEditItem, refreshList }) => {
   );
 };
 
-export default ListDetailView;
+export default ShowItemsInListView;

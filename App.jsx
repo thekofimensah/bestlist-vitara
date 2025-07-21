@@ -1,89 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import CameraView from './components/CameraView';
+import { Home, List, User, Search, Bell, X } from 'lucide-react';
+import MainScreen from './components/MainScreen';
 import ListsView from './components/ListsView';
-import ShowItemsInListView from './components/ShowItemsInListView';
-import DiscoverView from './components/DiscoverView';
-import AuthView from './components/AuthView';
 import ProfileView from './components/ProfileView';
-import { Camera, List, Compass, User, Star, Plus } from 'lucide-react';
-import { supabase, signOut } from './lib/supabase';
-import { useLists } from './hooks/useLists';
+import ShowItemsInListView from './components/ShowItemsInListView';
+import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
+import { supabase, signOut, searchUserContent } from './lib/supabase';
+import { useLists } from './hooks/useLists';
+import { motion as Sparkles } from 'framer-motion';
 
-const steps = [
-  { key: 'session', label: 'Loading user session...' },
-  { key: 'images', label: 'Loading images...' },
-  { key: 'profile', label: 'Loading profile...' },
-  { key: 'lists', label: 'Loading lists...' },
-];
-
-const MultiStepLoadingScreen = ({ listsLoading, appLoading, imagesLoading, profileLoading, onSignOut }) => {
-  // Determine which step is active
-  const stepStates = [
-    !appLoading,
-    !imagesLoading,
-    !profileLoading,
-    !listsLoading,
-  ];
-  const currentStep = stepStates.findIndex(done => !done);
-
-  const handleSignOut = async () => {
-    if (confirm('Are you sure you want to sign out? This will reset the loading process.')) {
-      await onSignOut();
-    }
-  };
-
+// Custom loading component
+const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) => {
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100 relative">
-      {/* Sign Out Button */}
-      <button
-        onClick={handleSignOut}
-        className="absolute top-4 right-4 bg-white/80 hover:bg-white text-gray-700 hover:text-red-600 px-4 py-2 rounded-full shadow-lg transition-all duration-200 font-medium text-sm"
-      >
-        Sign Out
-      </button>
-      
-      {/* Centered, large, fashionable icon */}
-      <div className="flex flex-col items-center justify-center w-full" style={{ minHeight: 320 }}>
-        <div className="relative w-44 h-44 flex items-center justify-center mb-10 mx-auto">
-          <div className="absolute inset-0 animate-bounce flex items-center justify-center">
-            <span style={{ fontSize: 180, filter: 'drop-shadow(0 8px 32px #ff6b9d88)' }}>🍦</span>
-          </div>
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-pink-200 rounded-full blur-md animate-pulse"></div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
+      <div className="flex flex-col items-center justify-center px-8">
+        {/* Logo */}
+        <div className="w-24 h-24 bg-teal-700 rounded-3xl flex items-center justify-center mb-8 shadow-lg" style={{ backgroundColor: '#1F6D5A' }}>
+          <span className="text-white text-3xl font-bold">b</span>
         </div>
-      </div>
-      {/* Steps */}
-      <div className="w-full max-w-xs mx-auto flex flex-col gap-4 mt-2">
-        {steps.map((step, idx) => {
-          const done = stepStates[idx];
-          const isActive = idx === currentStep;
-          return (
-            <div
-              key={step.key}
-              className={
-                `flex items-center gap-3 px-4 py-3 rounded-xl shadow transition-all ` +
-                (done
-                  ? 'bg-green-50 text-green-700 font-bold'
-                  : isActive
-                  ? 'bg-pink-100 text-pink-600 font-semibold animate-pulse'
-                  : 'bg-gray-100 text-gray-400')
-              }
-              style={{ minHeight: 48 }}
-            >
-              <div className="w-7 flex justify-center items-center">
-                {done ? (
-                  <span className="text-green-500 text-2xl">✓</span>
-                ) : isActive ? (
-                  <span className="w-3 h-3 rounded-full bg-pink-400 animate-pulse block"></span>
-                ) : (
-                  <span className="w-3 h-3 rounded-full bg-gray-300 block"></span>
-                )}
-              </div>
-              <span className="flex-1 text-base">{step.label.replace('Loading', done ? 'Loaded' : 'Loading')}</span>
-            </div>
-          );
-        })}
+        
+        {/* App Name */}
+        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>fooreel</h1>
+        <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
+        
+        {/* Progress Bar */}
+        <div className="w-64 bg-gray-200 rounded-full h-2 mb-4">
+          <div 
+            className="bg-teal-700 h-2 rounded-full transition-all duration-300 ease-out"
+            style={{ 
+              width: `${(step / totalSteps) * 100}%`,
+              backgroundColor: '#1F6D5A'
+            }}
+          />
+        </div>
+        
+        {/* Step Counter */}
+        <div className="text-sm text-gray-500 mb-6">
+          Step {step} of {totalSteps}
+        </div>
+        
+        {/* Current Message */}
+        <motion.div
+          key={currentMessage}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          className="text-center"
+        >
+          <p className="text-gray-700 font-medium">{currentMessage}</p>
+        </motion.div>
       </div>
     </div>
   );
@@ -94,9 +61,15 @@ const App = () => {
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('camera');
+  const [currentScreen, setCurrentScreen] = useState('home');
+  const [previousScreen, setPreviousScreen] = useState('home');
   const [selectedList, setSelectedList] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   const { lists, loading: listsLoading, addItemToList, updateItemInList, refreshLists, createList } = useLists(user?.id);
   const [editingItem, setEditingItem] = useState(null);
   const [editingList, setEditingList] = useState(null);
@@ -110,6 +83,7 @@ const App = () => {
       setImagesLoading(false);
       setProfileLoading(false);
       setSelectedList(null);
+      setSelectedItem(null);
       setEditingItem(null);
       setEditingList(null);
     } catch (error) {
@@ -121,6 +95,82 @@ const App = () => {
         fullError: error
       });
     }
+  };
+
+  // Real Supabase search function
+  const performSearch = async (query) => {
+    if (!query.trim() || !user?.id) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    
+    try {
+      const { data, error } = await searchUserContent(user.id, query);
+      
+      if (error) {
+        console.error('Search error:', error);
+        setSearchResults([]);
+      } else {
+        setSearchResults(data || []);
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    // Debounce search
+    clearTimeout(window.searchTimeout);
+    window.searchTimeout = setTimeout(() => {
+      performSearch(query);
+    }, 300);
+  };
+
+  const handleSearchResultClick = (result) => {
+    // Navigate to appropriate screen based on result type
+    if (result.type === 'item') {
+      // Find the list and navigate to it
+      const targetList = lists.find(list => list.id === result.listId);
+      if (targetList) {
+        setSelectedList(targetList);
+        setCurrentScreen('list-detail');
+      }
+    } else if (result.type === 'list') {
+      // Navigate to specific list
+      const targetList = lists.find(list => list.id === result.id);
+      if (targetList) {
+        setSelectedList(targetList);
+        setCurrentScreen('list-detail');
+      } else {
+        setCurrentScreen('lists');
+      }
+    }
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const navigateToScreen = (screen) => {
+    setPreviousScreen(currentScreen);
+    setCurrentScreen(screen);
+    setSelectedList(null);
+    setSelectedItem(null);
+  };
+
+  const handleSearch = () => {
+    setShowSearch(true);
+  };
+
+  const handleNotifications = () => {
+    console.log('Show notifications');
   };
 
   useEffect(() => {
@@ -150,234 +200,382 @@ const App = () => {
     return () => subscription?.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (selectedList) {
-      const updated = lists.find(l => l.id === selectedList.id);
-      if (updated) setSelectedList(updated);
+  const handleAddItem = async (selectedListIds, item, isStayAway = false) => {
+    setImagesLoading(true);
+    
+    for (const listId of selectedListIds) {
+      const itemData = {
+        ...item,
+        is_stay_away: isStayAway
+      };
+      await addItemToList(listId, itemData);
     }
-  }, [lists]);
+    
+    setImagesLoading(false);
+    setEditingItem(null);
+    if (selectedList) {
+      refreshLists();
+    }
+  };
 
-  if (listsLoading || appLoading || imagesLoading || profileLoading) {
-    return <MultiStepLoadingScreen 
-      listsLoading={listsLoading} 
-      appLoading={appLoading} 
-      imagesLoading={imagesLoading} 
-      profileLoading={profileLoading} 
-      onSignOut={handleSignOut}
-    />;
+  const handleUpdateItem = async (item) => {
+    setImagesLoading(true);
+    await updateItemInList(item.id, item);
+    setImagesLoading(false);
+    setEditingItem(null);
+    if (selectedList) {
+      refreshLists();
+    }
+  };
+
+  const handleEditItem = (item, list) => {
+    setEditingItem(item);
+    setEditingList(list);
+  };
+
+  const handleViewItemDetail = (item) => {
+    setSelectedItem(item);
+    setCurrentScreen('item-detail');
+  };
+
+  const handleSelectList = (list) => {
+    setSelectedList(list);
+    setCurrentScreen('list-detail');
+  };
+
+  const handleBackFromList = () => {
+    setSelectedList(null);
+    setCurrentScreen('lists');
+  };
+
+  const handleBackFromItem = () => {
+    setSelectedItem(null);
+    if (selectedList) {
+      setCurrentScreen('list-detail');
+    } else {
+      setCurrentScreen('lists');
+    }
+  };
+
+  const handleCreateList = async (name, color) => {
+    const newList = await createList(name, color);
+    return newList;
+  };
+
+  const renderScreen = () => {
+    if (currentScreen === 'item-detail' && selectedItem) {
+      // Render individual item detail view
+      return (
+        <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
+          <div className="p-4">
+            <button onClick={handleBackFromItem} className="mb-4">
+              ← Back
+            </button>
+            <h1>{selectedItem.name}</h1>
+            <img src={selectedItem.image_url || selectedItem.image} alt={selectedItem.name} className="w-full h-64 object-cover rounded-xl" />
+            <p>{selectedItem.notes}</p>
+            {/* Add more item details here */}
+          </div>
+        </div>
+      );
+    }
+
+    if (currentScreen === 'list-detail' && selectedList) {
+      return (
+        <ShowItemsInListView
+          list={selectedList}
+          onBack={handleBackFromList}
+          onAddItem={handleAddItem}
+          onEditItem={handleEditItem}
+          refreshList={refreshLists}
+        />
+      );
+    }
+
+    switch (currentScreen) {
+      case 'home':
+        return (
+          <MainScreen
+            lists={lists}
+            loading={imagesLoading}
+            onAddItem={handleAddItem}
+            onSelectList={handleSelectList}
+            onCreateList={handleCreateList}
+          />
+        );
+      case 'lists':
+        return (
+          <ListsView
+            lists={lists}
+            onSelectList={handleSelectList}
+            onCreateList={handleCreateList}
+            onEditItem={handleEditItem}
+            onViewItemDetail={handleViewItemDetail}
+          />
+        );
+      case 'profile':
+        return (
+          <ProfileView 
+            onBack={() => navigateToScreen('home')}
+          />
+        );
+      default:
+        return (
+          <MainScreen
+            lists={lists}
+            loading={imagesLoading}
+            onAddItem={handleAddItem}
+            onSelectList={handleSelectList}
+            onCreateList={handleCreateList}
+          />
+        );
+    }
+  };
+
+  // Show loading screen
+  if (appLoading) {
+    return (
+      <MultiStepLoadingScreen
+        step={1}
+        totalSteps={3}
+        messages={['Connecting to fooreel...', 'Loading your profile...', 'Setting up your kitchen...']}
+        currentMessage="Connecting to fooreel..."
+      />
+    );
   }
 
+  // Show auth view if no user
   if (!user) {
     return <AuthView />;
   }
 
-  const handleTabClick = (tab) => {
-    setActiveTab(tab);
-    setSelectedList(null);
-  };
-
-  const handleCreateList = async (name, color) => {
-    return await createList(name, color);
-  };
-
-  const TabButton = ({ icon: Icon, label, isActive, onClick }) => (
-    <motion.div
-      onClick={onClick}
-      className={`flex flex-col items-center p-3 rounded-2xl transition-all cursor-pointer ${
-        isActive 
-          ? 'bg-gradient-to-br from-pink-400 to-orange-400 text-white shadow-lg' 
-          : 'text-gray-600 hover:bg-gray-100'
-      }`}
-      whileTap={{ scale: 0.95 }}
-      whileHover={{ scale: 1.05 }}
-    >
-      <Icon size={24} />
-      <span className="text-xs mt-1 font-bold">{label}</span>
-    </motion.div>
-  );
-
-  if (showProfile) {
-    return <ProfileView onBack={() => setShowProfile(false)} />;
-  }
-
-  if (selectedList) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100">
-        <div className="max-w-md mx-auto bg-white min-h-screen">
-          <ShowItemsInListView 
-            key={selectedList.id}
-            list={selectedList} 
-            onBack={() => setSelectedList(null)}
-            onAddItem={addItemToList}
-            onEditItem={(item, list) => {
-              setEditingItem(item);
-              setEditingList(list);
-            }}
-            refreshList={refreshLists}
-          />
-          {editingItem && (
-            <AddItemModal
-              image={editingItem?.image_url || editingItem?.image}
-              item={editingItem}
-              lists={lists}
-              onClose={() => {
-                setEditingItem(null);
-                setEditingList(null);
-              }}
-              onSave={async (listsToUpdate, updatedItem, isStayAway) => {
-                if (editingItem && editingItem.id) {
-                  await updateItemInList(listsToUpdate, { ...updatedItem, id: editingItem.id }, isStayAway);
-                } else {
-                  await addItemToList(listsToUpdate, updatedItem, isStayAway);
-                }
-                setEditingItem(null);
-                setEditingList(null);
-              }}
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-50 to-blue-100">
-      <div className="max-w-md mx-auto bg-white min-h-screen flex flex-col relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 left-0 w-full h-full bg-repeat" 
-               style={{
-                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ff6b9d' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
-               }}>
-          </div>
-        </div>
-
-        <motion.div 
-          className="relative z-10 bg-gradient-to-r from-pink-400 via-orange-400 to-yellow-400 p-3 pb-3 overflow-hidden"
-          style={{ minHeight: 64 }}
-          initial={{ y: -100 }}
-          animate={{ y: 0 }}
-          transition={{ type: "spring", stiffness: 100 }}
-        >
-          <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -translate-y-8 translate-x-8"></div>
-          <div className="absolute bottom-0 left-0 w-10 h-10 bg-white/10 rounded-full translate-y-6 -translate-x-6"></div>
-          <div className="flex items-center justify-between relative z-10">
-            <div className="text-center flex-1">
-              <motion.div
-                className="flex items-center justify-center"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              >
-                <h1 className="text-2xl font-black text-white" style={{ fontFamily: 'Comic Sans MS, cursive', letterSpacing: '0.15em' }}>
-                  bestlist
-                </h1>
-              </motion.div>
+    <div 
+      className="min-h-screen bg-stone-50 relative" 
+      style={{ 
+        backgroundColor: '#F6F6F4',
+        // Responsive design for keyboard handling
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        minHeight: '100dvh', // Dynamic viewport height for mobile (fallback to 100vh if not supported)
+      }}
+    >
+      {/* Header */}
+      <div className="sticky top-0 bg-stone-50 z-10 pt-8 pb-2" style={{ backgroundColor: '#F6F6F4' }}>
+        <div className="px-4 mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
+              <span className="text-white text-xs font-bold">b</span>
             </div>
-            <motion.button
-              onClick={() => setShowProfile(true)}
-              className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm"
-              whileTap={{ scale: 0.9 }}
-              whileHover={{ scale: 1.05 }}
+            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>fooreel</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleSearch}
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
             >
-              <User className="text-white" size={18} />
-            </motion.button>
+              <Search className="w-4 h-4 text-gray-700" />
+            </button>
+            <button 
+              onClick={handleNotifications}
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+            >
+              <Bell className="w-4 h-4 text-gray-700" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
+            </button>
           </div>
-        </motion.div>
-
-        <div className="relative z-10 flex-1 overflow-y-auto pb-28">
-          <AnimatePresence mode="wait">
-            {activeTab === 'camera' && (
-              <motion.div
-                key="camera"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div
-                  onTouchStart={e => (window._touchStartY = e.touches[0].clientY)}
-                  onTouchEnd={e => {
-                    if (window._touchStartY && e.changedTouches[0].clientY - window._touchStartY > 60) {
-                      refreshLists();
-                    }
-                    window._touchStartY = null;
-                  }}
-                  className="flex-1 flex flex-col min-h-0"
-                >
-                  <CameraView
-                    lists={lists}
-                    loading={listsLoading}
-                    onAddItem={addItemToList}
-                    onSelectList={setSelectedList}
-                    onCreateList={handleCreateList}
-                  />
-                </div>
-              </motion.div>
-            )}
-            {activeTab === 'lists' && (
-              <motion.div
-                key="lists"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <ListsView
-                  lists={lists}
-                  onSelectList={list => {
-                    const latest = lists.find(l => l.id === list.id);
-                    if (latest) {
-                      setSelectedList({...latest});
-                    }
-                  }}
-                  onCreateList={handleCreateList}
-                  onEditItem={(item, list) => {
-                    console.log('Edit item:', item, 'in list:', list);
-                  }}
-                />
-              </motion.div>
-            )}
-            {activeTab === 'discover' && (
-              <motion.div
-                key="discover"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <DiscoverView />
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
-
-        <motion.div 
-          className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 p-4 z-20"
-          initial={{ y: 100 }}
-          animate={{ y: 0 }}
-          transition={{ type: "spring", stiffness: 100, delay: 0.2 }}
-        >
-          <div className="flex justify-around items-center">
-            <TabButton 
-              icon={Camera} 
-              label="Capture" 
-              isActive={activeTab === 'camera'}
-              onClick={() => handleTabClick('camera')}
-            />
-            <TabButton 
-              icon={List} 
-              label="Lists" 
-              isActive={activeTab === 'lists'}
-              onClick={() => handleTabClick('lists')}
-            />
-            <TabButton 
-              icon={Compass} 
-              label="Discover" 
-              isActive={activeTab === 'discover'}
-              onClick={() => handleTabClick('discover')}
-            />
-          </div>
-        </motion.div>
       </div>
+
+      {/* Main Content */}
+      <main className="pb-20 relative">
+        {renderScreen()}
+      </main>
+
+      {/* Bottom Navigation */}
+      <div 
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2 z-20"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex items-center justify-around">
+          <button
+            onClick={() => navigateToScreen('home')}
+            className={`flex flex-col items-center gap-1 px-4 py-2 transition-all ${
+              currentScreen === 'home'
+                ? 'text-teal-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            style={{ color: currentScreen === 'home' ? '#1F6D5A' : undefined }}
+          >
+            <Home className="w-5 h-5" />
+            <span className="text-xs font-medium">Home</span>
+          </button>
+
+          <button
+            onClick={() => navigateToScreen('lists')}
+            className={`flex flex-col items-center gap-1 px-4 py-2 transition-all ${
+              currentScreen === 'lists' || currentScreen === 'list-detail' || currentScreen === 'item-detail'
+                ? 'text-teal-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            style={{ color: (currentScreen === 'lists' || currentScreen === 'list-detail' || currentScreen === 'item-detail') ? '#1F6D5A' : undefined }}
+          >
+            <List className="w-5 h-5" />
+            <span className="text-xs font-medium">Lists</span>
+          </button>
+
+          <button
+            onClick={() => navigateToScreen('profile')}
+            className={`flex flex-col items-center gap-1 px-4 py-2 transition-all ${
+              currentScreen === 'profile'
+                ? 'text-teal-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            style={{ color: currentScreen === 'profile' ? '#1F6D5A' : undefined }}
+          >
+            <User className="w-5 h-5" />
+            <span className="text-xs font-medium">Profile</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Edit Item Modal */}
+      {editingItem && (
+        <AddItemModal
+          image={editingItem.image_url || editingItem.image}
+          lists={lists}
+          onClose={() => setEditingItem(null)}
+          onSave={editingItem.id ? handleUpdateItem : handleAddItem}
+          item={editingItem}
+          onCreateList={handleCreateList}
+        />
+      )}
+
+      {/* Search Modal */}
+      {showSearch && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-16 p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-sm max-h-[80vh] overflow-hidden">
+            {/* Search Header */}
+            <div className="p-6 pb-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Search</h3>
+                <button
+                  onClick={() => {
+                    setShowSearch(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                  }}
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  placeholder="Search lists and items..."
+                  className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700"
+                  autoFocus
+                />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Search Results */}
+            {searchQuery && (
+              <div className="max-h-96 overflow-y-auto">
+                {searchResults.length > 0 ? (
+                  <div className="px-6 pb-6">
+                    <div className="text-sm text-gray-500 mb-3">
+                      {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+                    </div>
+                    <div className="space-y-2">
+                      {searchResults.map((result) => (
+                        <button
+                          key={`${result.type}-${result.id}`}
+                          onClick={() => handleSearchResultClick(result)}
+                          className="w-full text-left p-3 bg-stone-50 rounded-xl hover:bg-stone-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              result.type === 'list' 
+                                ? 'bg-teal-100 text-teal-700' 
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {result.type === 'list' ? (
+                                <List className="w-4 h-4" />
+                              ) : (
+                                <span className="text-xs font-bold">I</span>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{result.name}</div>
+                              {result.type === 'list' && (
+                                <div className="text-sm text-gray-500">
+                                  {result.itemCount} items
+                                </div>
+                              )}
+                              {result.type === 'item' && (
+                                <div className="text-sm text-gray-500">
+                                  in {result.list}
+                                  {result.rating && (
+                                    <span className="ml-2">
+                                      ★ {Math.abs(result.rating)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : !isSearching ? (
+                  <div className="px-6 pb-6 text-center">
+                    <div className="text-sm text-gray-500 mb-2">No results found</div>
+                    <div className="text-xs text-gray-400">
+                      Try different keywords or check spelling
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {!searchQuery && (
+              <div className="px-6 pb-6">
+                <div className="text-sm text-gray-500">
+                  Search through your lists and food items
+                </div>
+                <div className="mt-3 space-y-2">
+                  <div className="text-xs text-gray-400">
+                    Try searching for:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {['cheese', 'chocolate', 'olive oil', 'bread'].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => {
+                          setSearchQuery(suggestion);
+                          performSearch(suggestion);
+                        }}
+                        className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

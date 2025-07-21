@@ -1,241 +1,437 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Star, X, Heart, Frown, ArrowLeft, Filter } from 'lucide-react';
-import ProductCard from './ProductCard';
+import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Edit3 } from 'lucide-react';
+import AddItemModal from './AddItemModal';
 import { deleteItemFromList } from '../lib/supabase';
-import { ListGrid } from './Elements';
 
-const ShowItemsInListView = ({ list, onBack, onEditItem, refreshList }) => {
-  const [sortBy, setSortBy] = useState('rating');
-  const [showStayAways, setShowStayAways] = useState(false);
-  const [showSortMenu, setShowSortMenu] = useState(false);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [selectMode, setSelectMode] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [localLoading, setLocalLoading] = useState(false);
+const VerdictBadge = ({ verdict }) => {
+  const getVerdictStyle = () => {
+    switch (verdict) {
+      case 'AVOID':
+        return 'bg-red-50 text-red-700 border-red-100';
+      case 'KEEP':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
+      default:
+        return 'bg-gray-50 text-gray-700 border-gray-100';
+    }
+  };
 
-  const sortItems = (items) => {
-    return [...items].sort((a, b) => {
-      if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
-      if (sortBy === 'date') return new Date(b.date) - new Date(a.date);
-      return 0;
+  return (
+    <span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${getVerdictStyle()}`}>
+      {verdict}
+    </span>
+  );
+};
+
+const StarRating = ({ rating }) => {
+  if (!rating) return null;
+  
+  return (
+    <div className="absolute bottom-1 left-1 flex items-center gap-0.5 bg-white bg-opacity-90 backdrop-blur-sm rounded-full px-1.5 py-0.5">
+      <Star className="w-3 h-3 text-yellow-500 fill-current" />
+      <span className="text-xs font-medium text-gray-700">{Math.abs(rating)}</span>
+    </div>
+  );
+};
+
+const ItemTile = ({ 
+  item, 
+  isSelected, 
+  onTap, 
+  onLongPress,
+  showSelection = false 
+}) => {
+  const verdict = item.is_stay_away ? 'AVOID' : 'KEEP';
+
+  return (
+    <div
+      onClick={onTap}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onLongPress?.();
+      }}
+      className={`relative cursor-pointer group ${
+        isSelected ? 'ring-2 ring-teal-500' : ''
+      }`}
+    >
+      <div className="relative">
+        <img
+          src={item.image_url || item.image}
+          alt={item.name}
+          className="w-full aspect-square object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
+        />
+        <VerdictBadge verdict={verdict} />
+        <StarRating rating={item.rating} />
+        
+        {/* Selection indicator */}
+        {showSelection && isSelected && (
+          <div className="absolute top-2 left-2 w-6 h-6 bg-teal-500 rounded-full flex items-center justify-center">
+            <div className="w-3 h-3 bg-white rounded-full"></div>
+          </div>
+        )}
+      </div>
+      <div className="mt-2">
+        <p className="text-sm text-gray-700 font-medium truncate">{item.name}</p>
+        {item.notes && (
+          <p className="text-xs text-gray-500 truncate mt-1">{item.notes}</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ShowItemsInListView = ({ 
+  list, 
+  onBack, 
+  onAddItem, 
+  onEditItem, 
+  refreshList 
+}) => {
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('Newest');
+  const [filterBy, setFilterBy] = useState('All');
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [showContextMenu, setShowContextMenu] = useState(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Combine all items
+  const allItems = [
+    ...(list.items || []).map(item => ({ ...item, is_stay_away: false })),
+    ...(list.stayAways || []).map(item => ({ ...item, is_stay_away: true }))
+  ];
+
+  // Sort options
+  const sortOptions = ['Newest', 'Oldest', 'Top Rated', 'Name A-Z'];
+  const filterOptions = ['All', 'KEEP', 'AVOID'];
+
+  // Filter and sort items
+  const filteredAndSortedItems = useMemo(() => {
+    let filtered = allItems;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(item =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.notes && item.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+    }
+
+    // Apply verdict filter
+    if (filterBy !== 'All') {
+      filtered = filtered.filter(item => {
+        const verdict = item.is_stay_away ? 'AVOID' : 'KEEP';
+        return verdict === filterBy;
+      });
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'Oldest':
+          return new Date(a.created_at) - new Date(b.created_at);
+        case 'Top Rated':
+          return (Math.abs(b.rating) || 0) - (Math.abs(a.rating) || 0);
+        case 'Name A-Z':
+          return a.name.localeCompare(b.name);
+        case 'Newest':
+        default:
+          return new Date(b.created_at) - new Date(a.created_at);
+      }
     });
+
+    return filtered;
+  }, [allItems, searchQuery, sortBy, filterBy]);
+
+  // Calculate counts
+  const favoriteItems = allItems.filter(item => !item.is_stay_away);
+  const avoidItems = allItems.filter(item => item.is_stay_away);
+
+  const handleItemTap = (item) => {
+    if (selectedItems.length > 0) {
+      // Selection mode - toggle selection
+      setSelectedItems(prev => {
+        if (prev.includes(item.id)) {
+          return prev.filter(id => id !== item.id);
+        } else {
+          return [...prev, item.id];
+        }
+      });
+    } else {
+      // Normal mode - open item detail or edit
+      if (onEditItem) {
+        onEditItem(item, list);
+      }
+    }
   };
 
-  const displayItems = showStayAways ? list.stayAways : list.items;
-  const sortedItems = sortItems(displayItems);
-  const listColor = list.color || '#FF6B9D';
-
-  // Only enable select mode on right-click/long-press
-  const handleItemContextMenu = (e, itemId) => {
-    e.preventDefault();
-    setSelectMode(true);
-    setSelectedIds([itemId]);
-  };
-
-  const toggleSelect = (itemId) => {
-    if (!selectMode) return;
-    setSelectedIds(ids =>
-      ids.includes(itemId) ? ids.filter(id => id !== itemId) : [...ids, itemId]
-    );
-  };
-
-  const clearSelection = () => {
-    setSelectedIds([]);
-    setSelectMode(false);
-    setDeleting(false);
+  const handleItemLongPress = (item, event) => {
+    if (selectedItems.length === 0) {
+      // Show context menu
+      setShowContextMenu(item);
+      setContextMenuPosition({
+        x: event.pageX || event.touches?.[0]?.pageX || 0,
+        y: event.pageY || event.touches?.[0]?.pageY || 0
+      });
+    } else {
+      // Toggle selection in selection mode
+      handleItemTap(item);
+    }
   };
 
   const handleDeleteSelected = async () => {
-    setDeleting(true);
-    setLocalLoading(true);
-    if (Array.isArray(list.items)) {
-      list.items = list.items.filter(item => !selectedIds.includes(item.id));
-    }
-    if (Array.isArray(list.stayAways)) {
-      list.stayAways = list.stayAways.filter(item => !selectedIds.includes(item.id));
-    }
-    for (const id of selectedIds) {
-      await deleteItemFromList(id);
-    }
-    clearSelection();
-    setDeleting(false);
-    if (typeof refreshList === 'function') {
-      setLocalLoading(true);
-      await refreshList();
-      setLocalLoading(false);
-    } else {
-      setLocalLoading(false);
+    try {
+      for (const itemId of selectedItems) {
+        await deleteItemFromList(itemId);
+      }
+      setSelectedItems([]);
+      if (refreshList) {
+        refreshList();
+      }
+    } catch (error) {
+      console.error('Error deleting items:', error);
     }
   };
 
-  // Modern header style
-  return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
-      <motion.div 
-        className="p-6 text-white relative overflow-hidden"
-        style={{ backgroundColor: listColor }}
-        initial={{ y: -50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-      >
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative z-10">
-          <div className="flex items-center justify-between mb-4">
-            <motion.button
-              onClick={onBack}
-              className="p-2 bg-white/20 rounded-full"
-              whileTap={{ scale: 0.9 }}
-            >
-              <ArrowLeft className="text-white" size={20} />
-            </motion.button>
-            <motion.button
-              onClick={() => setShowSortMenu(!showSortMenu)}
-              className="p-2 bg-white/20 rounded-full relative"
-              whileTap={{ scale: 0.9 }}
-            >
-              <Filter className="text-white" size={20} />
-              {showSortMenu && (
-                <motion.div
-                  className="absolute top-12 right-0 bg-white rounded-2xl shadow-lg p-3 min-w-32"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                >
-                  {['rating', 'name', 'date'].map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => {
-                        setSortBy(option);
-                        setShowSortMenu(false);
-                      }}
-                      className={`block w-full text-left p-2 rounded-lg text-sm capitalize ${
-                        sortBy === option ? 'bg-gray-100 font-semibold' : 'text-gray-600'
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </motion.button>
-          </div>
-          <h1 className="text-2xl font-bold mb-2">{list.name}</h1>
-          <div className="flex items-center space-x-4 text-white/90">
-            <span className="flex items-center">
-              <Heart className="mr-1" size={16} />
-              {list.items.length} loved
-            </span>
-            <span className="flex items-center">
-              <Frown className="mr-1" size={16} />
-              {list.stayAways.length} avoided
-            </span>
-          </div>
-        </div>
-        {/* Decorative elements */}
-        <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/10 rounded-full"></div>
-        <div className="absolute -bottom-2 -left-2 w-16 h-16 bg-white/10 rounded-full"></div>
-      </motion.div>
+  const handleEditItem = (item) => {
+    setShowContextMenu(null);
+    if (onEditItem) {
+      onEditItem(item, list);
+    }
+  };
 
-      {/* Toggle Buttons */}
-      <div className="p-6 pb-4">
-        <div className="flex bg-gray-100 rounded-2xl p-1">
-          <motion.button
-            onClick={() => setShowStayAways(false)}
-            className={`flex-1 py-3 px-4 rounded-xl font-semibold text-sm transition-all ${
-              !showStayAways 
-                ? 'bg-white text-gray-800 shadow-sm' 
-                : 'text-gray-600'
-            }`}
-            whileTap={{ scale: 0.98 }}
-          >
-            <div className="flex items-center justify-center">
-              <Heart className="mr-2" size={16} />
-              Favorites ({list.items.length})
+  const handleRemoveItem = async (item) => {
+    setShowContextMenu(null);
+    try {
+      await deleteItemFromList(item.id);
+      if (refreshList) {
+        refreshList();
+      }
+    } catch (error) {
+      console.error('Error removing item:', error);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedItems([]);
+  };
+
+  return (
+    <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
+      {/* Header */}
+      <div className="sticky top-0 bg-stone-50 z-20 pt-8 pb-4" style={{ backgroundColor: '#F6F6F4' }}>
+        <div className="px-4 flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={selectedItems.length > 0 ? clearSelection : onBack}
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
+            </button>
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-gray-900">{list.name}</h2>
+              <div className="flex items-center gap-4 text-sm text-gray-500">
+                <span className="flex items-center gap-1">
+                  <Star className="w-3 h-3 text-yellow-500" />
+                  {favoriteItems.length} favorites
+                </span>
+                <span className="flex items-center gap-1">
+                  <X className="w-3 h-3 text-red-500" />
+                  {avoidItems.length} avoided
+                </span>
+                <span>{allItems.length} total</span>
+              </div>
             </div>
-          </motion.button>
-          <motion.button
-            onClick={() => setShowStayAways(true)}
-            className={`flex-1 py-3 px-4 rounded-xl font-semibold text-sm transition-all ${
-              showStayAways 
-                ? 'bg-white text-gray-800 shadow-sm' 
-                : 'text-gray-600'
-            }`}
-            whileTap={{ scale: 0.98 }}
-          >
-            <div className="flex items-center justify-center">
-              <X className="mr-2" size={16} />
-              Stay Aways ({list.stayAways.length})
+          </div>
+          <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
+            <MoreHorizontal className="w-5 h-5 text-gray-700" />
+          </button>
+        </div>
+
+        {/* Search Bar */}
+        {showSearch && (
+          <div className="px-4 mb-4">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search items..."
+                className="w-full pl-10 pr-10 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700"
+                autoFocus
+              />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <button
+                onClick={() => {
+                  setShowSearch(false);
+                  setSearchQuery('');
+                }}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
             </div>
-          </motion.button>
+          </div>
+        )}
+
+        {/* Sort and Filter Pills */}
+        <div className="px-4">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {!showSearch && (
+              <button
+                onClick={() => setShowSearch(true)}
+                className="flex-shrink-0 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            )}
+            
+            {/* Sort Pills */}
+            {sortOptions.map((option) => (
+              <button
+                key={option}
+                onClick={() => setSortBy(option)}
+                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  sortBy === option
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+                style={{ backgroundColor: sortBy === option ? '#1F6D5A' : undefined }}
+              >
+                {option}
+              </button>
+            ))}
+
+            {/* Filter Pills */}
+            {filterOptions.map((option) => (
+              <button
+                key={option}
+                onClick={() => setFilterBy(option)}
+                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  filterBy === option
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+                style={{ backgroundColor: filterBy === option ? '#1F6D5A' : undefined }}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Items Grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6 relative">
-        {localLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-50" style={{ minHeight: 200 }}>
-            <span style={{ fontSize: 80, filter: 'drop-shadow(0 4px 16px #ff6b9d88)' }} className="animate-bounce">🍦</span>
-            <div className="w-16 h-3 bg-pink-200 rounded-full blur-md animate-pulse mt-2"></div>
-          </div>
-        )}
-        {sortedItems.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <div className="text-2xl mb-1">📷</div>
-            <p className="text-xs">No items yet</p>
+      <div className="px-4 pb-28">
+        {filteredAndSortedItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center mb-4 shadow-sm">
+              <Search className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchQuery.trim() ? 'No matching items' : 'No items yet'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {searchQuery.trim() 
+                ? 'Try adjusting your search or filters'
+                : 'Start adding items to build your collection'
+              }
+            </p>
+            {!searchQuery.trim() && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="px-6 py-3 bg-teal-700 text-white rounded-full font-medium"
+                style={{ backgroundColor: '#1F6D5A' }}
+              >
+                Add First Item
+              </button>
+            )}
           </div>
         ) : (
-          <ListGrid className="mt-6">
-            {sortedItems.map((item) => {
-              const isSelected = selectedIds.includes(item.id);
-              return (
-                <div
-                  key={item.id}
-                  className={`relative group ${selectMode ? 'cursor-pointer' : ''} ${isSelected ? 'ring-2 ring-pink-400 border-pink-400' : ''}`}
-                  onClick={e => {
-                    if (selectMode) {
-                      toggleSelect(item.id);
-                    } else if (onEditItem) {
-                      onEditItem(item, list);
-                    }
-                  }}
-                  onContextMenu={e => handleItemContextMenu(e, item.id)}
-                  style={{ minHeight: 180 }}
-                >
-                  {/* Show selection overlay if in select mode */}
-                  {selectMode && (
-                    <div className={`absolute inset-0 z-10 bg-pink-400/10 ${isSelected ? 'bg-pink-400/30' : ''}`}></div>
-                  )}
-                  {/* ProductCard shows all info */}
-                  <ProductCard item={item} />
-                  {/* Selection checkmark */}
-                  {selectMode && isSelected && (
-                    <div className="absolute top-2 right-2 z-20 bg-pink-500 rounded-full p-1 shadow">
-                      <X size={14} className="text-white" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </ListGrid>
+          <div className="grid grid-cols-2 gap-4">
+            {filteredAndSortedItems.map((item) => (
+              <ItemTile
+                key={item.id}
+                item={item}
+                isSelected={selectedItems.includes(item.id)}
+                onTap={() => handleItemTap(item)}
+                onLongPress={(e) => handleItemLongPress(item, e)}
+                showSelection={selectedItems.length > 0}
+              />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Footer: only floating delete button in select mode */}
-      {selectMode && selectedIds.length > 0 && (
-        <div className="fixed left-0 right-0 bottom-6 flex justify-center z-50 pointer-events-none">
+      {/* Floating Delete Button (when items selected) */}
+      {selectedItems.length > 0 && (
+        <button
+          onClick={handleDeleteSelected}
+          className="fixed bottom-24 right-6 w-14 h-14 bg-red-500 rounded-full flex items-center justify-center shadow-lg z-20"
+        >
+          <Trash2 className="w-6 h-6 text-white" />
+        </button>
+      )}
+
+      {/* Floating Add Button (when not in select mode) */}
+      {selectedItems.length === 0 && (
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="fixed bottom-24 right-6 w-14 h-14 bg-teal-700 rounded-full flex items-center justify-center shadow-lg z-20"
+          style={{ backgroundColor: '#1F6D5A' }}
+        >
+          <Plus className="w-6 h-6 text-white" />
+        </button>
+      )}
+
+      {/* Item Context Menu */}
+      {showContextMenu && (
+        <div 
+          className="fixed bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50"
+          style={{
+            left: contextMenuPosition.x,
+            top: contextMenuPosition.y,
+            transform: 'translate(-50%, -100%)'
+          }}
+        >
           <button
-            onClick={async () => {
-              if (window.confirm(`Delete ${selectedIds.length} item(s)?`)) {
-                await handleDeleteSelected();
-              }
-            }}
-            className="pointer-events-auto px-8 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-red-500 to-pink-500 shadow-lg text-lg transition-all hover:scale-105 active:scale-95"
-            style={{ minWidth: 220 }}
+            onClick={() => handleEditItem(showContextMenu)}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
           >
-            {`Delete ${selectedIds.length} item${selectedIds.length > 1 ? 's' : ''}`}
+            <Edit3 className="w-4 h-4" />
+            Edit Item
+          </button>
+          <button
+            onClick={() => handleRemoveItem(showContextMenu)}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-3"
+          >
+            <Trash2 className="w-4 h-4" />
+            Remove from List
           </button>
         </div>
+      )}
+
+      {/* Background overlay to close context menu */}
+      {showContextMenu && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-20 z-40"
+          onClick={() => setShowContextMenu(null)}
+        />
+      )}
+
+      {/* Add Item Modal */}
+      {showAddModal && (
+        <AddItemModal
+          lists={[list]}
+          onClose={() => setShowAddModal(false)}
+          onSave={(selectedLists, item) => {
+            if (onAddItem) {
+              onAddItem(selectedLists, item);
+            }
+            setShowAddModal(false);
+          }}
+        />
       )}
     </div>
   );

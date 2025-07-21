@@ -1,183 +1,277 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Share2, Star, X } from 'lucide-react';
-import CreateListModal from './CreateListModal';
-import { CreateFirstListButton } from './Elements';
+import { Plus, MoreHorizontal, Star, X, ArrowLeft } from 'lucide-react';
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem }) => {
-  const [showCreateModal, setShowCreateModal] = useState(false);
-
-  const createImageCollage = (items, stayAways, onItemClick) => {
-    const allItems = [...items, ...stayAways];
-    const displayItems = allItems.slice(0, 4);
-    
-    if (displayItems.length === 0) {
-      return (
-        <div className="w-full h-32 bg-gray-100 rounded-2xl flex items-center justify-center">
-          <div className="text-center text-gray-400">
-            <div className="text-2xl mb-1">📷</div>
-            <p className="text-xs">No items yet</p>
-          </div>
-        </div>
-      );
+const VerdictBadge = ({ verdict }) => {
+  const getVerdictStyle = () => {
+    switch (verdict) {
+      case 'AVOID':
+        return 'bg-red-50 text-red-700 border-red-100';
+      case 'KEEP':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
+      case 'RETRY':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
+      default:
+        return 'bg-gray-50 text-gray-700 border-gray-100';
     }
-
-    return (
-      <div className="w-full h-32 rounded-2xl overflow-hidden grid grid-cols-2 gap-1">
-        {displayItems.map((item, index) => (
-          <div 
-            key={index} 
-            className={`relative overflow-hidden ${
-              displayItems.length === 1 ? 'col-span-2' :
-              displayItems.length === 3 && index === 0 ? 'col-span-2' : ''
-            } group`}
-            style={{ cursor: 'pointer' }}
-          >
-            <img 
-              src={item.image_url || item.image} 
-              alt={item.name}
-              className="w-full h-full object-cover group-hover:opacity-70 transition-opacity duration-200"
-            />
-            {stayAways.includes(item) && (
-              <div className="absolute top-1 right-1 bg-red-500 rounded-full p-1">
-                <X size={8} className="text-white" />
-              </div>
-            )}
-            {items.includes(item) && item.rating && (
-              <div className="absolute bottom-1 right-1 bg-white/90 rounded-full px-1.5 py-0.5 flex items-center">
-                <Star className="text-yellow-400 fill-current" size={8} />
-                <span className="text-xs font-bold ml-0.5">{item.rating}</span>
-              </div>
-            )}
-          </div>
-        ))}
-        {allItems.length > 4 && (
-          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
-            +{allItems.length - 4}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const sortItems = (items) => {
-    return [...items].sort((a, b) => {
-      if ((b.rating || 0) !== (a.rating || 0)) {
-        return (b.rating || 0) - (a.rating || 0); // Sort by rating first
-      }
-      return new Date(b.created_at) - new Date(a.created_at); // Then by most recent
-    });
   };
 
   return (
-    <div className="p-6 flex-1 min-h-0 flex flex-col">
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="flex-1 min-h-0"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-black text-gray-800">My Lists</h2>
-          <motion.button
-            className="p-2 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full"
-            whileTap={{ scale: 0.9 }}
-          >
-            <Share2 className="text-white" size={20} />
-          </motion.button>
-        </div>
+    <span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${getVerdictStyle()}`}>
+      {verdict}
+    </span>
+  );
+};
 
-        {lists.length === 0 ? (
-          <CreateFirstListButton
-            onClick={() => setShowCreateModal(true)}
-            title="Create your first list"
-            subtitle="Organize your favorite discoveries into beautiful collections"
-            className="mt-8"
+const StarRating = ({ rating }) => {
+  return (
+    <div className="absolute bottom-1 left-1 flex items-center gap-0.5 bg-white bg-opacity-90 backdrop-blur-sm rounded-full px-1.5 py-0.5">
+      <span className="text-yellow-500 text-xs">★</span>
+      <span className="text-xs font-medium text-gray-700">{rating}</span>
+    </div>
+  );
+};
+
+const ItemTile = ({ 
+  item, 
+  isAddTile, 
+  onTap, 
+  onImageTap,
+  onLongPress 
+}) => {
+  if (isAddTile) {
+    return (
+      <div
+        onClick={onTap}
+        className="flex-shrink-0 w-26 h-26 bg-stone-100 border-2 border-dashed border-gray-300 rounded-2xl flex items-center justify-center cursor-pointer hover:bg-stone-200 transition-colors"
+        style={{ width: '104px', height: '104px', backgroundColor: '#F1F1EF' }}
+      >
+        <Plus className="w-6 h-6 text-gray-500" />
+      </div>
+    );
+  }
+
+  if (!item) return null;
+
+  const verdict = item.is_stay_away ? 'AVOID' : 'KEEP';
+
+  return (
+    <div
+      className="flex-shrink-0 relative cursor-pointer group"
+      style={{ width: '104px' }}
+    >
+      <div className="relative">
+        <img
+          src={item.image_url || item.image}
+          alt={item.name}
+          className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
+          style={{ width: '104px', height: '104px' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onImageTap?.(item);
+          }}
+        />
+        <VerdictBadge verdict={verdict} />
+        {item.rating && <StarRating rating={item.rating} />}
+      </div>
+      <div className="mt-2" onClick={onTap}>
+        <p className="text-xs text-gray-700 font-medium truncate">{item.name}</p>
+      </div>
+    </div>
+  );
+};
+
+const ListRow = ({ 
+  list, 
+  onItemTap,
+  onItemImageTap, 
+  onAddItem, 
+  onListMenu, 
+  onListTitleTap 
+}) => {
+  const allItems = [...(list.items || []), ...(list.stayAways || [])];
+  const sortedItems = allItems.sort((a, b) => {
+    if ((b.rating || 0) !== (a.rating || 0)) {
+      return (b.rating || 0) - (a.rating || 0);
+    }
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  return (
+    <div className="mb-6">
+      {/* List Header */}
+      <div className="flex items-center justify-between mb-3 px-6">
+        <button 
+          onClick={() => onListTitleTap(list)}
+          className="flex-1 text-left"
+        >
+          <h3 className="text-base font-medium text-gray-900">{list.name}</h3>
+          <p className="text-xs text-gray-500">{allItems.length} items</p>
+        </button>
+        <button
+          onClick={() => onListMenu(list.id)}
+          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Horizontal Scroll Container */}
+      <div className="overflow-x-auto">
+        <div className="flex gap-3 px-6" style={{ paddingRight: '24px' }}>
+          {sortedItems.map((item) => (
+            <ItemTile
+              key={item.id}
+              item={item}
+              onTap={() => onItemTap(item)}
+              onImageTap={onItemImageTap}
+            />
+          ))}
+          <ItemTile
+            isAddTile
+            onTap={() => onAddItem(list.id)}
           />
+          {sortedItems.length > 4 && (
+            <div className="flex-shrink-0 w-26 h-26 bg-gradient-to-r from-transparent to-white flex items-center justify-center">
+              <span className="text-sm text-gray-500 font-medium">+{sortedItems.length - 4}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail }) => {
+  const [showNewListDialog, setShowNewListDialog] = useState(false);
+  const [newListName, setNewListName] = useState('');
+
+  const handleItemTap = (item) => {
+    // Navigate to ShowItemsInListView (detailed view) by finding the parent list
+    const parentList = lists.find(list => 
+      [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
+    );
+    if (parentList && onSelectList) {
+      onSelectList(parentList);
+    }
+  };
+
+  const handleItemImageTap = (item) => {
+    // Navigate to specific item detail view
+    if (onViewItemDetail) {
+      onViewItemDetail(item);
+    }
+  };
+
+  const handleAddItem = (listId) => {
+    // Navigate to specific list to add item
+    const targetList = lists.find(list => list.id === listId);
+    if (targetList) {
+      onSelectList(targetList);
+    }
+  };
+
+  const handleListMenu = (listId) => {
+    // Show context menu for list management
+    console.log('List menu for:', listId);
+  };
+
+  const handleListTitleTap = (list) => {
+    // Navigate to single list view
+    if (onSelectList) {
+      onSelectList(list);
+    }
+  };
+
+  const handleCreateList = async () => {
+    if (newListName.trim() && onCreateList) {
+      await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
+      setNewListName('');
+      setShowNewListDialog(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-stone-50 pb-28" style={{ backgroundColor: '#F6F6F4' }}>
+      {/* Content */}
+      <div className="pb-6">
+        {lists.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+            <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-sm">
+              <Plus className="w-10 h-10 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Start organizing tastes</h3>
+            <p className="text-gray-600 mb-6">Create your first list to group ingredients and dishes</p>
+            <button
+              onClick={() => setShowNewListDialog(true)}
+              className="px-6 py-3 bg-teal-700 text-white rounded-full font-medium"
+              style={{ backgroundColor: '#1F6D5A' }}
+            >
+              Create Your First List
+            </button>
+          </div>
         ) : (
           <>
-            <div className="space-y-4">
-              {lists.map((list, index) => (
-                <motion.div
+            <div className="pt-4">
+              {lists.map((list) => (
+                <ListRow
                   key={list.id}
-                  className="bg-white rounded-3xl shadow-lg overflow-hidden cursor-pointer"
-                  style={{ backgroundColor: list.color, zIndex: 10, position: 'relative' }}
-                  initial={{ x: -50, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: index * 0.1 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    console.log('Clicked list:', list);
-                    onSelectList(list);
-                  }}
-                >
-                  {/* List Header */}
-                  <div 
-                    className="p-4 text-white relative overflow-hidden"
-                    style={{ backgroundColor: list.color }}
-                  >
-                    <div className="absolute inset-0 bg-black/10"></div>
-                    <div className="relative z-10 flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-bold mb-1">{list.name}</h3>
-                        <div className="flex items-center space-x-3 text-white/90 text-sm">
-                          <span className="flex items-center">
-                            ❤️ <span className="ml-1 font-semibold">{list.items.length}</span>
-                          </span>
-                          <span className="flex items-center">
-                            ❌ <span className="ml-1 font-semibold">{list.stayAways.length}</span>
-                          </span>
-                          <span className="text-white/70 text-xs">
-                            {list.items.length + list.stayAways.length} total
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-2xl opacity-70">
-                        {list.name.includes('Gelato') ? '🍦' :
-                         list.name.includes('Fish') ? '🐟' :
-                         list.name.includes('Milk') ? '🥛' : '🍽️'}
-                      </div>
-                    </div>
-                    
-                    {/* Decorative circles */}
-                    <div className="absolute -top-2 -right-2 w-12 h-12 bg-white/20 rounded-full"></div>
-                    <div className="absolute -bottom-1 -left-1 w-8 h-8 bg-white/10 rounded-full"></div>
-                  </div>
-
-                  {/* Image Collage */}
-                  <div className="p-4">
-                    {createImageCollage(sortItems(list.items), sortItems(list.stayAways), (item) => {
-                      if (onEditItem) onEditItem(item, list);
-                    })}
-                  </div>
-                </motion.div>
+                  list={list}
+                  onItemTap={handleItemTap}
+                  onItemImageTap={handleItemImageTap}
+                  onAddItem={handleAddItem}
+                  onListMenu={handleListMenu}
+                  onListTitleTap={handleListTitleTap}
+                />
               ))}
             </div>
 
-            {/* Create New List */}
-            <motion.button
-              onClick={() => setShowCreateModal(true)}
-              className="w-full mt-6 p-6 border-2 border-dashed border-gray-300 rounded-3xl text-center"
-              whileTap={{ scale: 0.98 }}
-              whileHover={{ borderColor: '#FF6B9D' }}
+            {/* Floating New List Button */}
+            <button
+              onClick={() => setShowNewListDialog(true)}
+              className="fixed bottom-24 right-6 w-14 h-14 bg-teal-700 rounded-full flex items-center justify-center shadow-lg z-20"
+              style={{ backgroundColor: '#1F6D5A' }}
             >
-              <div className="text-gray-600">
-                <div className="w-12 h-12 bg-gray-100 rounded-full mx-auto mb-3 flex items-center justify-center">
-                  <span className="text-2xl">+</span>
-                </div>
-                <p className="font-semibold">Create New List</p>
-                <p className="text-sm text-gray-400">Start a new collection</p>
-              </div>
-            </motion.button>
+              <Plus className="w-6 h-6 text-white" />
+            </button>
           </>
         )}
-      </motion.div>
+      </div>
 
-      {showCreateModal && (
-        <CreateListModal
-          onClose={() => setShowCreateModal(false)}
-          onSave={onCreateList}
-        />
+      {/* New List Dialog */}
+      {showNewListDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New List</h3>
+            <input
+              type="text"
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+              placeholder="e.g., Single Origin Chocolates"
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowNewListDialog(false);
+                  setNewListName('');
+                }}
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateList}
+                disabled={!newListName.trim()}
+                className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
+                style={{ backgroundColor: '#1F6D5A' }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

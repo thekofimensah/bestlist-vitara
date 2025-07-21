@@ -63,11 +63,11 @@ Provide your response as a JSON object with the following fields:
 - category: Product category (e.g., Dairy, Beverages, Snacks, Frozen Foods, Pantry Items) (string)
 - confidence: Your confidence in the identification (number between 0 and 1, e.g., 0.85) (number)
 - description: A concise, distinguishing description that helps identify this specific product variant. Focus on key differentiating features like flavor, type, size, dietary attributes, or unique characteristics that would help distinguish it from similar products. Keep it under 15 words and be specific (e.g., "Organic whole milk" vs "Chocolate chip cookies with sea salt" vs "Fat-free Greek yogurt").
-- product: A string with three parts, separated by commas. There should not be repeat words:
-    1. Brand (if it exists, otherwise leave blank, remove comma)
+- product: A string with three parts/ There should not be repeat words:
+    1. Brand (if it exists, otherwise leave blank)
     2. Quantifiers (e.g., 'fat free', 'organic', 'chocolate', 'red', 'large', etc.) (if it exists, otherwise leave blank, remove comma)
     3. What it is (e.g., 'milk', 'cheese', 'cookies')
-  Example: "Trader Joe's, organic fat free, milk"
+  Example: "Trader Joe's organic fat free milk"
 - tags: Array of focused tags for filtering and categorization. Choose 3-6 relevant tags that would help users filter and understand this product. Include: dietary restrictions (vegan, gluten-free, dairy-free, etc.), health attributes (organic, low-sugar, high-protein, etc.), flavor profiles (chocolate, vanilla, spicy, sweet, etc.), dietary lifestyles (keto, paleo, etc.), product characteristics (artisanal, imported, premium, etc.), and meal context (breakfast, snack, dessert, etc.). AVOID: storage requirements (refrigerated, frozen), sizes/quantities (8oz, 900ml, large), basic categories that duplicate the category field (dairy, beverages), and overly generic terms (food, product, item, fresh).
 - allergens: Array of allergens if mentioned (array of strings, optional)
 If you cannot identify the product with reasonable confidence, return a JSON object with a field 'error' explaining why (e.g., 'Image unclear', 'No product detected').

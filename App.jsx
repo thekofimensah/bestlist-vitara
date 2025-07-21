@@ -113,7 +113,13 @@ const App = () => {
       setEditingItem(null);
       setEditingList(null);
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('Error signing out:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      });
     }
   };
 
@@ -123,7 +129,13 @@ const App = () => {
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
       } catch (error) {
-        console.error('Error getting session:', error);
+        console.error('Error getting session:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        });
       } finally {
         setAppLoading(false);
       }
@@ -165,7 +177,7 @@ const App = () => {
   };
 
   const handleCreateList = async (name, color) => {
-    await createList(name, color);
+    return await createList(name, color);
   };
 
   const TabButton = ({ icon: Icon, label, isActive, onClick }) => (

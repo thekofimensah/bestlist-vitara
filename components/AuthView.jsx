@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithFacebook } from '../lib/supabase';
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithFacebook, supabase } from '../lib/supabase';
 
 const AuthView = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -11,6 +11,8 @@ const AuthView = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -21,9 +23,11 @@ const AuthView = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccess('');
 
     // Client-side validation
-    if (!validateEmail(email)) {
+    const currentEmail = pendingEmail || email;
+    if (!validateEmail(currentEmail)) {
       setError('Please enter a valid email address');
       setLoading(false);
       return;
@@ -43,10 +47,16 @@ const AuthView = () => {
 
     try {
       let result;
+      const emailLower = (pendingEmail || email).trim().toLowerCase();
+      
       if (isSignUp) {
-        result = await signUpWithEmail(email.trim().toLowerCase(), password, name.trim());
+        console.log('🚀 Starting sign up for:', emailLower);
+        result = await signUpWithEmail(emailLower, password, name.trim());
+        console.log('📥 Sign up result:', JSON.stringify(result, null, 2));
       } else {
-        result = await signInWithEmail(email.trim().toLowerCase(), password);
+        console.log('🔑 Starting sign in for:', emailLower);
+        result = await signInWithEmail(emailLower, password);
+        console.log('📥 Sign in result:', JSON.stringify(result, null, 2));
       }
 
       if (result.error) {
@@ -59,13 +69,61 @@ const AuthView = () => {
           errorMessage = 'Password must be at least 6 characters long';
         } else if (errorMessage.includes('User already registered')) {
           errorMessage = 'An account with this email already exists. Try signing in instead.';
+        } else if (errorMessage.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
         }
         
         setError(errorMessage);
-        console.error('Auth error:', result.error);
+        console.error('❌ Auth error:', result.error);
+      } else if (isSignUp && result.data) {
+        // Sign up success - check if email confirmation is needed
+        console.log('✅ Sign up successful:', JSON.stringify(result.data, null, 2));
+        
+        if (result.data.user) {
+          console.log('👤 User created with ID:', result.data.user.id);
+          console.log('📧 Email confirmed at:', result.data.user.email_confirmed_at);
+          console.log('🎫 Session exists:', !!result.data.session);
+          
+          // Check if user was actually created in Supabase
+          try {
+            const { data: authUser } = await supabase.auth.getUser();
+            console.log('🔍 Current auth user after signup:', authUser?.user?.id || 'NONE');
+          } catch (authCheck) {
+            console.log('🔍 Auth check failed:', authCheck.message);
+          }
+        }
+        
+        if (result.data.user && !result.data.session) {
+          // User created but needs email confirmation
+          setSuccess('Account created! Please check your email and click the confirmation link, then return here to sign in.');
+          setPendingEmail(emailLower);
+          // Auto-switch to login mode with email pre-filled
+          setTimeout(() => {
+            setIsSignUp(false);
+            setPassword('');
+            setName('');
+            setSuccess('Please enter your password to complete sign in.');
+          }, 3000);
+        } else if (result.data.session) {
+          // User created and automatically signed in
+          setSuccess('Account created and signed in successfully!');
+        } else if (result.data.user) {
+          // User exists but no session - this shouldn't happen without email confirmation
+          console.log('⚠️ Unusual state: User exists but no session and no email confirmation required');
+          setSuccess('Account created! You can now sign in.');
+          setTimeout(() => {
+            setIsSignUp(false);
+            setPassword('');
+            setName('');
+          }, 2000);
+        }
+      } else if (!isSignUp && result.data?.session) {
+        // Sign in success
+        console.log('✅ Sign in successful');
+        setSuccess('Signed in successfully!');
       }
     } catch (err) {
-      console.error('Unexpected auth error:', err);
+      console.error('💥 Unexpected auth error:', err);
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -124,6 +182,24 @@ const AuthView = () => {
                 <p>• Must have domain (.com, .org, etc.)</p>
                 <p>• No spaces or invalid characters</p>
                 <p>• Example: user@example.com</p>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <motion.div
+            className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <p className="text-green-600 text-sm text-center font-medium">{success}</p>
+            {success.includes('check your email') && (
+              <div className="mt-2 text-xs text-green-600 text-center">
+                <p>📧 Check your inbox and spam folder</p>
+                <p>🔗 Click the confirmation link</p>
+                <p>🔄 Return here to sign in</p>
               </div>
             )}
           </motion.div>
@@ -193,24 +269,27 @@ const AuthView = () => {
             <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={pendingEmail || email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (pendingEmail) setPendingEmail(''); // Clear pending email when user types
+              }}
               placeholder="Email Address (e.g., user@example.com)"
               className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:border-transparent ${
-                email && !validateEmail(email) 
+                (pendingEmail || email) && !validateEmail(pendingEmail || email) 
                   ? 'border-red-300 focus:ring-red-400' 
                   : 'border-gray-200 focus:ring-pink-400'
               }`}
               required
             />
-            {email && !validateEmail(email) && (
+            {(pendingEmail || email) && !validateEmail(pendingEmail || email) && (
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
                   <span className="text-red-500 text-xs">✕</span>
                 </div>
               </div>
             )}
-            {email && validateEmail(email) && (
+            {(pendingEmail || email) && validateEmail(pendingEmail || email) && (
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
                   <span className="text-green-500 text-xs">✓</span>
@@ -251,7 +330,14 @@ const AuthView = () => {
         {/* Toggle Sign Up/In */}
         <div className="text-center mt-6">
           <button
-            onClick={() => setIsSignUp(!isSignUp)}
+            onClick={() => {
+              setIsSignUp(!isSignUp);
+              setError('');
+              setSuccess('');
+              if (!pendingEmail) {
+                setPassword('');
+              }
+            }}
             className="text-gray-600 hover:text-pink-400 transition-colors"
           >
             {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}

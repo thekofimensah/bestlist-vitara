@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward } from 'lucide-react';
 import ModalLayout from './ModalLayout';
 import { buildItem } from './itemUtils';
-import { ListCard, StarRating, NotesInput, ImageAISection } from './Elements';
+import { ListCard, StarRating, NotesInput, ImageAISection, CreateFirstListButton } from './Elements';
+import CreateListModal from './CreateListModal';
 
-const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentIndex, totalPhotos, onNext, onPrev, onSkip, initialState, onStateChange, aiMetadata, isAIProcessing }) => {
+const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentIndex, totalPhotos, onNext, onPrev, onSkip, initialState, onStateChange, aiMetadata, isAIProcessing, onCreateList }) => {
+  const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [selectedLists, setSelectedLists] = useState(() => {
     if (initialState && initialState.selectedLists) return initialState.selectedLists;
     if (item) return [item.list_id];
@@ -80,7 +82,7 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
 
   const handleSave = () => {
     if (selectedLists.length === 0 || rating === 0) return;
-    const isStayAway = rating <= 2;
+    const isStayAway = rating < 0;
     const newItem = buildItem({
       productName,
       productType,
@@ -103,6 +105,16 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
         ? prev.filter(id => id !== listId)
         : [...prev, listId]
     );
+  };
+
+  const handleCreateList = async (name, color) => {
+    if (onCreateList) {
+      const newList = await onCreateList(name, color);
+      if (newList && newList.id) {
+        setSelectedLists([newList.id]); // Auto-select the newly created list
+      }
+    }
+    setShowCreateListModal(false);
   };
 
   return (
@@ -145,59 +157,77 @@ const AddItemModal = ({ image, lists, onClose, onSave, item, isBulk, currentInde
                 </div>
       )}
       {/* Main content (image, fields, etc.) */}
-      <ImageAISection
-        image={image}
-        productName={productName}
-        setProductName={setProductName}
-        species={species}
-        setSpecies={setSpecies}
-        certainty={certainty}
-        tags={tags}
-        isAIProcessing={isAIProcessing}
-      />
+              <ImageAISection
+          image={image}
+          productName={productName}
+          setProductName={setProductName}
+          species={species}
+          setSpecies={setSpecies}
+          certainty={certainty}
+          tags={tags}
+          setTags={setTags}
+          isAIProcessing={isAIProcessing}
+        />
           <div className="mb-3">
             <label className="text-sm font-medium text-gray-700 mb-2 block">Your Rating</label>
         <StarRating rating={rating} onRatingChange={setRating} />
             <div className="text-center mt-2 text-xs text-gray-500">
-              {rating === 0 ? 'Select a rating' : rating <= 2 ? 'Will be added to Stay Aways' : 'Will be added to Favorites'}
+              {rating === 0 ? 'Select a rating' : rating < 0 ? 'Will be added to Stay Aways' : 'Will be added to Favorites'}
             </div>
           </div>
           <div className="mb-3">
             <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
-        <NotesInput
+                    <NotesInput
               value={notes}
           onChange={e => setNotes(e.target.value)}
-              placeholder={rating <= 2 ? "Why avoid this?" : "What did you love about it?"}
+              placeholder={rating < 0 ? "Why avoid this?" : rating === 0 ? "Any notes?" : "What did you love about it?"}
             />
           </div>
           <motion.button
             onClick={handleSave}
             disabled={selectedLists.length === 0 || rating === 0}
             className={`w-full py-3 rounded-xl font-bold text-white transition-all ${
-              selectedLists.length > 0 && rating > 0
-                ? rating <= 2 
+              selectedLists.length > 0 && rating !== 0
+                ? rating < 0 
                   ? 'bg-gradient-to-r from-red-400 to-red-500 shadow-lg'
                   : 'bg-gradient-to-r from-pink-400 to-orange-400 shadow-lg'
                 : 'bg-gray-300 cursor-not-allowed'
         } mb-4`}
             whileTap={{ scale: 0.98 }}
           >
-        {rating <= 2 ? 'Add to Stay Aways' : 'Add to Favorites'}
+        {rating < 0 ? 'Add to Stay Aways' : rating === 0 ? 'Add to List' : 'Add to Favorites'}
           </motion.button>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Add to Lists</label>
-        <div className="grid grid-cols-2 gap-3 mb-2">
-          {lists.map((list) => (
-            <ListCard
-              key={list.id}
-              list={list}
-              onClick={() => toggleList(list.id)}
-              selected={selectedLists.includes(list.id)}
-              selectable={true}
-            />
-          ))}
-        </div>
+        {lists.length === 0 ? (
+          <CreateFirstListButton
+            onClick={() => setShowCreateListModal(true)}
+            title="Create your first list"
+            subtitle="You'll need a list to save this item"
+            className="py-6"
+            showIcon={false}
+          />
+        ) : (
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            {lists.map((list) => (
+              <ListCard
+                key={list.id}
+                list={list}
+                onClick={() => toggleList(list.id)}
+                selected={selectedLists.includes(list.id)}
+                selectable={true}
+              />
+            ))}
+          </div>
+        )}
       </div>
+      
+      {showCreateListModal && (
+        <CreateListModal
+          onClose={() => setShowCreateListModal(false)}
+          onSave={handleCreateList}
+        />
+      )}
     </ModalLayout>
   );
 };

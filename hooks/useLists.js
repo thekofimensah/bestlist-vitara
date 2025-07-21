@@ -1,27 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-const DEFAULT_LISTS = [
-  {
-    name: 'Best Gelato',
-    color: '#FF6B9D',
-    items: [],
-    stayAways: []
-  },
-  {
-    name: 'Amazing Fish',
-    color: '#4ECDC4',
-    items: [],
-    stayAways: []
-  },
-  {
-    name: 'Perfect Milk', 
-    color: '#FFE66D',
-    items: [],
-    stayAways: []
-  }
-];
-
 export const useLists = (userId) => {
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,26 +15,7 @@ export const useLists = (userId) => {
     }
   }, [userId]);
 
-  const createDefaultLists = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('lists')
-        .insert(
-          DEFAULT_LISTS.map(list => ({
-            user_id: userId,
-            name: list.name,
-            color: list.color
-          }))
-        )
-        .select();
-      
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error creating default lists:', error);
-      return [];
-    }
-  };
+
 
   const fetchLists = async (background = false) => {
     if (!userId) return;
@@ -73,13 +33,7 @@ export const useLists = (userId) => {
 
       if (listsError) throw listsError;
 
-      // Create default lists if none exist
-      if (!listsData || listsData.length === 0) {
-        const defaultLists = await createDefaultLists();
-        if (defaultLists.length > 0) {
-          listsData = defaultLists;
-        }
-      }
+      // No automatic default list creation - users will create their first list manually
 
       if (listsData && listsData.length > 0) {
         // Only fetch items for the first 4 lists for CameraView (speed up initial load)
@@ -108,7 +62,13 @@ export const useLists = (userId) => {
         console.log(`[useLists] Items for first 4 lists fetched in ${afterItems - afterLists}ms`);
       }
     } catch (error) {
-      console.error('[useLists] Error fetching lists:', error);
+      console.error('[useLists] Error fetching lists:', JSON.stringify({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
     } finally {
       if (!background) setLoading(false);
       console.log('[useLists] Finished loading lists');
@@ -157,7 +117,13 @@ export const useLists = (userId) => {
         }));
       }
     } catch (error) {
-      console.error('Error adding item:', error);
+      console.error('Error adding item:', JSON.stringify({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
       throw error;
     }
   };
@@ -218,7 +184,64 @@ export const useLists = (userId) => {
         })
       );
     } catch (error) {
-      console.error('Error updating item:', error);
+      console.error('Error updating item:', JSON.stringify({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
+      throw error;
+    }
+  };
+
+  const createList = async (name, color) => {
+    console.log('🔧 createList called with:', JSON.stringify({ name, color, userId }));
+    
+    if (!userId) {
+      console.error('❌ No userId provided to createList');
+      return null;
+    }
+
+    try {
+      console.log('🔧 Attempting to create list in Supabase...');
+      const { data, error } = await supabase
+        .from('lists')
+        .insert([{
+          user_id: userId,
+          name: name,
+          color: color
+        }])
+        .select()
+        .single();
+
+      console.log('🔧 Supabase response:', JSON.stringify({ data, error }, null, 2));
+
+      if (error) {
+        console.error('❌ Supabase error:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+
+      console.log('✅ List created successfully:', JSON.stringify(data, null, 2));
+
+      // Add to local state with empty items and stayAways
+      const newList = {
+        ...data,
+        items: [],
+        stayAways: []
+      };
+
+      setLists(prev => [newList, ...prev]);
+      console.log('✅ List added to local state');
+      return newList;
+    } catch (error) {
+      console.error('❌ Error creating list:', JSON.stringify({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
       throw error;
     }
   };
@@ -234,6 +257,7 @@ export const useLists = (userId) => {
     loading,
     addItemToList,
     updateItemInList,
-    refreshLists
+    refreshLists,
+    createList
   };
 };

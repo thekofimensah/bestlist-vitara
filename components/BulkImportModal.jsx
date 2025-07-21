@@ -3,8 +3,9 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, SkipForward } from 'lucide-react';
 import ModalLayout from './ModalLayout';
 import { buildItem } from './itemUtils';
-import { StarRating, NotesInput, ImageAISection, ListCard } from './Elements';
+import { StarRating, NotesInput, ImageAISection, ListCard, CreateFirstListButton } from './Elements';
 import AddItemModal from './AddItemModal';
+import CreateListModal from './CreateListModal';
 import { Camera } from '@capacitor/camera';
 import { supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -25,13 +26,14 @@ const getDefaultPhotoState = (lists) => ({
   location: 'Current Location',
 });
 
-const BulkImportModal = ({ lists, onClose, onSave }) => {
+const BulkImportModal = ({ lists, onClose, onSave, onCreateList }) => {
   const [selectedPhotos, setSelectedPhotos] = useState([]);
   const [photoStates, setPhotoStates] = useState([]); // Array of per-photo state
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [savedPhotoIndexes, setSavedPhotoIndexes] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [showSingleAdd, setShowSingleAdd] = useState(false);
   const [singleAddState, setSingleAddState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -102,12 +104,6 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
 
           // Wait for both and update state
           const [aiMetadata, uploadResult] = await Promise.all([aiPromise, uploadPromise]);
-          
-          console.log(`📋 Updating states for photo ${idx}:`, {
-            aiMetadata,
-            uploadResult,
-            aiProcessing: false
-          });
 
           // Update photo states with AI data
           setPhotoStates(prev => {
@@ -121,7 +117,6 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
                 species: aiMetadata.species,
                 certainty: aiMetadata.certainty
               };
-              console.log(`✅ Photo state ${idx} updated with AI data:`, updated[idx]);
             }
             return updated;
           });
@@ -135,7 +130,6 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
               aiMetadata,
               aiProcessing: false
             };
-            console.log(`✅ Selected photo ${idx} updated:`, updated[idx]);
             return updated;
           });
         });
@@ -277,6 +271,24 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
     });
   };
 
+  const handleCreateList = async (name, color) => {
+    if (onCreateList) {
+      const newList = await onCreateList(name, color);
+      if (newList && newList.id) {
+        // Auto-select the newly created list for current photo
+        setPhotoStates(prev => {
+          const newStates = [...prev];
+          newStates[currentPhotoIndex] = {
+            ...newStates[currentPhotoIndex],
+            selectedLists: [newList.id]
+          };
+          return newStates;
+        });
+      }
+    }
+    setShowCreateListModal(false);
+  };
+
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -299,8 +311,8 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
   const handleBulkSave = async () => {
     setErrorMsg('');
     if (isSaving) return; // Prevent duplicate
-    // Validate all images have a rating
-    const missingIdx = photoStates.findIndex(state => !state || !state.rating || state.rating === 0);
+    // Validate all images have a rating (excluding 0 which is now neutral)
+    const missingIdx = photoStates.findIndex(state => !state || state.rating === undefined);
     if (missingIdx !== -1) {
       setErrorMsg('One or more images are missing a rating.');
       setCurrentPhotoIndex(missingIdx);
@@ -311,7 +323,7 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
       // Always use the url/webPath for native picker images
       const image = selectedPhotos[idx]?.url;
       const newItem = buildItem({ ...photoStates[idx], image });
-      await onSave(photoStates[idx].selectedLists, newItem, photoStates[idx].rating <= 2);
+      await onSave(photoStates[idx].selectedLists, newItem, photoStates[idx].rating < 0);
     }
     if (typeof window !== 'undefined' && window.refreshLists) {
       await window.refreshLists();
@@ -323,10 +335,6 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
   // If only one image and showSingleAdd, render AddItemModal
   if (showSingleAdd && selectedPhotos.length === 1 && selectedPhotos[0]) {
     const singlePhoto = selectedPhotos[0];
-    console.log('🔄 Rendering single AddItemModal with AI data:', {
-      aiMetadata: singlePhoto.aiMetadata,
-      aiProcessing: singlePhoto.aiProcessing
-    });
     
     return (
       <AddItemModal
@@ -337,6 +345,7 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
         initialState={singleAddState}
         aiMetadata={singlePhoto.aiMetadata}
         isAIProcessing={singlePhoto.aiProcessing}
+        onCreateList={onCreateList}
       />
     );
   }
@@ -385,7 +394,7 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
               <SkipForward size={18} />
         </button>
             {/* Bulk Save Button (only for multiple images) */}
-            {selectedPhotos.length > 1 && photoStates.some(s => s && s.rating > 0) && (
+            {selectedPhotos.length > 1 && photoStates.some(s => s && s.rating !== undefined) && (
               <motion.button
                 onClick={handleBulkSave}
                 disabled={isSaving}
@@ -398,34 +407,23 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
         )}
       </div>
           <div className="overflow-visible min-w-0">
-            {(() => {
-              const currentPhoto = selectedPhotos[currentPhotoIndex];
-              const isProcessing = currentPhoto?.aiProcessing;
-              console.log(`🖼️ Rendering ImageAISection for photo ${currentPhotoIndex}:`, {
-                hasPhoto: !!currentPhoto,
-                aiProcessing: isProcessing,
-                aiMetadata: currentPhoto?.aiMetadata,
-                currentState: currentState
-              });
-              return (
-                <ImageAISection
-                  image={currentPhoto?.url}
-                  productName={currentState.productName}
-                  setProductName={val => setField('productName', val)}
-                  species={currentState.species}
-                  setSpecies={val => setField('species', val)}
-                  certainty={currentState.certainty}
-                  tags={currentState.tags}
-                  isAIProcessing={isProcessing}
-                />
-              );
-            })()}
+            <ImageAISection
+              image={selectedPhotos[currentPhotoIndex]?.url}
+              productName={currentState.productName}
+              setProductName={val => setField('productName', val)}
+              species={currentState.species}
+              setSpecies={val => setField('species', val)}
+              certainty={currentState.certainty}
+              tags={currentState.tags}
+              setTags={val => setField('tags', val)}
+              isAIProcessing={selectedPhotos[currentPhotoIndex]?.aiProcessing}
+            />
           </div>
           <div className="mb-3">
             <label className="text-sm font-medium text-gray-700 mb-2 block">Your Rating</label>
             <StarRating rating={currentState.rating} onRatingChange={r => setField('rating', r)} />
             <div className="text-center mt-2 text-xs text-gray-500">
-              {currentState.rating === 0 ? 'Select a rating' : currentState.rating <= 2 ? 'Will be added to Stay Aways' : 'Will be added to Favorites'}
+              {currentState.rating === 0 ? 'Select a rating' : currentState.rating < 0 ? 'Will be added to Stay Aways' : 'Will be added to Favorites'}
             </div>
           </div>
           <div className="mb-3">
@@ -433,22 +431,32 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
             <NotesInput
               value={currentState.notes}
               onChange={e => setField('notes', e.target.value)}
-              placeholder={currentState.rating <= 2 ? "Why avoid this?" : "What did you love about it?"}
+              placeholder={currentState.rating < 0 ? "Why avoid this?" : currentState.rating === 0 ? "Any notes?" : "What did you love about it?"}
             />
           </div>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Add to Lists</label>
-            <div className="grid grid-cols-2 gap-3 mb-2">
-              {lists.map((list) => (
-                <ListCard
-                  key={list.id}
-                  list={list}
-                  onClick={() => toggleList(list.id)}
-                  selected={currentState.selectedLists.includes(list.id)}
-                  selectable={true}
-                />
-              ))}
-            </div>
+            {lists.length === 0 ? (
+              <CreateFirstListButton
+                onClick={() => setShowCreateListModal(true)}
+                title="Create your first list"
+                subtitle="You'll need a list to save these items"
+                className="py-6"
+                showIcon={false}
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                {lists.map((list) => (
+                  <ListCard
+                    key={list.id}
+                    list={list}
+                    onClick={() => toggleList(list.id)}
+                    selected={currentState.selectedLists.includes(list.id)}
+                    selectable={true}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -464,6 +472,13 @@ const BulkImportModal = ({ lists, onClose, onSave }) => {
             />
           ))}
     </div>
+      )}
+      
+      {showCreateListModal && (
+        <CreateListModal
+          onClose={() => setShowCreateListModal(false)}
+          onSave={handleCreateList}
+        />
       )}
     </ModalLayout>
   );

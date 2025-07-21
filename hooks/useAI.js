@@ -106,53 +106,38 @@ Focus on food and beverage products, household items, and consumer goods.`;
 
       const result = await response.json();
       const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      console.log('📝 Raw AI response text:', responseText?.substring(0, 200) + '...');
       
       if (!responseText) {
-        console.error('❌ No response text from AI');
         throw new Error('No response from AI');
       }
 
       // Parse JSON response
-      console.log('🔍 Parsing AI response...');
       const cleanedResponse = responseText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
       const aiData = JSON.parse(cleanedResponse);
-      console.log('✅ AI data parsed:', aiData);
 
       if (aiData.error) {
-        console.error('❌ AI returned error:', aiData.error);
         throw new Error(aiData.error);
       }
 
       // Return data in the format expected by the app
-      const aiResult = {
+      return {
         productName: aiData.product || aiData.name || 'Unknown Product',
         species: aiData.description || 'Unknown',
         certainty: Math.round((aiData.confidence || 0) * 100),
         tags: aiData.tags || ['Untagged'],
         productType: aiData.category || 'Unknown'
       };
-      
-      console.log('🎉 AI Analysis Complete:', aiResult);
-      return aiResult;
 
     } catch (err) {
-      console.error('💥 AI Analysis Error:', err);
-      console.error('Error type:', err.constructor.name);
-      console.error('Error message:', err.message);
-      
       setError(err.message);
       // Return fallback data on error
-      const fallbackData = {
+      return {
         productName: 'Unknown Product',
         species: 'AI analysis failed',
         certainty: 0,
         tags: ['Untagged'],
         productType: 'Unknown'
       };
-      
-      console.log('🔄 Returning fallback data:', fallbackData);
-      return fallbackData;
     } finally {
       setIsProcessing(false);
     }

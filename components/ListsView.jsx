@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Share2, Star, X } from 'lucide-react';
 import CreateListModal from './CreateListModal';
+import { CreateFirstListButton } from './Elements';
 
 const ListsView = ({ lists, onSelectList, onCreateList, onEditItem }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -86,79 +87,90 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem }) => {
           </motion.button>
         </div>
 
-        <div className="space-y-4">
-          {lists.map((list, index) => (
-            <motion.div
-              key={list.id}
-              className="bg-white rounded-3xl shadow-lg overflow-hidden cursor-pointer"
-              style={{ backgroundColor: list.color, zIndex: 10, position: 'relative' }}
-              initial={{ x: -50, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: index * 0.1 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => {
-                console.log('Clicked list:', list);
-                onSelectList(list);
-              }}
-            >
-              {/* List Header */}
-              <div 
-                className="p-4 text-white relative overflow-hidden"
-                style={{ backgroundColor: list.color }}
-              >
-                <div className="absolute inset-0 bg-black/10"></div>
-                <div className="relative z-10 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold mb-1">{list.name}</h3>
-                    <div className="flex items-center space-x-3 text-white/90 text-sm">
-                      <span className="flex items-center">
-                        ❤️ <span className="ml-1 font-semibold">{list.items.length}</span>
-                      </span>
-                      <span className="flex items-center">
-                        ❌ <span className="ml-1 font-semibold">{list.stayAways.length}</span>
-                      </span>
-                      <span className="text-white/70 text-xs">
-                        {list.items.length + list.stayAways.length} total
-                      </span>
+        {lists.length === 0 ? (
+          <CreateFirstListButton
+            onClick={() => setShowCreateModal(true)}
+            title="Create your first list"
+            subtitle="Organize your favorite discoveries into beautiful collections"
+            className="mt-8"
+          />
+        ) : (
+          <>
+            <div className="space-y-4">
+              {lists.map((list, index) => (
+                <motion.div
+                  key={list.id}
+                  className="bg-white rounded-3xl shadow-lg overflow-hidden cursor-pointer"
+                  style={{ backgroundColor: list.color, zIndex: 10, position: 'relative' }}
+                  initial={{ x: -50, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    console.log('Clicked list:', list);
+                    onSelectList(list);
+                  }}
+                >
+                  {/* List Header */}
+                  <div 
+                    className="p-4 text-white relative overflow-hidden"
+                    style={{ backgroundColor: list.color }}
+                  >
+                    <div className="absolute inset-0 bg-black/10"></div>
+                    <div className="relative z-10 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold mb-1">{list.name}</h3>
+                        <div className="flex items-center space-x-3 text-white/90 text-sm">
+                          <span className="flex items-center">
+                            ❤️ <span className="ml-1 font-semibold">{list.items.length}</span>
+                          </span>
+                          <span className="flex items-center">
+                            ❌ <span className="ml-1 font-semibold">{list.stayAways.length}</span>
+                          </span>
+                          <span className="text-white/70 text-xs">
+                            {list.items.length + list.stayAways.length} total
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-2xl opacity-70">
+                        {list.name.includes('Gelato') ? '🍦' :
+                         list.name.includes('Fish') ? '🐟' :
+                         list.name.includes('Milk') ? '🥛' : '🍽️'}
+                      </div>
                     </div>
+                    
+                    {/* Decorative circles */}
+                    <div className="absolute -top-2 -right-2 w-12 h-12 bg-white/20 rounded-full"></div>
+                    <div className="absolute -bottom-1 -left-1 w-8 h-8 bg-white/10 rounded-full"></div>
                   </div>
-                  <div className="text-2xl opacity-70">
-                    {list.name.includes('Gelato') ? '🍦' :
-                     list.name.includes('Fish') ? '🐟' :
-                     list.name.includes('Milk') ? '🥛' : '🍽️'}
+
+                  {/* Image Collage */}
+                  <div className="p-4">
+                    {createImageCollage(sortItems(list.items), sortItems(list.stayAways), (item) => {
+                      if (onEditItem) onEditItem(item, list);
+                    })}
                   </div>
-                </div>
-                
-                {/* Decorative circles */}
-                <div className="absolute -top-2 -right-2 w-12 h-12 bg-white/20 rounded-full"></div>
-                <div className="absolute -bottom-1 -left-1 w-8 h-8 bg-white/10 rounded-full"></div>
-              </div>
-
-              {/* Image Collage */}
-              <div className="p-4">
-                {createImageCollage(sortItems(list.items), sortItems(list.stayAways), (item) => {
-                  if (onEditItem) onEditItem(item, list);
-                })}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Create New List */}
-        <motion.button
-          onClick={() => setShowCreateModal(true)}
-          className="w-full mt-6 p-6 border-2 border-dashed border-gray-300 rounded-3xl text-center"
-          whileTap={{ scale: 0.98 }}
-          whileHover={{ borderColor: '#FF6B9D' }}
-        >
-          <div className="text-gray-600">
-            <div className="w-12 h-12 bg-gray-100 rounded-full mx-auto mb-3 flex items-center justify-center">
-              <span className="text-2xl">+</span>
+                </motion.div>
+              ))}
             </div>
-            <p className="font-semibold">Create New List</p>
-            <p className="text-sm text-gray-400">Start a new collection</p>
-          </div>
-        </motion.button>
+
+            {/* Create New List */}
+            <motion.button
+              onClick={() => setShowCreateModal(true)}
+              className="w-full mt-6 p-6 border-2 border-dashed border-gray-300 rounded-3xl text-center"
+              whileTap={{ scale: 0.98 }}
+              whileHover={{ borderColor: '#FF6B9D' }}
+            >
+              <div className="text-gray-600">
+                <div className="w-12 h-12 bg-gray-100 rounded-full mx-auto mb-3 flex items-center justify-center">
+                  <span className="text-2xl">+</span>
+                </div>
+                <p className="font-semibold">Create New List</p>
+                <p className="text-sm text-gray-400">Start a new collection</p>
+              </div>
+            </motion.button>
+          </>
+        )}
       </motion.div>
 
       {showCreateModal && (

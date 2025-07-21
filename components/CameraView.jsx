@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { Camera, Sparkles, Image as ImageIcon, RefreshCw, Plus } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 import BulkImportModal from './BulkImportModal';
-import { ListCard } from './Elements';
+import CreateListModal from './CreateListModal';
+import { ListCard, CreateFirstListButton } from './Elements';
 import { Capacitor } from '@capacitor/core';
 import { takeAndUploadPhoto } from '../lib/camera'; // adjust path as needed
 import imageCompression from 'browser-image-compression';
@@ -15,6 +16,7 @@ import { useAI } from '../hooks/useAI';
 const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) => {
   const [showModal, setShowModal] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
   const [error, setError] = useState(null);
   const [facingMode, setFacingMode] = useState('environment');
@@ -119,7 +121,13 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
       }));
     } catch (err) {
       setError('Failed to capture or process photo.');
-      console.error(err);
+      console.error('Camera capture error:', {
+        message: err.message,
+        details: err.details,
+        hint: err.hint,
+        code: err.code,
+        fullError: err
+      });
       setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
     }
   };
@@ -166,6 +174,13 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     onAddItem(...args);
     setShowModal(false);
     setCapturedImage(null);
+  };
+
+  const handleCreateList = async (name, color) => {
+    if (onCreateList) {
+      await onCreateList(name, color);
+    }
+    setShowCreateListModal(false);
   };
 
   return (
@@ -251,16 +266,26 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.5 }}
       >
-        <h3 className="text-lg font-bold text-gray-800 mb-3">Recent Lists</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {lists.slice(0, 4).map((list) => (
-            <ListCard
-              key={list.id}
-              list={list}
-              onClick={() => handleListClick(list)}
-            />
-          ))}
-        </div>
+        {lists.length === 0 ? (
+          <CreateFirstListButton
+            onClick={() => setShowCreateListModal(true)}
+            title="Create your first list"
+            subtitle="Start capturing your favorite discoveries!"
+          />
+        ) : (
+          <>
+            <h3 className="text-lg font-bold text-gray-800 mb-3">Recent Lists</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {lists.slice(0, 4).map((list) => (
+                <ListCard
+                  key={list.id}
+                  list={list}
+                  onClick={() => handleListClick(list)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </motion.div>
 
       {showModal && (
@@ -271,6 +296,7 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           onSave={handleSave}
           aiMetadata={capturedImage?.aiMetadata}
           isAIProcessing={capturedImage?.aiProcessing}
+          onCreateList={onCreateList}
         />
       )}
 
@@ -279,6 +305,14 @@ const CameraView = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           lists={lists}
           onClose={() => setShowBulkImport(false)}
           onSave={onAddItem}
+          onCreateList={onCreateList}
+        />
+      )}
+
+      {showCreateListModal && (
+        <CreateListModal
+          onClose={() => setShowCreateListModal(false)}
+          onSave={handleCreateList}
         />
       )}
     </div>

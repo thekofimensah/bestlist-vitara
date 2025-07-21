@@ -106,15 +106,20 @@ Clean up items' details section
 List view
    This view needs to be thought of a bit more, but for this draft, 2 columns view, sorting the most recently added to first. Make it look like pinterest The most recently added to should also be the default for the lists view inside of the bulkimport or additem. 
 
+   Ok I think I want a simple block one, with the headre of the list and the ability to scroll within the element with swiping to see quickly what's inside
+
 ShowItemsInlistview
    This view needs to be thought of a bit more, but I think it should show like a shopping cart view, where the image is smaller, then next to it is the title and notes. The # of stars should not be shown in this view, but rather there should be distinct sections for each star group (all 5 stars grouped, 4 stars, etc..). There should be a little edit and delete button for each entry, and if you click on an entry, a popup should show a larger image with all the metadata and an edit button as well. The deafult sorting for each group is two fold first by stars, then date within each star category. So if the user clicks on one, it should just make it a bit bigger so they can see the image and other fields, not for editing. IF they do a long click, then it's to delete. 
    
    Show an options three dots button which will allow the following: change view and order within groups. The view should be the list option that we do by default or grid option. Grid option is what it currently is at. They should also change the sort order within groups to be by newest, oldest or alphebetical.
 
    Product card should show easy to read date and time.
-
+Add crop option after take picture
 Profile view 
    Add button for contact support/ give feedback
+
+
+Sign up and login a bit whack
 
 Add cache for lists locally -- every time referesh hapens update teh cache -- tried and failed, couldn't get it to work. Need to add backend apparently
 
@@ -160,6 +165,13 @@ The pinch list
 Nibble list
 Breadcrumbs
 reelfoodie.app
+Nomaru
+Cultured
+Cultured crumb
+Cultiveat
+Cultivate
+Nama
+Like nama cream
 
 
 Features
@@ -171,3 +183,4 @@ Take picture on loading of app
 Ai lookup of image (not setup)
 Update list items (edit and delete -- should reflect locally and supabase)
 Share to friends (not setup)
+Share to insta (it woudl be cool if you could upload a whole list)

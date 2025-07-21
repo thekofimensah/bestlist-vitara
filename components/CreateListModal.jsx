@@ -15,49 +15,37 @@ const CreateListModal = ({ onClose, onSave }) => {
   ];
 
   const handleSave = async () => {
-    if (!listName.trim()) return;
+    console.log('🔧 CreateListModal handleSave called with:', JSON.stringify({ listName: listName.trim(), selectedColor }));
+    
+    if (!listName.trim()) {
+      console.log('❌ List name is empty, returning');
+      return;
+    }
     
     setLoading(true);
     try {
+      console.log('🔧 Calling onSave...');
       await onSave(listName.trim(), selectedColor);
+      console.log('✅ onSave completed successfully');
       onClose();
     } catch (error) {
-      console.error('Error creating list:', error);
+      console.error('❌ Error in CreateListModal handleSave:', JSON.stringify({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
     } finally {
       setLoading(false);
     }
   };
-
-  const footer = (
-    <div className="flex space-x-3">
-      <motion.button
-        onClick={onClose}
-        className="flex-1 py-3 border border-gray-200 rounded-xl font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-        whileTap={{ scale: 0.98 }}
-      >
-        Cancel
-      </motion.button>
-      <motion.button
-        onClick={handleSave}
-        disabled={!listName.trim() || loading}
-        className={`flex-1 py-3 rounded-xl font-bold text-white transition-all ${
-          listName.trim() && !loading
-            ? 'bg-gradient-to-r from-pink-400 to-orange-400 shadow-lg'
-            : 'bg-gray-300 cursor-not-allowed'
-        }`}
-        whileTap={{ scale: 0.98 }}
-      >
-        {loading ? 'Creating...' : 'Create List'}
-      </motion.button>
-    </div>
-  );
 
   return (
     <ModalLayout
       isOpen={true}
       onClose={onClose}
       title="Create New List"
-      footer={footer}
     >
       <div className="flex items-center mb-6">
               <Palette className="text-pink-400 mr-2" size={20} />
@@ -91,6 +79,31 @@ const CreateListModal = ({ onClose, onSave }) => {
                 />
               ))}
             </div>
+          </div>
+          
+          <div className="flex space-x-3 mt-8">
+            <motion.button
+              onClick={onClose}
+              className="flex-1 py-3 border border-gray-200 rounded-xl font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              whileTap={{ scale: 0.98 }}
+            >
+              Cancel
+            </motion.button>
+            <motion.button
+              onClick={() => {
+                console.log('🔧 Create List button clicked!');
+                handleSave();
+              }}
+              disabled={!listName.trim() || loading}
+              className={`flex-1 py-3 rounded-xl font-bold text-white transition-all ${
+                listName.trim() && !loading
+                  ? 'bg-gradient-to-r from-pink-400 to-orange-400 shadow-lg'
+                  : 'bg-gray-300 cursor-not-allowed'
+              }`}
+              whileTap={{ scale: 0.98 }}
+            >
+              {loading ? 'Creating...' : 'Create List'}
+            </motion.button>
           </div>
     </ModalLayout>
   );

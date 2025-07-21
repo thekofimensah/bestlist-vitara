@@ -1,14 +1,13 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Camera, Zap, Image as ImageIcon, RefreshCw, Plus, Star, X, Heart, MessageCircle, Bookmark, Share } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Camera, FlipHorizontal, Zap, Image, X, Plus, Star, Heart, MessageCircle, Send, MoreHorizontal, RefreshCw, Bookmark, Share } from 'lucide-react'; 
 import AddItemModal from './AddItemModal';
-import { Capacitor } from '@capacitor/core';
-import { takeAndUploadPhoto } from '../lib/camera';
+
+import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
 import { uploadPhotoWithOwner, supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { useAI } from '../hooks/useAI';
 
 // Mock social feed data - matches MainScreen.tsx exactly
 const mockPosts = [
@@ -191,20 +190,27 @@ const PostCard = ({ post, onTap }) => {
 };
 
 const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) => {
-  const [showModal, setShowModal] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const feedRef = useRef(null);
+  const streamRef = useRef(null);
+  
+  // Camera states
+  const [isCapturing, setIsCapturing] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
-  const [error, setError] = useState(null);
+  const [cameraStarted, setCameraStarted] = useState(false);
   const [facingMode, setFacingMode] = useState('environment');
-  const [videoReady, setVideoReady] = useState(false);
-  const [wasSaved, setWasSaved] = useState(false);
   const [flashEnabled, setFlashEnabled] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [error, setError] = useState(null);
+  const [wasSaved, setWasSaved] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [selectedTab, setSelectedTab] = useState('For You');
+  const [showModal, setShowModal] = useState(false);
+  
 
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const feedRef = useRef(null);
-  const { analyzeImage, isProcessing: aiProcessing } = useAI();
+  
+  const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
 
   // Calculate camera and feed heights based on scroll
   const cameraHeight = Math.max(0, 45 - (scrollY * 0.15));
@@ -259,6 +265,8 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
 
   const handleCapture = async () => {
     setError(null);
+    setIsCapturing(true);
+    
     try {
       const video = videoRef.current;
       if (!video) return;
@@ -274,53 +282,69 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
       canvas.getContext('2d').drawImage(video, 0, 0);
       const imageData = canvas.toDataURL('image/png');
 
-      // Show modal immediately with raw base64 image
+      // Freeze frame effect - set captured image and open modal immediately
       const tempFilename = `photo_${Date.now()}.jpeg`;
-      setCapturedImage({ url: imageData, uploading: true, aiProcessing: true, filename: tempFilename });
-      setShowModal(true);
+      setCapturedImage({ url: imageData, filename: tempFilename, uploading: true, aiProcessing: true });
+      setShowModal(true); // Open modal immediately
+      setIsCapturing(false);
 
-      // Convert to File
-      const file = dataURLtoFile(imageData, tempFilename);
+      // Start AI processing in background
+      setTimeout(async () => {
+        try {
+          // Convert to File
+          const file = dataURLtoFile(imageData, tempFilename);
 
-      // Compress
-      const compressed = await imageCompression(file, {
-        maxSizeMB: 0.8,
-        maxWidthOrHeight: 1280
-      });
+          // Compress
+          const compressed = await imageCompression(file, {
+            maxSizeMB: 0.8,
+            maxWidthOrHeight: 1024,
+          });
 
-      // Start AI processing and upload in parallel
-      const aiPromise = analyzeImage(compressed);
-      
-      const uploadPromise = (async () => {
-        const { data, error } = await uploadPhotoWithOwner(tempFilename, compressed);
-        if (error) throw error;
-        const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(tempFilename);
-        return publicUrl;
-      })();
+          // Start AI processing
+          const aiResult = await analyzeImage(compressed);
+          setCapturedImage(prev => ({ 
+            ...prev, 
+            uploading: false,
+            aiProcessing: false,
+            aiMetadata: aiResult
+          }));
+        } catch (error) {
+          console.error('Background processing error:', error);
+          setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+        }
+      }, 100);
 
-      // Wait for both to complete
-      const [aiMetadata, publicUrl] = await Promise.all([aiPromise, uploadPromise]);
-
-      // Update modal with both URL and AI data
-      setCapturedImage(prev => ({ 
-        ...prev, 
-        url: publicUrl, 
-        uploading: false,
-        aiProcessing: false,
-        aiMetadata,
-        filename: tempFilename 
-      }));
-    } catch (err) {
-      setError('Failed to capture or process photo.');
-      console.error('Camera capture error:', {
-        message: err.message,
-        details: err.details,
-        hint: err.hint,
-        code: err.code,
-        fullError: err
-      });
-      setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+    } catch (error) {
+      console.error('Capture error:', error);
+      setError(error.message);
+      setIsCapturing(false);
     }
+  };
+
+  // Handle rating selection from overlay - then show AddItemModal
+  const handleRatingSelect = (rating) => {
+    setSelectedRating(rating);
+    setShowRatingOverlay(false);
+    // Update the capturedImage with the rating and show modal
+    setCapturedImage(prev => ({ ...prev, selectedRating: rating }));
+    setShowModal(true);
+  };
+
+  // Handle closing modals
+  const handleModalClose = async () => {
+    if (capturedImage?.filename && !wasSaved) {
+      await deletePhotoEverywhere(capturedImage.filename);
+    }
+    setShowModal(false);
+    setCapturedImage(null);
+    setWasSaved(false);
+  };
+
+  const handleSave = (...args) => {
+    setWasSaved(true);
+    onAddItem(...args);
+    setShowModal(false);
+    setCapturedImage(null);
   };
 
   const handleGalleryUpload = () => {
@@ -328,7 +352,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.multiple = false; // Remove multiple upload capability
+    input.multiple = false;
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -338,39 +362,33 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           reader.onload = async (event) => {
             const imageData = event.target.result;
             
-            // Show modal immediately
+            // Set captured image and open modal immediately
             const tempFilename = `upload_${Date.now()}.jpeg`;
-            setCapturedImage({ url: imageData, uploading: true, aiProcessing: true, filename: tempFilename });
-            setShowModal(true);
+            setCapturedImage({ url: imageData, filename: tempFilename, uploading: true, aiProcessing: true });
+            setShowModal(true); // Open modal immediately
 
-            // Compress and process
-            const compressed = await imageCompression(file, {
-              maxSizeMB: 0.8,
-              maxWidthOrHeight: 1280
-            });
+            // Start AI processing in background
+            setTimeout(async () => {
+              try {
+                // Compress and process
+                const compressed = await imageCompression(file, {
+                  maxSizeMB: 0.8,
+                  maxWidthOrHeight: 1024
+                });
 
-            // Start AI processing and upload in parallel
-            const aiPromise = analyzeImage(compressed);
-            
-            const uploadPromise = (async () => {
-              const { data, error } = await uploadPhotoWithOwner(tempFilename, compressed);
-              if (error) throw error;
-              const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(tempFilename);
-              return publicUrl;
-            })();
-
-            // Wait for both to complete
-            const [aiMetadata, publicUrl] = await Promise.all([aiPromise, uploadPromise]);
-
-            // Update modal with both URL and AI data
-            setCapturedImage(prev => ({ 
-              ...prev, 
-              url: publicUrl, 
-              uploading: false,
-              aiProcessing: false,
-              aiMetadata,
-              filename: tempFilename 
-            }));
+                // Start AI processing
+                const aiResult = await analyzeImage(compressed);
+                setCapturedImage(prev => ({ 
+                  ...prev, 
+                  uploading: false,
+                  aiProcessing: false,
+                  aiMetadata: aiResult
+                }));
+              } catch (error) {
+                console.error('Background processing error:', error);
+                setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+              }
+            }, 100);
           };
           reader.readAsDataURL(file);
         } catch (error) {
@@ -401,22 +419,6 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
         directory: Directory.Data,
       });
     } catch (e) {}
-  };
-
-  const handleModalClose = async () => {
-    if (capturedImage?.filename && !wasSaved) {
-      await deletePhotoEverywhere(capturedImage.filename);
-    }
-    setShowModal(false);
-    setCapturedImage(null);
-    setWasSaved(false);
-  };
-
-  const handleSave = (...args) => {
-    setWasSaved(true);
-    onAddItem(...args);
-    setShowModal(false);
-    setCapturedImage(null);
   };
 
   const handlePostTap = () => {
@@ -495,7 +497,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
                 onClick={handleGalleryUpload}
                 className="w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all hover:bg-black hover:bg-opacity-50 border border-white border-opacity-20"
               >
-                <ImageIcon className="w-5 h-5" />
+                <Image className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -503,7 +505,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           {/* Flip Camera Button - with proper padding */}
           <button
             onClick={handleFlipCamera}
-            className="absolute top-4 right-6 w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all border border-white border-opacity-20"
+            className="absolute top-2 right-6 w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all border border-white border-opacity-20"
           >
             <RefreshCw className="w-5 h-5" />
           </button>
@@ -566,7 +568,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
         </div>
       </div>
 
-      {/* Modals */}
+      {/* AddItemModal with integrated rating overlay */}
       {showModal && (
         <AddItemModal
           image={capturedImage?.url}
@@ -576,10 +578,18 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           aiMetadata={capturedImage?.aiMetadata}
           isAIProcessing={capturedImage?.aiProcessing}
           onCreateList={onCreateList}
+          showRatingFirst={true}
+          onUpdateAI={(aiData) => {
+            setCapturedImage(prev => ({
+              ...prev,
+              aiProcessing: false,
+              aiMetadata: aiData
+            }));
+          }}
         />
       )}
     </div>
   );
 };
 
-export default MainScreen;
+export default MainScreen; 

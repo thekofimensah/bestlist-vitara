@@ -1,41 +1,58 @@
 PODS:
-  - Capacitor (7.3.0):
+  - Capacitor (5.0.5):
     - CapacitorCordova
-  - CapacitorCamera (7.0.1):
+  - CapacitorApp (5.0.5):
     - Capacitor
-  - CapacitorCordova (7.3.0)
-  - CapacitorFilesystem (7.1.1):
+  - CapacitorCamera (5.0.5):
     - Capacitor
-    - IONFilesystemLib (~> 1.0)
-  - IONFilesystemLib (1.0.0)
+  - CapacitorCordova (5.0.5)
+  - CapacitorDevice (5.0.5):
+    - Capacitor
+  - CapacitorFilesystem (5.0.5):
+    - Capacitor
+  - CapacitorGeolocation (5.0.5):
+    - Capacitor
+  - CapacitorPreferences (5.0.5):
+    - Capacitor
 
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
   - "CapacitorCamera (from `../../node_modules/@capacitor/camera`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorDevice (from `../../node_modules/@capacitor/device`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
-
-SPEC REPOS:
-  trunk:
-    - IONFilesystemLib
+  - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
+  - "CapacitorPreferences (from `../../node_modules/@capacitor/preferences`)"
 
 EXTERNAL SOURCES:
   Capacitor:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "../../node_modules/@capacitor/app"
   CapacitorCamera:
     :path: "../../node_modules/@capacitor/camera"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorDevice:
+    :path: "../../node_modules/@capacitor/device"
   CapacitorFilesystem:
     :path: "../../node_modules/@capacitor/filesystem"
+  CapacitorGeolocation:
+    :path: "../../node_modules/@capacitor/geolocation"
+  CapacitorPreferences:
+    :path: "../../node_modules/@capacitor/preferences"
 
 SPEC CHECKSUMS:
-  Capacitor: 8585c18a230122906e114ba5f6325ec65ee1371f
-  CapacitorCamera: 6e73f1fc6c629a672658705a02409b60854bc0f1
-  CapacitorCordova: 2685f5c43675793b5f06dfd66b3b26268f003b97
-  CapacitorFilesystem: 39173fe5a0e77851119998d0d8c61c70551a412a
-  IONFilesystemLib: ceacae793975039530458eabab0c495c70515a0d
+  Capacitor: d783fbec2a6c4ec800b97e9fe91fb2d159883552
+  CapacitorApp: cbae565f8b7a6a0c7776335d6cb8dc3a32ae913b
+  CapacitorCamera: 377414112fa965aa693e3075e74a025aa8bedd14
+  CapacitorCordova: f8c06b897c74ee8f7701fe10e6443b40822bc83a
+  CapacitorDevice: abcf146cd1455ea9578fc153d12dd06adabd8f26
+  CapacitorFilesystem: 0c22d8acd149c086d4870858dab6d471d5c36741
+  CapacitorGeolocation: d3bea98fda331da437dd346264ce568e8f49a2e5
+  CapacitorPreferences: 8d5f22f3e2cf4d27d7879094ad82bb2064aeb178
 
-PODFILE CHECKSUM: 7c1b263e26ad379bc9deee0b2cd4fecf99aaa814
+PODFILE CHECKSUM: 7c0c9510f946c27bfa53a73c212a4474754a1230
 
 COCOAPODS: 1.16.2

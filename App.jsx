@@ -201,14 +201,25 @@ const App = () => {
   }, []);
 
   const handleAddItem = async (selectedListIds, item, isStayAway = false) => {
+    console.log('🔧 App.handleAddItem called with:', JSON.stringify({
+      selectedListIds,
+      item: { name: item.name, type: item.type },
+      isStayAway
+    }, null, 2));
+    
     setImagesLoading(true);
     
-    for (const listId of selectedListIds) {
+    try {
       const itemData = {
         ...item,
         is_stay_away: isStayAway
       };
-      await addItemToList(listId, itemData);
+      console.log('🔧 Calling addItemToList with selectedListIds array:', selectedListIds);
+      await addItemToList(selectedListIds, itemData, isStayAway);
+      console.log('✅ addItemToList completed successfully');
+    } catch (error) {
+      console.error('❌ Error in handleAddItem:', error);
+      throw error;
     }
     
     setImagesLoading(false);

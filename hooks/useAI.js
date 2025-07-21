@@ -51,10 +51,11 @@ export const useAI = () => {
     setIsProcessing(true);
     setError(null);
     
-    try {
-      const base64Image = await encodeImageToBase64(imageFile);
-      
-      const prompt = `
+    const makeRequest = async (attempt = 1, maxAttempts = 3) => {
+      try {
+        const base64Image = await encodeImageToBase64(imageFile);
+        
+        const prompt = `
 Identify the product in the image.
 
 Provide your response as a JSON object with the following fields:
@@ -62,82 +63,105 @@ Provide your response as a JSON object with the following fields:
 - brand: Brand/manufacturer name (string)
 - category: Product category (e.g., Dairy, Beverages, Snacks, Frozen Foods, Pantry Items) (string)
 - confidence: Your confidence in the identification (number between 0 and 1, e.g., 0.85) (number)
-- description: A concise, distinguishing description that helps identify this specific product variant. Focus on key differentiating features like flavor, type, size, dietary attributes, or unique characteristics that would help distinguish it from similar products. Keep it under 15 words and be specific (e.g., "Organic whole milk" vs "Chocolate chip cookies with sea salt" vs "Fat-free Greek yogurt").
+- description: A concise, distinguishing description that helps identify this specific product variant. Focus on key differentiating features like flavor, type, size, dietary attributes, or unique characteristics that would help distinguish it from similar products. Keep it under 15 words and be specific (e.g., "Organic whole milk" vs "Chocolate chip cookies with sea salt" vs "Fat-free Greek yogurt"). IMPORTANT:This should describe the product, not the image.
 - product: A string with three parts/ There should not be repeat words:
     1. Brand (if it exists, otherwise leave blank)
-    2. Quantifiers (e.g., 'fat free', 'organic', 'chocolate', 'red', 'large', etc.) (if it exists, otherwise leave blank, remove comma)
+    2. Quantifiers (e.g., 'fat free', 'organic', 'chocolate', 'red', 'large', etc.) (if it exists, otherwise leave blank)
     3. What it is (e.g., 'milk', 'cheese', 'cookies')
-  Example: "Trader Joe's organic fat free milk"
-- tags: Array of focused tags for filtering and categorization. Choose 3-6 relevant tags that would help users filter and understand this product. Include: dietary restrictions (vegan, gluten-free, dairy-free, etc.), health attributes (organic, low-sugar, high-protein, etc.), flavor profiles (chocolate, vanilla, spicy, sweet, etc.), dietary lifestyles (keto, paleo, etc.), product characteristics (artisanal, imported, premium, etc.), and meal context (breakfast, snack, dessert, etc.). AVOID: storage requirements (refrigerated, frozen), sizes/quantities (8oz, 900ml, large), basic categories that duplicate the category field (dairy, beverages), and overly generic terms (food, product, item, fresh).
+  Example: "Trader Joe's organic fat free milk" After creating the product, clean it up to remove repitions or unhelpful parts.
+- tags: Array of focused tags for filtering and categorization. Looking at the "category", decide what are the most important distinction of products within this category. Choose 3-4 relevant tags that would help users filter and understand this product. Include: dietary restrictions (vegan, gluten-free, dairy-free, etc.), health attributes (organic, low-sugar, high-protein, etc.), flavor profiles (chocolate, vanilla, spicy, sweet, etc.), dietary lifestyles (keto, paleo, etc.), product characteristics (artisanal, imported, premium, etc.), and meal context (breakfast, snack, dessert, etc.). AVOID: storage requirements (refrigerated, frozen), sizes/quantities (8oz, 900ml, large), basic categories that duplicate the category field (dairy, beverages), and overly generic terms (food, product, item, fresh).
 - allergens: Array of allergens if mentioned (array of strings, optional)
 If you cannot identify the product with reasonable confidence, return a JSON object with a field 'error' explaining why (e.g., 'Image unclear', 'No product detected').
 Focus on food and beverage products, household items, and consumer goods.`;
 
-      const requestBody = {
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: "image/jpeg",
-                data: base64Image
+        const requestBody = {
+          contents: [{
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: base64Image
+                }
               }
-            }
-          ]
-        }]
-      };
+            ]
+          }]
+        };
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(10000) // 10s timeout
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+            signal: AbortSignal.timeout(15000) // 15s timeout for retries
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          
+          // Handle 503 overload errors with retry
+          if (response.status === 503 && attempt < maxAttempts) {
+            const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+            console.log(`AI overloaded, retrying in ${delay/1000}s... (attempt ${attempt}/${maxAttempts})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return makeRequest(attempt + 1, maxAttempts);
+          }
+          
+          console.error('AI API Error:', response.status, errorText);
+          throw new Error(`AI analysis failed: ${response.status} - ${errorText}`);
         }
-      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`AI analysis failed: ${response.status} - ${errorText}`);
+        const result = await response.json();
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!responseText) {
+          throw new Error('No response from AI');
+        }
+
+        // Parse JSON response
+        const cleanedResponse = responseText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+        const aiData = JSON.parse(cleanedResponse);
+
+        if (aiData.error) {
+          throw new Error(aiData.error);
+        }
+
+        // Return data in the format expected by the app
+        return {
+          productName: aiData.product || aiData.name || 'Unknown Product',
+          species: aiData.description || 'Unknown',
+          certainty: Math.round((aiData.confidence || 0) * 100),
+          tags: aiData.tags || ['Untagged'],
+          productType: aiData.category || 'Unknown'
+        };
+      } catch (err) {
+        // If it's a retry attempt and still failing, bubble up the error
+        if (attempt >= maxAttempts || !err.message.includes('503')) {
+          throw err;
+        }
+        // This shouldn't happen as 503 is handled above, but just in case
+        throw err;
       }
-
-      const result = await response.json();
-      const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!responseText) {
-        throw new Error('No response from AI');
-      }
-
-      // Parse JSON response
-      const cleanedResponse = responseText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
-      const aiData = JSON.parse(cleanedResponse);
-
-      if (aiData.error) {
-        throw new Error(aiData.error);
-      }
-
-      // Return data in the format expected by the app
-      return {
-        productName: aiData.product || aiData.name || 'Unknown Product',
-        species: aiData.description || 'Unknown',
-        certainty: Math.round((aiData.confidence || 0) * 100),
-        tags: aiData.tags || ['Untagged'],
-        productType: aiData.category || 'Unknown'
-      };
-
+    };
+    
+    try {
+      return await makeRequest();
     } catch (err) {
+      console.error('AI Analysis failed:', err.message);
       setError(err.message);
       // Return fallback data on error
-      return {
-        productName: 'Unknown Product',
-        species: 'AI analysis failed',
+      const fallbackResult = {
+        productName: '',
+        species: '',
         certainty: 0,
-        tags: ['Untagged'],
-        productType: 'Unknown'
+        tags: [],
+        productType: ''
       };
+      return fallbackResult;
     } finally {
       setIsProcessing(false);
     }

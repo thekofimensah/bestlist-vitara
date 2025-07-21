@@ -184,3 +184,15 @@ Ai lookup of image (not setup)
 Update list items (edit and delete -- should reflect locally and supabase)
 Share to friends (not setup)
 Share to insta (it woudl be cool if you could upload a whole list)
+
+
+New to do:
+Need to make the supabase tables more comprehensive
+   Save all AI metadata
+   Save all the lsits information
+
+There should be more padding between sections in the add item modal. IT's a bit tight right now
+
+Create first time login permissions page
+
+Crop still not draggging from corners

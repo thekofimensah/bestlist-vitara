@@ -78,8 +78,34 @@ export const useLists = (userId) => {
   const addItemToList = async (listIds, item, isStayAway = false) => {
     if (!userId) return;
 
+    // Generate temporary ID for optimistic update
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Optimistic update - immediately show in UI
+    const optimisticItem = {
+      ...item,
+      id: tempId,
+      image_url: item.url || item.image,
+      created_at: new Date().toISOString(),
+      is_stay_away: isStayAway,
+      _isOptimistic: true // Flag for styling/handling
+    };
+
+    // Immediately update local state for instant UI feedback
+    setLists(prev => prev.map(list => {
+      if (listIds.includes(list.id)) {
+        return {
+          ...list,
+          items: isStayAway ? list.items : [...list.items, optimisticItem],
+          stayAways: isStayAway ? [...list.stayAways, optimisticItem] : list.stayAways
+        };
+      }
+      return list;
+    }));
+
+    // Background database operations
     try {
-      for (const listId of listIds) {
+      const insertPromises = listIds.map(async (listId) => {
         const { data, error } = await supabase
           .from('items')
           .insert([{
@@ -99,23 +125,38 @@ export const useLists = (userId) => {
           .single();
 
         if (error) throw error;
+        return { listId, data };
+      });
 
-        setLists(prev => prev.map(list => {
-          if (list.id === listId) {
-            const newItem = {
-              ...item,
-              id: data.id,
-              image_url: item.url || item.image
-            };
-            return {
-              ...list,
-              items: isStayAway ? list.items : [...list.items, newItem],
-              stayAways: isStayAway ? [...list.stayAways, newItem] : list.stayAways
-            };
-          }
-          return list;
-        }));
-      }
+      // Wait for all inserts to complete
+      const results = await Promise.all(insertPromises);
+      
+      // Replace optimistic items with real data
+      setLists(prev => prev.map(list => {
+        const result = results.find(r => r.listId === list.id);
+        if (result) {
+          const realItem = {
+            ...item,
+            id: result.data.id,
+            image_url: item.url || item.image,
+            created_at: result.data.created_at,
+            is_stay_away: isStayAway
+            // Remove _isOptimistic flag
+          };
+          
+          return {
+            ...list,
+            items: isStayAway 
+              ? list.items 
+              : list.items.map(i => i.id === tempId ? realItem : i),
+            stayAways: isStayAway 
+              ? list.stayAways.map(i => i.id === tempId ? realItem : i)
+              : list.stayAways
+          };
+        }
+        return list;
+      }));
+      
     } catch (error) {
       console.error('Error adding item:', JSON.stringify({
         message: error.message,
@@ -124,7 +165,19 @@ export const useLists = (userId) => {
         code: error.code,
         fullError: error
       }, null, 2));
-      throw error;
+      
+      // Rollback optimistic update on error
+      setLists(prev => prev.map(list => {
+        if (listIds.includes(list.id)) {
+          return {
+            ...list,
+            items: list.items.filter(i => i.id !== tempId),
+            stayAways: list.stayAways.filter(i => i.id !== tempId)
+          };
+        }
+        return list;
+      }));
+      
     }
   };
 

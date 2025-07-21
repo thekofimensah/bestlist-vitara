@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, MoreHorizontal, Star, X, ArrowLeft } from 'lucide-react';
 
@@ -7,7 +7,7 @@ const VerdictBadge = ({ verdict }) => {
     switch (verdict) {
       case 'AVOID':
         return 'bg-red-50 text-red-700 border-red-100';
-      case 'KEEP':
+      case 'LOVE':
         return 'bg-yellow-50 text-yellow-700 border-yellow-100';
       case 'RETRY':
         return 'bg-yellow-50 text-yellow-700 border-yellow-100';
@@ -53,7 +53,7 @@ const ItemTile = ({
 
   if (!item) return null;
 
-  const verdict = item.is_stay_away ? 'AVOID' : 'KEEP';
+  const verdict = item.is_stay_away ? 'AVOID' : 'LOVE';
 
   return (
     <div
@@ -91,10 +91,17 @@ const ListRow = ({
 }) => {
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
   const sortedItems = allItems.sort((a, b) => {
-    if ((b.rating || 0) !== (a.rating || 0)) {
-      return (b.rating || 0) - (a.rating || 0);
+    // First sort by rating (highest first)
+    const ratingA = a.rating || 0;
+    const ratingB = b.rating || 0;
+    if (ratingB !== ratingA) {
+      return ratingB - ratingA;
     }
-    return new Date(b.created_at) - new Date(a.created_at);
+    
+    // Then sort by creation date (most recent first)
+    const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+    const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+    return dateB - dateA;
   });
 
   return (
@@ -145,21 +152,47 @@ const ListRow = ({
 const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const scrollContainerRef = useRef(null);
+  const savedScrollPosition = useRef(0);
+  const hasScrolled = useRef(false);
+
+  // Restore scroll position on mount, but only if user has scrolled before
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      if (hasScrolled.current) {
+        scrollContainerRef.current.scrollTop = savedScrollPosition.current;
+      } else {
+        // First time - ensure we're at the top
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    }
+  }, [lists]);
+
+  // Save scroll position when scrolling
+  const handleScroll = (e) => {
+    savedScrollPosition.current = e.target.scrollTop;
+    if (e.target.scrollTop > 50) { // Consider scrolled if more than 50px
+      hasScrolled.current = true;
+    }
+  };
 
   const handleItemTap = (item) => {
-    // Navigate to ShowItemsInListView (detailed view) by finding the parent list
+    // Open AddItemModal for editing by finding the parent list
     const parentList = lists.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
-    if (parentList && onSelectList) {
-      onSelectList(parentList);
+    if (parentList && onEditItem) {
+      onEditItem(item, parentList);
     }
   };
 
   const handleItemImageTap = (item) => {
-    // Navigate to specific item detail view
-    if (onViewItemDetail) {
-      onViewItemDetail(item);
+    // Open AddItemModal for editing by finding the parent list
+    const parentList = lists.find(list => 
+      [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
+    );
+    if (parentList && onEditItem) {
+      onEditItem(item, parentList);
     }
   };
 
@@ -192,7 +225,12 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-28" style={{ backgroundColor: '#F6F6F4' }}>
+    <div 
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
+      className="min-h-screen bg-stone-50 pb-28 overflow-y-auto" 
+      style={{ backgroundColor: '#F6F6F4' }}
+    >
       {/* Content */}
       <div className="pb-6">
         {lists.length === 0 ? (

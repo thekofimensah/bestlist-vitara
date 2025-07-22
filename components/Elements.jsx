@@ -110,7 +110,7 @@ export const RatingOverlay = ({
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.2 }}
               >
-                {starOrder.map((rating, index) => (
+                {[1, 2, 3, 4, 5].map((rating, index) => (
                   <motion.button
                     key={rating}
                     onClick={() => handleStarSelect(rating)}

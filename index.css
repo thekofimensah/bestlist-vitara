@@ -35,3 +35,59 @@
 .scanner-line {
   animation: scanner 3s ease-in-out infinite;
 }
+
+/* Enable native gestures */
+html, body {
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Don't block gestures on modal overlays */
+.modal-overlay {
+  touch-action: pan-y;
+  pointer-events: auto;
+}
+
+/* Allow edge gestures */
+*:not(input):not(textarea) {
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Loading placeholder animations */
+@keyframes skeleton-pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200px 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+.loading-tag {
+  background: linear-gradient(90deg, #f1f1ef 25%, #e8e8e6 50%, #f1f1ef 75%);
+  background-size: 200px 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}

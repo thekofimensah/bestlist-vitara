@@ -22,7 +22,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
         </div>
         
         {/* App Name */}
-        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>fooreel</h1>
+        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>crumbs</h1>
         <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
         
         {/* Progress Bar */}
@@ -34,7 +34,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
               backgroundColor: '#1F6D5A'
             }}
           />
-        </div>
+          </div>
         
         {/* Step Counter */}
         <div className="text-sm text-gray-500 mb-6">
@@ -292,13 +292,13 @@ const App = () => {
     }
 
     if (currentScreen === 'list-detail' && selectedList) {
-      return (
-        <ShowItemsInListView
-          list={selectedList}
+    return (
+          <ShowItemsInListView 
+            list={selectedList} 
           onBack={handleBackFromList}
           onAddItem={handleAddItem}
           onEditItem={handleEditItem}
-          refreshList={refreshLists}
+            refreshList={refreshLists}
         />
       );
     }
@@ -333,7 +333,7 @@ const App = () => {
       default:
         return (
           <MainScreen
-            lists={lists}
+              lists={lists}
             loading={imagesLoading}
             onAddItem={handleAddItem}
             onSelectList={handleSelectList}
@@ -349,8 +349,8 @@ const App = () => {
       <MultiStepLoadingScreen
         step={1}
         totalSteps={3}
-        messages={['Connecting to fooreel...', 'Loading your profile...', 'Setting up your kitchen...']}
-        currentMessage="Connecting to fooreel..."
+        messages={['Connecting to crumbs...', 'Loading your profile...', 'Setting up your kitchen...']}
+        currentMessage="Connecting to crumbs..."
       />
     );
   }
@@ -363,7 +363,7 @@ const App = () => {
   return (
     <div 
       className="min-h-screen bg-stone-50 relative" 
-      style={{ 
+               style={{
         backgroundColor: '#F6F6F4',
         // Responsive design for keyboard handling
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -377,7 +377,7 @@ const App = () => {
             <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
               <span className="text-white text-xs font-bold">b</span>
             </div>
-            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>fooreel</h1>
+            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>crumbs</h1>
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -453,12 +453,12 @@ const App = () => {
       {editingItem && (
         <AddItemModal
           image={editingItem.image_url || editingItem.image}
-          lists={lists}
+                    lists={lists}
           onClose={() => setEditingItem(null)}
           onSave={editingItem.id ? handleUpdateItem : handleAddItem}
           item={editingItem}
-          onCreateList={handleCreateList}
-        />
+                    onCreateList={handleCreateList}
+                  />
       )}
 
       {/* Search Modal */}
@@ -585,7 +585,7 @@ const App = () => {
               </div>
             )}
           </div>
-        </div>
+      </div>
       )}
     </div>
   );

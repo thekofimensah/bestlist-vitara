@@ -8,6 +8,9 @@ import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
 import { uploadPhotoWithOwner, supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
+
 
 // Mock social feed data - matches MainScreen.tsx exactly
 const mockPosts = [
@@ -207,8 +210,10 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   const [scrollY, setScrollY] = useState(0);
   const [selectedTab, setSelectedTab] = useState('For You');
   const [showModal, setShowModal] = useState(false);
+  const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   
-
+  // Location state for AI context
+  const [deviceLocation, setDeviceLocation] = useState(null);
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
 
@@ -218,6 +223,49 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   const isCameraHidden = scrollY > 150;
 
   const tabs = ['For You', 'Following'];
+
+  // Get device location for AI context
+  const getCurrentLocation = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      // Web fallback
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+              const geo = await resp.json();
+              if (geo.address) {
+                const city = geo.address.city || geo.address.town || geo.address.village || '';
+                const country = geo.address.country || '';
+                const location = [city, country].filter(Boolean).join(', ');
+                setDeviceLocation(location);
+              }
+            } catch (error) {
+              console.error('Error getting location:', error);
+            }
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+          }
+        );
+      }
+      return;
+    }
+
+    try {
+      const position = await Geolocation.getCurrentPosition();
+      const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+      const geo = await resp.json();
+      if (geo.address) {
+        const city = geo.address.city || geo.address.town || geo.address.village || '';
+        const country = geo.address.country || '';
+        const location = [city, country].filter(Boolean).join(', ');
+        setDeviceLocation(location);
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+  };
 
   const startCamera = async (mode = 'environment') => {
     setVideoReady(false);
@@ -263,6 +311,11 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     // eslint-disable-next-line
   }, [facingMode]);
 
+  // Get location on component mount
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
+
   const handleCapture = async () => {
     setError(null);
     setIsCapturing(true);
@@ -284,7 +337,9 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
 
       // Freeze frame effect - set captured image and open modal immediately
       const tempFilename = `photo_${Date.now()}.jpeg`;
-      setCapturedImage({ url: imageData, filename: tempFilename, uploading: true, aiProcessing: true });
+      const capturedImageData = { url: imageData, filename: tempFilename, uploading: true, aiProcessing: true };
+      console.log('Setting capturedImage data:', capturedImageData);
+      setCapturedImage(capturedImageData);
       setShowModal(true); // Open modal immediately
       setIsCapturing(false);
 
@@ -300,8 +355,9 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
             maxWidthOrHeight: 1024,
           });
 
-          // Start AI processing
-          const aiResult = await analyzeImage(compressed);
+          // Start AI processing with location context
+          console.log('Starting AI analysis with location:', deviceLocation);
+          const aiResult = await analyzeImage(compressed, deviceLocation);
           setCapturedImage(prev => ({ 
             ...prev, 
             uploading: false,
@@ -310,7 +366,32 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           }));
         } catch (error) {
           console.error('Background processing error:', error);
-          setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+          
+          // Check if this is an invalid image error (not a product)
+          const errorMessage = error.message || '';
+          const isInvalidImage = errorMessage.includes('No product detected') || 
+                                errorMessage.includes('not a product') ||
+                                errorMessage.includes('hotel listing') ||
+                                errorMessage.includes('not food') ||
+                                errorMessage.includes('invalid');
+          
+          if (isInvalidImage) {
+            // Close modal and show notification
+            setShowModal(false);
+            setCapturedImage(null);
+            setInvalidImageNotification({
+              message: 'Photo doesn\'t show a product',
+              subMessage: 'Please take a photo of food, drinks, or consumer products'
+            });
+            
+            // Auto-hide notification after 4 seconds
+            setTimeout(() => {
+              setInvalidImageNotification(null);
+            }, 4000);
+          } else {
+            // Regular error handling for other issues
+            setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+          }
         }
       }, 100);
 
@@ -364,7 +445,13 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
             
             // Set captured image and open modal immediately
             const tempFilename = `upload_${Date.now()}.jpeg`;
-            setCapturedImage({ url: imageData, filename: tempFilename, uploading: true, aiProcessing: true });
+            const uploadImageData = { 
+              url: imageData, 
+              filename: tempFilename, 
+              uploading: true, 
+              aiProcessing: true
+            };
+            setCapturedImage(uploadImageData);
             setShowModal(true); // Open modal immediately
 
             // Start AI processing in background
@@ -376,8 +463,8 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
                   maxWidthOrHeight: 1024
                 });
 
-                // Start AI processing
-                const aiResult = await analyzeImage(compressed);
+                console.log('Starting AI analysis with location:', deviceLocation);
+                const aiResult = await analyzeImage(compressed, deviceLocation);
                 setCapturedImage(prev => ({ 
                   ...prev, 
                   uploading: false,
@@ -386,7 +473,32 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
                 }));
               } catch (error) {
                 console.error('Background processing error:', error);
-                setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+                
+                // Check if this is an invalid image error (not a product)
+                const errorMessage = error.message || '';
+                const isInvalidImage = errorMessage.includes('No product detected') || 
+                                      errorMessage.includes('not a product') ||
+                                      errorMessage.includes('hotel listing') ||
+                                      errorMessage.includes('not food') ||
+                                      errorMessage.includes('invalid');
+                
+                if (isInvalidImage) {
+                  // Close modal and show notification
+                  setShowModal(false);
+                  setCapturedImage(null);
+                  setInvalidImageNotification({
+                    message: 'Photo doesn\'t show a product',
+                    subMessage: 'Please select a photo of food, drinks, or consumer products'
+                  });
+                  
+                  // Auto-hide notification after 4 seconds
+                  setTimeout(() => {
+                    setInvalidImageNotification(null);
+                  }, 4000);
+                } else {
+                  // Regular error handling for other issues
+                  setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+                }
               }
             }, 100);
           };
@@ -579,6 +691,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           isAIProcessing={capturedImage?.aiProcessing}
           onCreateList={onCreateList}
           showRatingFirst={true}
+          photoMetadata={capturedImage?.photoMetadata}
           onUpdateAI={(aiData) => {
             setCapturedImage(prev => ({
               ...prev,
@@ -588,6 +701,41 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           }}
         />
       )}
+
+      {/* Invalid Image Notification */}
+      <AnimatePresence>
+        {invalidImageNotification && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="fixed top-20 left-4 right-4 z-50"
+          >
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 shadow-lg">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <X className="w-4 h-4 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-red-800 font-semibold text-sm">
+                    {invalidImageNotification.message}
+                  </h3>
+                  <p className="text-red-600 text-xs mt-1">
+                    {invalidImageNotification.subMessage}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setInvalidImageNotification(null)}
+                  className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

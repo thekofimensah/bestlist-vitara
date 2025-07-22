@@ -43,7 +43,7 @@ export const useAI = () => {
     });
   }, []);
 
-  const analyzeImage = useCallback(async (imageFile) => {
+  const analyzeImage = useCallback(async (imageFile, location = null) => {
     if (!GEMINI_API_KEY) {
       throw new Error('Gemini API key not configured');
     }
@@ -56,7 +56,14 @@ export const useAI = () => {
         const base64Image = await encodeImageToBase64(imageFile);
         
         const prompt = `
-Identify the product in the image.
+Identify the product in the image.${location ? `
+
+LOCATION CONTEXT: This photo was taken in ${location}. Use this location information to:
+- Prioritize brands and products commonly sold in ${location}
+- Consider local/regional brands, store chains, and specialties specific to this area
+- Account for regional product variations, labeling, and naming conventions
+- Focus on products that would realistically be found in grocery stores, markets, or shops in ${location}
+- If applicable, consider local food regulations, import restrictions, or regional preferences that affect product availability` : ''}
 
 Provide your response as a JSON object with the following fields:
 - name: Product name (string)
@@ -70,7 +77,7 @@ Provide your response as a JSON object with the following fields:
     3. What it is (e.g., 'milk', 'cheese', 'cookies')
   Example: "Trader Joe's organic fat free milk" After creating the product, clean it up to remove repitions or unhelpful parts.
 - tags: Array of focused tags for filtering and categorization. Looking at the "category", decide what are the most important distinction of products within this category. Choose 3-4 relevant tags that would help users filter and understand this product. Include: dietary restrictions (vegan, gluten-free, dairy-free, etc.), health attributes (organic, low-sugar, high-protein, etc.), flavor profiles (chocolate, vanilla, spicy, sweet, etc.), dietary lifestyles (keto, paleo, etc.), product characteristics (artisanal, imported, premium, etc.), and meal context (breakfast, snack, dessert, etc.). AVOID: storage requirements (refrigerated, frozen), sizes/quantities (8oz, 900ml, large), basic categories that duplicate the category field (dairy, beverages), and overly generic terms (food, product, item, fresh).
-- allergens: Array of allergens if mentioned (array of strings, optional)
+- allergens: Array of allergens if mentioned and take the description field, and infer allergens from that. (array of strings, optional)
 If you cannot identify the product with reasonable confidence, return a JSON object with a field 'error' explaining why (e.g., 'Image unclear', 'No product detected').
 Focus on food and beverage products, household items, and consumer goods.`;
 
@@ -136,7 +143,8 @@ Focus on food and beverage products, household items, and consumer goods.`;
           species: aiData.description || 'Unknown',
           certainty: Math.round((aiData.confidence || 0) * 100),
           tags: aiData.tags || ['Untagged'],
-          productType: aiData.category || 'Unknown'
+          productType: aiData.category || 'Unknown',
+          allergens: aiData.allergens || []
         };
       } catch (err) {
         // If it's a retry attempt and still failing, bubble up the error

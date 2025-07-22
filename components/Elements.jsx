@@ -16,17 +16,18 @@ export const RatingOverlay = ({
   // Animation sequence
   useEffect(() => {
     if (isVisible) {
-      // Show sparkles first
-      const sparklePositions = Array.from({ length: 8 }, (_, i) => ({
+      // Show sparkles first - smoother animation
+      const sparklePositions = Array.from({ length: 12 }, (_, i) => ({
         id: i,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        delay: Math.random() * 0.5
+        x: 10 + Math.random() * 80, // Keep sparkles away from edges
+        y: 10 + Math.random() * 80, // Keep sparkles away from edges
+        delay: i * 0.1, // Staggered instead of random for smoothness
+        size: 3 + Math.random() * 2 // Varied sizes
       }));
       setSparkles(sparklePositions);
       
       // Then show stars after a delay
-      setTimeout(() => setShowStars(true), 800);
+      setTimeout(() => setShowStars(true), 600); // Faster transition
     }
   }, [isVisible]);
 
@@ -61,31 +62,45 @@ export const RatingOverlay = ({
         />
       </div>
 
-      {/* Sparkle effects */}
-      <div className="absolute inset-0 pointer-events-none">
+      {/* Sparkle effects - Smooth and fluid */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <AnimatePresence>
           {sparkles.map((sparkle) => (
             <motion.div
               key={sparkle.id}
-              className="absolute text-yellow-300"
+              className="absolute text-yellow-300 will-change-transform"
               style={{ 
                 left: `${sparkle.x}%`, 
                 top: `${sparkle.y}%` 
               }}
-              initial={{ opacity: 0, scale: 0, rotate: 0 }}
+              initial={{ 
+                opacity: 0, 
+                scale: 0, 
+                rotate: 0,
+                y: 20
+              }}
               animate={{ 
-                opacity: [0, 1, 0], 
-                scale: [0, 1, 0],
-                rotate: 360
+                opacity: [0, 0.8, 1, 0.8, 0], 
+                scale: [0, 0.8, 1, 1.2, 0],
+                rotate: [0, 180, 360],
+                y: [20, 0, -10, 0, 20]
               }}
               transition={{ 
-                duration: 2, 
+                duration: 3,
                 delay: sparkle.delay,
+                ease: "easeInOut",
                 repeat: Infinity,
-                repeatDelay: 1
+                repeatDelay: 0.5,
+                times: [0, 0.2, 0.5, 0.8, 1]
               }}
             >
-              <Sparkles className="w-4 h-4" />
+              <Sparkles 
+                className="drop-shadow-lg" 
+                style={{ 
+                  width: `${sparkle.size}px`, 
+                  height: `${sparkle.size}px` 
+                }} 
+              />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -116,7 +131,11 @@ export const RatingOverlay = ({
                     onClick={() => handleStarSelect(rating)}
                     className="relative"
                     initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    animate={{ 
+                      opacity: 1, 
+                      y: 0,
+                      scale: selectedStar === rating ? [1, 1.3, 1.1] : 1
+                    }}
                     transition={{ 
                       delay: 0.4 + (index * 0.1),
                       type: "spring",
@@ -126,7 +145,7 @@ export const RatingOverlay = ({
                     whileTap={{ scale: 0.95 }}
                   >
                     <Star
-                      className={`w-12 h-12 transition-all duration-200 ${
+                      className={`w-12 h-12 transition-all duration-200 drop-shadow-lg ${
                         selectedStar === rating
                           ? 'text-teal-400 fill-teal-400'
                           : 'text-white hover:text-yellow-300'
@@ -134,17 +153,64 @@ export const RatingOverlay = ({
                       fill={selectedStar === rating ? 'currentColor' : 'none'}
                     />
                     
-                    {/* Glow effect for selected star */}
+                    {/* Enhanced explosion effect for selected star */}
                     {selectedStar === rating && (
-                      <motion.div
-                        className="absolute inset-0 rounded-full bg-teal-400/30"
-                        initial={{ scale: 1, opacity: 0 }}
-                        animate={{ 
-                          scale: [1, 1.5, 2], 
-                          opacity: [0.5, 0.2, 0] 
-                        }}
-                        transition={{ duration: 0.6 }}
-                      />
+                      <>
+                        {/* Particle burst */}
+                        {[...Array(16)].map((_, i) => (
+                          <motion.div
+                            key={i}
+                            className="absolute w-2 h-2 bg-teal-400 rounded-full"
+                            style={{
+                              left: '50%',
+                              top: '50%'
+                            }}
+                            initial={{ 
+                              opacity: 1, 
+                              scale: 1,
+                              x: 0,
+                              y: 0
+                            }}
+                            animate={{ 
+                              opacity: 0,
+                              scale: 0,
+                              x: (Math.cos((i * 22.5) * Math.PI / 180) * 50),
+                              y: (Math.sin((i * 22.5) * Math.PI / 180) * 50)
+                            }}
+                            transition={{ 
+                              duration: 0.8,
+                              delay: 0.1,
+                              ease: "easeOut"
+                            }}
+                          />
+                        ))}
+                        
+                        {/* Multiple glow rings */}
+                        <motion.div
+                          className="absolute inset-0 rounded-full bg-teal-400/20"
+                          initial={{ scale: 1, opacity: 0 }}
+                          animate={{ 
+                            scale: [1, 2, 3], 
+                            opacity: [0.6, 0.3, 0] 
+                          }}
+                          transition={{ duration: 0.8 }}
+                        />
+                        <motion.div
+                          className="absolute inset-0 rounded-full border-2 border-teal-400/60"
+                          style={{
+                            left: '-8px',
+                            top: '-8px',
+                            right: '-8px',
+                            bottom: '-8px'
+                          }}
+                          initial={{ scale: 0.5, opacity: 0 }}
+                          animate={{ 
+                            scale: [0.5, 1.5, 2.5], 
+                            opacity: [0.8, 0.4, 0] 
+                          }}
+                          transition={{ duration: 0.6, delay: 0.2 }}
+                        />
+                      </>
                     )}
                   </motion.button>
                 ))}
@@ -204,7 +270,7 @@ export const RatingOverlay = ({
         {/* Helper text */}
         {showStars && !showExit && (
           <motion.p
-            className="text-white/70 text-sm mt-6 text-center px-6"
+            className="text-white/90 text-sm mt-6 text-center px-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1 }}

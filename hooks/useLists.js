@@ -5,6 +5,41 @@ export const useLists = (userId) => {
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Helper function to apply custom ordering from localStorage
+  const applyCustomOrder = (allLists) => {
+    if (!userId || !allLists || allLists.length === 0) return allLists;
+    
+    try {
+      const savedOrder = localStorage.getItem(`listOrder_${userId}`);
+      if (!savedOrder) return allLists;
+      
+      const orderIds = JSON.parse(savedOrder);
+      console.log(`[useLists] Applying custom order:`, orderIds);
+      
+      // Sort lists according to saved order, with unordered lists at the end
+      const orderedLists = [];
+      const unorderedLists = [];
+      
+      // First, add lists in the saved order
+      orderIds.forEach(id => {
+        const list = allLists.find(l => l.id === id);
+        if (list) orderedLists.push(list);
+      });
+      
+      // Then add any lists not in the saved order
+      allLists.forEach(list => {
+        if (!orderIds.includes(list.id)) {
+          unorderedLists.push(list);
+        }
+      });
+      
+      return [...orderedLists, ...unorderedLists];
+    } catch (error) {
+      console.error('[useLists] Error applying custom order:', error);
+      return allLists;
+    }
+  };
+
   useEffect(() => {
     if (userId) {
       fetchLists(false);
@@ -57,7 +92,12 @@ export const useLists = (userId) => {
         );
         // For the rest, just return the list meta (could lazy-load items if needed)
         const rest = listsData.slice(4).map(list => ({ ...list, items: [], stayAways: [] }));
-        setLists([...listsWithItems, ...rest]);
+        
+        // Combine all lists and apply custom order
+        const allLists = [...listsWithItems, ...rest];
+        const orderedLists = applyCustomOrder(allLists);
+        setLists(orderedLists);
+        
         const afterItems = Date.now();
         console.log(`[useLists] Items for first 4 lists fetched in ${afterItems - afterLists}ms`);
       }
@@ -284,7 +324,7 @@ export const useLists = (userId) => {
         stayAways: []
       };
 
-      setLists(prev => [newList, ...prev]);
+      setLists(prev => applyCustomOrder([newList, ...prev]));
       console.log('✅ List added to local state');
       return newList;
     } catch (error) {
@@ -295,6 +335,31 @@ export const useLists = (userId) => {
         code: error.code,
         fullError: error
       }, null, 2));
+      throw error;
+    }
+  };
+
+  const reorderLists = async (newOrderedLists) => {
+    console.log('🔧 reorderLists called with:', newOrderedLists.map(l => ({ id: l.id, name: l.name })));
+    
+    if (!userId) {
+      console.error('❌ No userId provided to reorderLists');
+      return;
+    }
+
+    try {
+      // Update local state immediately for responsive UI
+      setLists(newOrderedLists);
+      
+      // Store custom order in localStorage
+      const listOrder = newOrderedLists.map(list => list.id);
+      localStorage.setItem(`listOrder_${userId}`, JSON.stringify(listOrder));
+      console.log('✅ Lists reordered successfully in localStorage');
+      
+    } catch (error) {
+      console.error('❌ Error reordering lists:', error);
+      // Revert local state on error
+      refreshLists(true);
       throw error;
     }
   };
@@ -311,6 +376,7 @@ export const useLists = (userId) => {
     addItemToList,
     updateItemInList,
     refreshLists,
-    createList
+    createList,
+    reorderLists
   };
 };

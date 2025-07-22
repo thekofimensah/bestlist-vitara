@@ -8,8 +8,21 @@ import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { RatingOverlay } from './Elements';
+import { 
+  allCurrencies, 
+  getCurrencyInfo, 
+  getCurrencyFromLocale,
+  getSmartCurrencyGuess,
+  formatPriceInput,
+  getRecentCurrencies,
+  saveRecentCurrency,
+  getCurrencyDisplay,
+  getCurrencyFromCountryName
+} from '../lib/currencyUtils';
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
+  const [justClicked, setJustClicked] = useState(null);
+  
   const getStarColor = (index) => {
     if (index <= rating) {
       if (rating >= 4) return '#1F6D5A'; // Deep green for keeps (4-5)
@@ -25,20 +38,100 @@ const StarRating = ({ rating, showNumber = true, editable = true, onChange }) =>
 
   const handleStarClick = (index) => {
     if (editable && onChange) {
+      setJustClicked(index);
       onChange(index); // Use 1-5 scale
+      
+      // Haptic feedback
+      if (navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+      
+      // Reset animation after delay
+      setTimeout(() => setJustClicked(null), 600);
     }
   };
 
   return (
     <div className="flex items-center gap-1">
       {[1, 2, 3, 4, 5].map((index) => (
-        <Star
+        <motion.div
           key={index}
-          className={`w-6 h-6 ${editable ? 'cursor-pointer hover:scale-110 transition-transform' : ''}`}
-          style={{ color: getStarColor(index) }}
-          onClick={editable ? () => handleStarClick(index) : undefined}
-          fill={getStarFill(index)}
-        />
+          className="relative"
+          animate={justClicked === index ? {
+            scale: [1, 1.5, 1.2, 1],
+            rotate: [0, -10, 10, 0]
+          } : {}}
+          transition={{
+            type: "spring",
+            stiffness: 500,
+            damping: 15,
+            duration: 0.6
+          }}
+        >
+          <Star
+            className={`w-6 h-6 ${editable ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${
+              justClicked === index ? 'drop-shadow-lg' : ''
+            }`}
+            style={{ color: getStarColor(index) }}
+            onClick={editable ? () => handleStarClick(index) : undefined}
+            fill={getStarFill(index)}
+          />
+          
+          {/* Fun particle burst effect */}
+          <AnimatePresence>
+            {justClicked === index && (
+              <>
+                {[...Array(8)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute w-1 h-1 rounded-full"
+                    style={{
+                      backgroundColor: getStarColor(index),
+                      left: '50%',
+                      top: '50%'
+                    }}
+                    initial={{ 
+                      opacity: 1, 
+                      scale: 1,
+                      x: 0,
+                      y: 0
+                    }}
+                    animate={{ 
+                      opacity: 0,
+                      scale: 0,
+                      x: (Math.cos((i * 45) * Math.PI / 180) * 20),
+                      y: (Math.sin((i * 45) * Math.PI / 180) * 20)
+                    }}
+                    exit={{ opacity: 0 }}
+                    transition={{ 
+                      duration: 0.5,
+                      ease: "easeOut"
+                    }}
+                  />
+                ))}
+                
+                {/* Glow ring effect */}
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 opacity-60"
+                  style={{
+                    borderColor: getStarColor(index),
+                    left: '-4px',
+                    top: '-4px',
+                    right: '-4px',
+                    bottom: '-4px'
+                  }}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ 
+                    scale: [0.8, 2, 3], 
+                    opacity: [0.6, 0.3, 0] 
+                  }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6 }}
+                />
+              </>
+            )}
+          </AnimatePresence>
+        </motion.div>
       ))}
       {showNumber && (
         <span className="ml-2 text-sm font-medium text-gray-700">
@@ -87,7 +180,8 @@ const AddItemModal = ({
   onCreateList,
   showRatingFirst = false,
   onUpdateAI,
-  photoMetadata
+  photoMetadata,
+  aiError
 }) => {
   
   const [currentImage, setCurrentImage] = useState(image); // image shown & saved
@@ -278,7 +372,17 @@ const AddItemModal = ({
   const [showDetailedAttributes, setShowDetailedAttributes] = useState(false);
   const [showAdditionalTags, setShowAdditionalTags] = useState(false);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
-  const [editPrice, setEditPrice] = useState('');
+  const [editPrice, setEditPrice] = useState(item?.price || '');
+  const [currency, setCurrency] = useState('USD');
+  const [showCurrencySelector, setShowCurrencySelector] = useState(false);
+  const [recentCurrencies, setRecentCurrencies] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recentCurrencies');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [qualityOverview, setQualityOverview] = useState('');
 
   // Mock attributes for detailed breakdown
@@ -407,7 +511,9 @@ const AddItemModal = ({
       notes,
       qualityOverview,
       place,
-      location
+      location,
+      price: editPrice || null,
+      currency_code: currency || 'USD'
     });
     console.log('🔍 Built item:', newItem);
     console.log('🔍 Built item JSON:', JSON.stringify(newItem, null, 2));
@@ -504,6 +610,76 @@ const AddItemModal = ({
     setIsEditingPrice(false);
   };
 
+  // Auto-detect currency on mount using smart detection
+  useEffect(() => {
+    const detectCurrency = async () => {
+      console.log('🌍 Starting smart currency detection...');
+      
+      try {
+        let detectedCurrency;
+        
+        // First check if editing existing item with currency
+        if (item?.currency_code) {
+          detectedCurrency = item.currency_code;
+          console.log('🌍 Using existing item currency:', detectedCurrency);
+        } else {
+          // Use locale-based currency detection (no location permission needed)
+          detectedCurrency = getCurrencyFromLocale();
+          console.log('🌍 Auto-detected currency:', detectedCurrency);
+        }
+        
+        setCurrency(detectedCurrency);
+      } catch (error) {
+        console.error('🌍 Currency detection failed:', error);
+        setCurrency('USD'); // Fallback
+      }
+    };
+    
+    detectCurrency();
+    
+    // Load recent currencies
+    setRecentCurrencies(getRecentCurrencies());
+  }, [item?.currency_code, location]);
+
+  // When location changes, try to infer currency from country
+  useEffect(() => {
+    if (
+      location &&
+      location !== 'Current Location' &&
+      !currencyManuallySet
+    ) {
+      // Try to extract country from location string (assume last part after comma)
+      const country = location.split(',').pop().trim();
+      const inferred = getCurrencyFromCountryName(country);
+      if (inferred && inferred !== currency) {
+        setCurrency(inferred);
+      }
+    }
+    // eslint-disable-next-line
+  }, [location]);
+
+  // When user picks a currency manually
+  const handleCurrencySelect = (currencyCode) => {
+    setCurrency(currencyCode);
+    setShowCurrencySelector(false);
+    setCurrencyManuallySet(true);
+    // Save to recent currencies using utility function
+    saveRecentCurrency(currencyCode);
+    setRecentCurrencies(getRecentCurrencies()); // Refresh from storage
+  };
+
+  // Format price input with currency-specific rules
+  const formatPriceInputLocal = (value) => {
+    return formatPriceInput(value, currency);
+  };
+
+  // Always use numeric keyboard for better UX
+  const getPriceInputMode = () => {
+    return "numeric"; // Always use numeric keyboard
+  };
+
+
+
   const handleAttributeChange = (attribute, value) => {
     setAttributes(prev => ({
       ...prev,
@@ -594,14 +770,18 @@ const AddItemModal = ({
 
   // Track if location was manually set to prevent overriding
   const [locationManuallySet, setLocationManuallySet] = useState(false);
+  const [currencyManuallySet, setCurrencyManuallySet] = useState(false);
+
+
 
   // Auto-fetch location on mount (only if no location available and not manually set)
   useEffect(() => {
     // Don't fetch current location if we already have location from other sources or it was manually set
     if (!photoMetadata?.location && !initialState?.location && !item?.location && !locationManuallySet && location === 'Current Location') {
+      console.log('🌍 Triggering location fetch...');
       getCurrentLocation();
     }
-  }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet, location]);
+  }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet]);
 
   // Handle Android back button/gesture
   useEffect(() => {
@@ -661,8 +841,29 @@ const AddItemModal = ({
         className={`relative overflow-hidden ${showRatingOverlay ? 'hidden' : ''}`}
         style={{ height: '350px' }}
       >
+        {/* AI Error State */}
+        {aiError && !isAIProcessing && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl p-6 mx-6 text-center shadow-xl max-w-sm">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <X className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Analysis Failed</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Unable to analyze this image. You can still add it manually using the back button.
+              </p>
+              <button
+                onClick={() => onClose('ai_error')}
+                className="w-full px-4 py-2 bg-red-600 text-white rounded-xl font-medium"
+              >
+                Go Back to Camera
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Cinematic AI Loading Effect (from original) */}
-        {(isAIProcessing && !aiCancelled) && (
+        {(isAIProcessing && !aiCancelled && !aiError) && (
           <div className="absolute inset-0 z-10 pointer-events-none">
             {/* Scanning line animation */}
             <div className="absolute inset-0">
@@ -739,7 +940,16 @@ const AddItemModal = ({
 
         {/* Back Button */}
         <button 
-          onClick={onClose}
+          onClick={() => {
+            if (aiError) {
+              // Show a brief message before going back
+              if (navigator.vibrate) navigator.vibrate(50);
+              // Trigger parent to show error message
+              onClose('ai_error');
+            } else {
+              onClose();
+            }
+          }}
           className="absolute top-6 left-4 w-10 h-10 bg-white bg-opacity-90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg z-20 active:scale-95 transition-transform"
         >
           <ArrowLeft className="w-5 h-5 text-gray-700" />
@@ -1300,25 +1510,132 @@ const AddItemModal = ({
                 Add to Lists
               </button>
               
-              <div className="text-right">
+              <div className="text-right relative">
                 {isEditingPrice ? (
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editPrice}
-                    onChange={(e) => setEditPrice(e.target.value)}
-                    onBlur={handlePriceSave}
-                    onKeyDown={(e) => e.key === 'Enter' && handlePriceSave()}
-                    className="text-lg font-semibold text-gray-900 bg-transparent border-b border-gray-300 focus:border-teal-700 outline-none w-32 text-right"
-                    autoFocus
-                  />
+                  <div className="flex items-center justify-end gap-2">
+                    {/* Currency selector */}
+                    <button
+                      onClick={() => setShowCurrencySelector(true)}
+                      className="text-sm text-teal-700 hover:bg-gray-50 px-2 py-1 rounded border border-teal-200 transition-colors flex-shrink-0"
+                      style={{ color: '#1F6D5A', borderColor: '#1F6D5A' }}
+                    >
+                      {getCurrencyDisplay(currency)}
+                    </button>
+                    {/* Price input */}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(formatPriceInputLocal(e.target.value))}
+                      onBlur={handlePriceSave}
+                      onKeyDown={(e) => e.key === 'Enter' && handlePriceSave()}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoFocus
+                      placeholder="0"
+                      className="text-lg font-semibold text-gray-900 bg-transparent border-b border-gray-300 focus:border-teal-700 outline-none text-right w-20"
+                    />
+                  </div>
                 ) : (
                   <div 
                     onClick={handlePriceEdit}
-                    className="cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                    className="cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors text-right"
                   >
-                    <div className="text-lg font-semibold text-gray-900">{editPrice || 'Add price'}</div>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {editPrice ? `${editPrice} ${getCurrencyDisplay(currency)}` : 'Add price'}
+                    </div>
                   </div>
+                )}
+                
+                {/* Currency Selector Modal */}
+                {showCurrencySelector && (
+                  <>
+                    <div 
+                      className="fixed inset-0 bg-transparent z-10"
+                      onClick={() => setShowCurrencySelector(false)}
+                    />
+                    <div className="fixed inset-x-4 top-20 bottom-20 bg-white rounded-xl shadow-lg border border-gray-200 z-20 overflow-hidden flex flex-col">
+                      {/* Recent currencies */}
+                      {recentCurrencies.length > 0 && (
+                        <>
+                          <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                            Recent
+                          </div>
+                          {recentCurrencies.map((currencyCode) => {
+                            const currencyInfo = getCurrencyInfo(currencyCode);
+                            return (
+                              <button
+                                key={`recent-${currencyCode}`}
+                                onClick={() => handleCurrencySelect(currencyCode)}
+                                className="w-full p-3 text-left hover:bg-gray-50 flex items-center justify-between"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="text-lg font-medium">{currencyInfo.symbol}</span>
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-900">{currencyInfo.code}</div>
+                                    <div className="text-xs text-gray-500">{currencyInfo.name}</div>
+                                  </div>
+                                </div>
+                                {currency === currencyCode && (
+                                  <div className="w-2 h-2 bg-teal-600 rounded-full"></div>
+                                )}
+                              </button>
+                            );
+                          })}
+                          <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                            All currencies
+                          </div>
+                        </>
+                      )}
+                      
+                      {/* Popular currencies first */}
+                      <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                        Popular currencies
+                      </div>
+                      {allCurrencies.filter(c => c.popular).map((currencyInfo) => (
+                        <button
+                          key={currencyInfo.code}
+                          onClick={() => handleCurrencySelect(currencyInfo.code)}
+                          className="w-full p-3 text-left hover:bg-gray-50 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-medium">{currencyInfo.symbol}</span>
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{currencyInfo.code}</div>
+                              <div className="text-xs text-gray-500">{currencyInfo.name}</div>
+                            </div>
+                          </div>
+                          {currency === currencyInfo.code && (
+                            <div className="w-2 h-2 bg-teal-600 rounded-full"></div>
+                          )}
+                        </button>
+                      ))}
+                      
+                      {/* All other currencies */}
+                      <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                        All currencies ({allCurrencies.filter(c => !c.popular).length})
+                      </div>
+                      {allCurrencies.filter(c => !c.popular).map((currencyInfo) => (
+                        <button
+                          key={currencyInfo.code}
+                          onClick={() => handleCurrencySelect(currencyInfo.code)}
+                          className="w-full p-3 text-left hover:bg-gray-50 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-medium">{currencyInfo.symbol}</span>
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{currencyInfo.code}</div>
+                              <div className="text-xs text-gray-500">{currencyInfo.name}</div>
+                            </div>
+                          </div>
+                          {currency === currencyInfo.code && (
+                            <div className="w-2 h-2 bg-teal-600 rounded-full"></div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1464,7 +1781,7 @@ const AddItemModal = ({
               </button>
             </div>
 
-            {/* Cropper */}
+            {/* Simple Cropper */}
             <div className="flex-1 relative">
               <Cropper
                 image={currentImage}
@@ -1483,36 +1800,17 @@ const AddItemModal = ({
                     backgroundColor: '#000'
                   },
                   cropAreaStyle: {
-                    border: '2px solid #fff',
-                    borderRadius: '8px'
+                    border: '2px solid #fff'
                   }
                 }}
               />
             </div>
 
-            {/* Zoom Controls */}
+            {/* Simple Instructions */}
             <div className="bg-black p-4">
-              <div className="flex items-center gap-4 max-w-sm mx-auto">
-                <span className="text-white text-sm">Zoom</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={3}
-                  step={0.1}
-                  value={zoom}
-                  onChange={(e) => setZoom(Number(e.target.value))}
-                  className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                  style={{
-                    background: '#374151',
-                    outline: 'none'
-                  }}
-                />
-                <span className="text-white text-sm w-8">{zoom.toFixed(1)}x</span>
-      </div>
-      
-              <div className="text-center mt-3">
+              <div className="text-center">
                 <p className="text-gray-400 text-sm">
-                  Drag to move • Pinch to zoom • Adjust slider for fine control
+                  Pinch to zoom • Drag to move
                 </p>
               </div>
             </div>

@@ -112,7 +112,7 @@ Focus on food and beverage products, household items, and consumer goods.`;
           
           // Handle 503 overload errors with retry
           if (response.status === 503 && attempt < maxAttempts) {
-            const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+            const delay = attempt === 1 ? 2000 : 3000; // Tight backoff: 2s, then 3s
             console.log(`AI overloaded, retrying in ${delay/1000}s... (attempt ${attempt}/${maxAttempts})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return makeRequest(attempt + 1, maxAttempts);

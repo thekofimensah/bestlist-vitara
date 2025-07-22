@@ -70,7 +70,7 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
-  const { lists, loading: listsLoading, addItemToList, updateItemInList, refreshLists, createList } = useLists(user?.id);
+  const { lists, loading: listsLoading, addItemToList, updateItemInList, refreshLists, createList, reorderLists } = useLists(user?.id);
   const [editingItem, setEditingItem] = useState(null);
   const [editingList, setEditingList] = useState(null);
 
@@ -322,6 +322,7 @@ const App = () => {
             onCreateList={handleCreateList}
             onEditItem={handleEditItem}
             onViewItemDetail={handleViewItemDetail}
+            onReorderLists={reorderLists}
           />
         );
       case 'profile':
@@ -463,10 +464,10 @@ const App = () => {
 
       {/* Search Modal */}
       {showSearch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-16 p-4 z-50">
-          <div className="bg-white rounded-3xl w-full max-w-sm max-h-[80vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-8 p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-md h-[85vh] flex flex-col overflow-hidden">
             {/* Search Header */}
-            <div className="p-6 pb-4">
+            <div className="p-6 pb-4 flex-shrink-0">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Search</h3>
                 <button
@@ -499,53 +500,87 @@ const App = () => {
 
             {/* Search Results */}
             {searchQuery && (
-              <div className="max-h-96 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto">
                 {searchResults.length > 0 ? (
                   <div className="px-6 pb-6">
-                    <div className="text-sm text-gray-500 mb-3">
+                    <div className="text-sm text-gray-500 mb-4">
                       {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
                     </div>
-                    <div className="space-y-2">
-                      {searchResults.map((result) => (
-                        <button
-                          key={`${result.type}-${result.id}`}
-                          onClick={() => handleSearchResultClick(result)}
-                          className="w-full text-left p-3 bg-stone-50 rounded-xl hover:bg-stone-100 transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              result.type === 'list' 
-                                ? 'bg-teal-100 text-teal-700' 
-                                : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                              {result.type === 'list' ? (
-                                <List className="w-4 h-4" />
-                              ) : (
-                                <span className="text-xs font-bold">I</span>
-                              )}
+                    
+                    {/* Group results: Lists first, then Items */}
+                    {(() => {
+                      const lists = searchResults.filter(r => r.type === 'list');
+                      const items = searchResults.filter(r => r.type === 'item');
+                      
+                      return (
+                        <div className="space-y-6">
+                          {/* Lists Section */}
+                          {lists.length > 0 && (
+                            <div>
+                              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+                                Lists ({lists.length})
+                              </div>
+                              <div className="space-y-2">
+                                {lists.map((result) => (
+                                  <button
+                                    key={`${result.type}-${result.id}`}
+                                    onClick={() => handleSearchResultClick(result)}
+                                    className="w-full text-left p-3 bg-teal-50 rounded-xl hover:bg-teal-100 transition-colors border border-teal-100"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-teal-100 text-teal-700">
+                                        <List className="w-4 h-4" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="font-medium text-gray-900">{result.name}</div>
+                                        <div className="text-sm text-gray-500">
+                                          {result.itemCount || 0} items
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">{result.name}</div>
-                              {result.type === 'list' && (
-                                <div className="text-sm text-gray-500">
-                                  {result.itemCount} items
-                                </div>
-                              )}
-                              {result.type === 'item' && (
-                                <div className="text-sm text-gray-500">
-                                  in {result.list}
-                                  {result.rating && (
-                                    <span className="ml-2">
-                                      ★ {Math.abs(result.rating)}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
+                          )}
+                          
+                          {/* Items Section */}
+                          {items.length > 0 && (
+                            <div>
+                              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+                                Items ({items.length})
+                              </div>
+                              <div className="space-y-2">
+                                {items.map((result) => (
+                                  <button
+                                    key={`${result.type}-${result.id}`}
+                                    onClick={() => handleSearchResultClick(result)}
+                                    className="w-full text-left p-3 bg-stone-50 rounded-xl hover:bg-stone-100 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-100 text-yellow-700">
+                                        <span className="text-xs font-bold">★</span>
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="font-medium text-gray-900">{result.name}</div>
+                                        <div className="text-sm text-gray-500">
+                                          in {result.list}
+                                          {result.rating && (
+                                            <span className="ml-2">
+                                              ★ {Math.abs(result.rating)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : !isSearching ? (
                   <div className="px-6 pb-6 text-center">

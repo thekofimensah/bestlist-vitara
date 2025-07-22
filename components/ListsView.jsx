@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { Plus, MoreHorizontal, Star, X, ArrowLeft } from 'lucide-react';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical } from 'lucide-react';
 
 const VerdictBadge = ({ verdict }) => {
   const getVerdictStyle = () => {
@@ -87,7 +87,8 @@ const ListRow = ({
   onItemImageTap, 
   onAddItem, 
   onListMenu, 
-  onListTitleTap 
+  onListTitleTap,
+  isReorderMode = false
 }) => {
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
   const sortedItems = allItems.sort((a, b) => {
@@ -104,27 +105,68 @@ const ListRow = ({
     return dateB - dateA;
   });
 
+  // Wiggle animation for reorder mode
+  const wiggleVariants = {
+    normal: {
+      rotate: 0,
+      x: 0,
+    },
+    wiggle: {
+      rotate: [-0.5, 0.5, -0.5, 0.5, 0],
+      x: [-1, 1, -1, 1, 0],
+      transition: {
+        duration: 0.5,
+        repeat: Infinity,
+        repeatType: "reverse",
+        ease: "easeInOut"
+      }
+    }
+  };
+
   return (
-    <div className="mb-6">
+    <motion.div 
+      className="mb-6"
+      variants={wiggleVariants}
+      animate={isReorderMode ? "wiggle" : "normal"}
+      layout
+    >
       {/* List Header */}
       <div className="flex items-center justify-between mb-3 px-6">
+        {/* Drag Handle - only visible in reorder mode */}
+        <AnimatePresence>
+          {isReorderMode && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              className="w-6 h-6 flex items-center justify-center text-gray-400 mr-2 cursor-grab active:cursor-grabbing"
+            >
+              <GripVertical className="w-4 h-4" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <button 
-          onClick={() => onListTitleTap(list)}
+          onClick={() => !isReorderMode && onListTitleTap(list)}
           className="flex-1 text-left"
+          disabled={isReorderMode}
         >
           <h3 className="text-base font-medium text-gray-900">{list.name}</h3>
           <p className="text-xs text-gray-500">{allItems.length} items</p>
         </button>
-        <button
-          onClick={() => onListMenu(list.id)}
-          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
+        
+        {!isReorderMode && (
+          <button
+            onClick={() => onListMenu(list.id)}
+            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      {/* Horizontal Scroll Container */}
-      <div className="overflow-x-auto">
+      {/* Horizontal Scroll Container - disabled in reorder mode */}
+      <div className={`overflow-x-auto ${isReorderMode ? 'pointer-events-none opacity-60' : ''}`}>
         <div className="flex gap-3 px-6" style={{ paddingRight: '24px' }}>
           {sortedItems.map((item) => (
             <ItemTile
@@ -145,16 +187,23 @@ const ListRow = ({
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [reorderedLists, setReorderedLists] = useState(lists);
   const scrollContainerRef = useRef(null);
   const savedScrollPosition = useRef(0);
   const hasScrolled = useRef(false);
+
+  // Update reordered lists when lists prop changes
+  useEffect(() => {
+    setReorderedLists(lists);
+  }, [lists]);
 
   // Restore scroll position on mount, but only if user has scrolled before
   useEffect(() => {
@@ -224,6 +273,26 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
+  const handleEnterReorderMode = () => {
+    setIsReorderMode(true);
+    // Add haptic feedback if available
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  };
+
+  const handleExitReorderMode = () => {
+    setIsReorderMode(false);
+    // Save the new order if it changed
+    if (onReorderLists && JSON.stringify(reorderedLists) !== JSON.stringify(lists)) {
+      onReorderLists(reorderedLists);
+    }
+  };
+
+  const handleReorder = (newOrder) => {
+    setReorderedLists(newOrder);
+  };
+
   return (
     <div 
       ref={scrollContainerRef}
@@ -250,28 +319,98 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           </div>
         ) : (
           <>
-            <div className="pt-4">
-              {lists.map((list) => (
-                <ListRow
-                  key={list.id}
-                  list={list}
-                  onItemTap={handleItemTap}
-                  onItemImageTap={handleItemImageTap}
-                  onAddItem={handleAddItem}
-                  onListMenu={handleListMenu}
-                  onListTitleTap={handleListTitleTap}
-                />
-              ))}
+            {/* Header with reorder button */}
+            <div className="flex items-center justify-between px-6 pt-4 pb-2">
+              <h2 className="text-xl font-semibold text-gray-900">Your Lists</h2>
+              <div className="flex items-center gap-2">
+                {isReorderMode ? (
+                  <button
+                    onClick={handleExitReorderMode}
+                    className="px-4 py-2 bg-teal-700 text-white rounded-full text-sm font-medium"
+                    style={{ backgroundColor: '#1F6D5A' }}
+                  >
+                    Done
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEnterReorderMode}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+                    title="Reorder lists"
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Floating New List Button */}
-            <button
-              onClick={() => setShowNewListDialog(true)}
-              className="fixed bottom-24 right-6 w-14 h-14 bg-teal-700 rounded-full flex items-center justify-center shadow-lg z-20"
-              style={{ backgroundColor: '#1F6D5A' }}
-            >
-              <Plus className="w-6 h-6 text-white" />
-            </button>
+            <div className="pt-2">
+              {isReorderMode ? (
+                <Reorder.Group
+                  axis="y"
+                  values={reorderedLists}
+                  onReorder={handleReorder}
+                  className="space-y-0"
+                >
+                  {reorderedLists.map((list) => (
+                    <Reorder.Item
+                      key={list.id}
+                      value={list}
+                      className="cursor-grab active:cursor-grabbing"
+                      whileDrag={{ 
+                        scale: 1.02,
+                        zIndex: 1000,
+                        boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+                        backgroundColor: "rgba(255,255,255,0.95)"
+                      }}
+                      dragElastic={0}
+                    >
+                      <ListRow
+                        list={list}
+                        onItemTap={handleItemTap}
+                        onItemImageTap={handleItemImageTap}
+                        onAddItem={handleAddItem}
+                        onListMenu={handleListMenu}
+                        onListTitleTap={handleListTitleTap}
+                        isReorderMode={isReorderMode}
+                      />
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
+              ) : (
+                <div>
+                  {reorderedLists.map((list) => (
+                    <ListRow
+                      key={list.id}
+                      list={list}
+                      onItemTap={handleItemTap}
+                      onItemImageTap={handleItemImageTap}
+                      onAddItem={handleAddItem}
+                      onListMenu={handleListMenu}
+                      onListTitleTap={handleListTitleTap}
+                      isReorderMode={isReorderMode}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Floating New List Button - hidden in reorder mode */}
+            <AnimatePresence>
+              {!isReorderMode && (
+                <motion.button
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  onClick={() => setShowNewListDialog(true)}
+                  className="fixed bottom-24 right-6 w-14 h-14 bg-teal-700 rounded-full flex items-center justify-center shadow-lg z-20"
+                  style={{ backgroundColor: '#1F6D5A' }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Plus className="w-6 h-6 text-white" />
+                </motion.button>
+              )}
+            </AnimatePresence>
           </>
         )}
       </div>

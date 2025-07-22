@@ -91,3 +91,14 @@ html, body {
   background-size: 200px 100%;
   animation: skeleton-shimmer 1.5s infinite;
 }
+
+/* Reorder mode enhancements */
+.reorder-item {
+  transition: all 0.2s ease;
+}
+
+.reorder-item:active {
+  transform: scale(1.02);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+

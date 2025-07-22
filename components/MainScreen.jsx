@@ -273,16 +273,37 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
       streamRef.current.getTracks().forEach(track => track.stop());
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: mode } } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          setVideoReady(true);
-          videoRef.current?.play();
-        };
+      const constraints = {
+        video: {
+          facingMode: { exact: mode },
+          torch: flashEnabled // This may not work on all devices
+        }
+      };
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            setVideoReady(true);
+            videoRef.current?.play();
+          };
+        }
+        setError(null);
+      } catch (err) {
+        // Fallback without torch constraint
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: mode } } });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            setVideoReady(true);
+            videoRef.current?.play();
+          };
+        }
+        setError(null);
       }
-      setError(null);
     } catch (err) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
@@ -301,6 +322,23 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     }
   };
 
+  // Toggle flash/torch
+  const toggleFlash = async () => {
+    try {
+      if (streamRef.current) {
+        const videoTrack = streamRef.current.getVideoTracks()[0];
+        if (videoTrack && 'torch' in videoTrack.getCapabilities()) {
+          await videoTrack.applyConstraints({
+            advanced: [{ torch: !flashEnabled }]
+          });
+        }
+      }
+    } catch (error) {
+      console.log('Torch not supported on this device');
+    }
+    setFlashEnabled(!flashEnabled);
+  };
+
   useEffect(() => {
     startCamera(facingMode);
     return () => {
@@ -309,7 +347,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
       }
     };
     // eslint-disable-next-line
-  }, [facingMode]);
+  }, [facingMode, flashEnabled]);
 
   // Get location on component mount
   useEffect(() => {
@@ -389,8 +427,13 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
               setInvalidImageNotification(null);
             }, 4000);
           } else {
-            // Regular error handling for other issues
-            setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+            // Regular error handling for other issues (network, API failures, etc.)
+            setCapturedImage(prev => ({ 
+              ...prev, 
+              uploading: false, 
+              aiProcessing: false,
+              aiError: error.message 
+            }));
           }
         }
       }, 100);
@@ -412,13 +455,26 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   };
 
   // Handle closing modals
-  const handleModalClose = async () => {
+  const handleModalClose = async (reason) => {
     if (capturedImage?.filename && !wasSaved) {
       await deletePhotoEverywhere(capturedImage.filename);
     }
     setShowModal(false);
     setCapturedImage(null);
     setWasSaved(false);
+    
+    // Show AI error notification if needed
+    if (reason === 'ai_error') {
+      setInvalidImageNotification({
+        message: 'AI analysis failed',
+        subMessage: 'Network issue or image couldn\'t be processed. Please try again.'
+      });
+      
+      // Auto-hide notification after 4 seconds
+      setTimeout(() => {
+        setInvalidImageNotification(null);
+      }, 4000);
+    }
   };
 
   const handleSave = (...args) => {
@@ -496,8 +552,13 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
                     setInvalidImageNotification(null);
                   }, 4000);
                 } else {
-                  // Regular error handling for other issues
-                  setCapturedImage(prev => ({ ...prev, uploading: false, aiProcessing: false }));
+                  // Regular error handling for other issues (network, API failures, etc.)
+                  setCapturedImage(prev => ({ 
+                    ...prev, 
+                    uploading: false, 
+                    aiProcessing: false,
+                    aiError: error.message 
+                  }));
                 }
               }
             }, 100);
@@ -580,20 +641,24 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
 
           {/* Camera Controls */}
           <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center">
-            <div className="flex items-center gap-8">
-              {/* Flash Toggle */}
-              <button
-                onClick={() => setFlashEnabled(!flashEnabled)}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                  flashEnabled 
-                    ? 'bg-yellow-400 text-gray-900' 
-                    : 'bg-black bg-opacity-30 text-white backdrop-blur-sm border border-white border-opacity-20'
-                }`}
-              >
-                <Zap className="w-5 h-5" />
-              </button>
+            <div className="flex items-center justify-center gap-8 w-full">
+              {/* Left side - Flash Toggle or spacer */}
+              <div className="w-9 h-9 flex items-center justify-center">
+                {facingMode === 'environment' && (
+                  <button
+                    onClick={toggleFlash}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+                      flashEnabled 
+                        ? 'bg-yellow-400 text-gray-900' 
+                        : 'bg-black bg-opacity-30 text-white backdrop-blur-sm border border-white border-opacity-20'
+                    }`}
+                  >
+                    <Zap className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
 
-              {/* Shutter Button */}
+              {/* Center - Shutter Button */}
               <button
                 onClick={handleCapture}
                 className="w-18 h-18 bg-white rounded-full border-4 border-white border-opacity-30 flex items-center justify-center transition-transform active:scale-95"
@@ -604,13 +669,15 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
                 </div>
               </button>
 
-              {/* Gallery Upload */}
-              <button
-                onClick={handleGalleryUpload}
-                className="w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all hover:bg-black hover:bg-opacity-50 border border-white border-opacity-20"
-              >
-                <Image className="w-5 h-5" />
-              </button>
+              {/* Right side - Gallery Upload */}
+              <div className="w-9 h-9 flex items-center justify-center">
+                <button
+                  onClick={handleGalleryUpload}
+                  className="w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all hover:bg-black hover:bg-opacity-50 border border-white border-opacity-20"
+                >
+                  <Image className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -689,6 +756,7 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           onSave={handleSave}
           aiMetadata={capturedImage?.aiMetadata}
           isAIProcessing={capturedImage?.aiProcessing}
+          aiError={capturedImage?.aiError}
           onCreateList={onCreateList}
           showRatingFirst={true}
           photoMetadata={capturedImage?.photoMetadata}

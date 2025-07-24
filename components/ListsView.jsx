@@ -2,26 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical } from 'lucide-react';
 
-const VerdictBadge = ({ verdict }) => {
-  const getVerdictStyle = () => {
-    switch (verdict) {
-      case 'AVOID':
-        return 'bg-red-50 text-red-700 border-red-100';
-      case 'LOVE':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
-      case 'RETRY':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-100';
-    }
-  };
-
-  return (
-    <span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${getVerdictStyle()}`}>
-      {verdict}
-    </span>
-  );
-};
 
 const StarRating = ({ rating }) => {
   return (
@@ -39,6 +19,7 @@ const ItemTile = ({
   onImageTap,
   onLongPress 
 }) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
   if (isAddTile) {
     return (
       <div
@@ -61,17 +42,26 @@ const ItemTile = ({
       style={{ width: '104px' }}
     >
       <div className="relative">
+        {!imageLoaded && (
+          <div 
+            className="w-26 h-26 bg-gray-200 rounded-2xl animate-pulse"
+            style={{ width: '104px', height: '104px' }}
+          />
+        )}
         <img
           src={item.image_url || item.image}
           alt={item.name}
-          className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
+          loading="lazy"
+          className={`w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all ${
+            imageLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'
+          }`}
           style={{ width: '104px', height: '104px' }}
+          onLoad={() => setImageLoaded(true)}
           onClick={(e) => {
             e.stopPropagation();
             onImageTap?.(item);
           }}
         />
-        <VerdictBadge verdict={verdict} />
         {item.rating && <StarRating rating={item.rating} />}
       </div>
       <div className="mt-2" onClick={onTap}>

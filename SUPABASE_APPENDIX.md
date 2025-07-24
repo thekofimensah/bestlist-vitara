@@ -30,15 +30,50 @@ CREATE TABLE IF NOT EXISTS public.items (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   list_id UUID REFERENCES public.lists(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  
+  -- Legacy fields for compatibility
   type TEXT,
   species TEXT,
   certainty INTEGER,
   tags TEXT[],
+  category TEXT,
+  
+  -- Core display fields
   image_url TEXT,
   rating INTEGER,
   notes TEXT,
   location TEXT,
   is_stay_away BOOLEAN DEFAULT FALSE,
+  
+  -- AI Metadata fields
+  ai_product_name TEXT,
+  ai_brand TEXT,
+  ai_category TEXT,
+  ai_confidence INTEGER,
+  ai_description TEXT,
+  ai_tags TEXT[],
+  ai_allergens TEXT[],
+  ai_lookup_status TEXT,
+  
+  -- User Override fields
+  user_product_name TEXT,
+  user_description TEXT,
+  user_tags TEXT[],
+  
+  -- Location and Photo Metadata
+  place_name TEXT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  photo_date_time TIMESTAMP WITH TIME ZONE,
+  photo_location_source TEXT,
+  
+  -- Additional structured fields
+  detailed_breakdown JSONB,
+  rarity INTEGER DEFAULT 1,
+  price DECIMAL(10, 2),
+  currency_code TEXT DEFAULT 'USD',
+  
+  -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -395,3 +430,69 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 - Custom metadata (location, device info, preferences) should be added via your app code
 - The foreign key should always reference `auth.users`, not the custom `users` table
 - The custom `users` table is for additional metadata, not for authentication 
+
+### Critical Performance Indexes (REQUIRED)
+**⚠️ URGENT: Run these to fix 22+ second query times:**
+
+```sql
+-- Essential indexes for performance
+CREATE INDEX IF NOT EXISTS idx_lists_user_id ON public.lists(user_id);
+CREATE INDEX IF NOT EXISTS idx_lists_created_at ON public.lists(created_at DESC);
+
+-- CRITICAL: Items table indexes (fixes 22 second queries)
+CREATE INDEX IF NOT EXISTS idx_items_list_id ON public.items(list_id);
+CREATE INDEX IF NOT EXISTS idx_items_created_at ON public.items(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_items_list_created ON public.items(list_id, created_at DESC);
+
+-- Additional performance indexes
+CREATE INDEX IF NOT EXISTS idx_items_user_lists ON public.items(list_id) 
+  INCLUDE (id, name, rating, is_stay_away, created_at);
+```
+
+### Update Existing Database Schema
+**⚠️ REQUIRED: Add missing fields to existing items table:**
+
+```sql
+-- Add AI Metadata fields
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_product_name TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_brand TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_category TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_confidence INTEGER;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_description TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_tags TEXT[];
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_allergens TEXT[];
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS ai_lookup_status TEXT;
+
+-- Add User Override fields
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS user_product_name TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS user_description TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS user_tags TEXT[];
+
+-- Add Location and Photo Metadata
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS place_name TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS photo_date_time TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS photo_location_source TEXT;
+
+-- Add Additional structured fields
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS detailed_breakdown JSONB;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS rarity INTEGER DEFAULT 1;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS price DECIMAL(10, 2);
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS currency_code TEXT DEFAULT 'USD';
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS category TEXT;
+
+-- Add updated_at if missing
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+```
+
+### Database Timeout Settings
+**⚠️ URGENT: Increase database timeout for slow connections:**
+
+```sql
+-- Increase statement timeout for current session (temporary fix)
+SET statement_timeout = '60s';
+
+-- For permanent setting, contact Supabase support or upgrade plan
+-- Alternatively, these settings may be available in Dashboard → Settings → Database
+``` 

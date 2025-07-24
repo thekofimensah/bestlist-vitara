@@ -70,7 +70,18 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
-  const { lists, loading: listsLoading, addItemToList, updateItemInList, refreshLists, createList, reorderLists } = useLists(user?.id);
+  const { 
+    lists, 
+    loading: listsLoading, 
+    addItemToList, 
+    updateItemInList, 
+    refreshLists, 
+    createList, 
+    reorderLists,
+    retryCount,
+    connectionError,
+    isRetrying 
+  } = useLists(user?.id);
   const [editingItem, setEditingItem] = useState(null);
   const [editingList, setEditingList] = useState(null);
 
@@ -230,13 +241,27 @@ const App = () => {
   };
 
   const handleUpdateItem = async (item) => {
-    setImagesLoading(true);
-    await updateItemInList(item.id, item);
-    setImagesLoading(false);
-    setEditingItem(null);
-    if (selectedList) {
-      refreshLists();
+    console.log('🔧 [App] handleUpdateItem called with item:', JSON.stringify({
+      id: item?.id,
+      name: item?.name,
+      hasId: !!item?.id,
+      keys: Object.keys(item || {})
+    }, null, 2));
+    
+    // Don't show loading state for updates since they're optimistic
+    setEditingItem(null); // Close modal immediately for instant feedback
+    
+    try {
+      // For updates, we don't need to specify listIds since we're updating by item ID
+      // The item should contain its current list_id already
+      await updateItemInList([], item); // Empty array for listIds since we're updating existing item
+      console.log('✅ Item update completed successfully');
+    } catch (error) {
+      console.error('❌ Item update failed:', error);
+      // Could show a toast notification here for failed updates
     }
+    
+    // No need to refresh lists since updateItemInList handles optimistic updates
   };
 
   const handleEditItem = (item, list) => {
@@ -356,6 +381,45 @@ const App = () => {
     );
   }
 
+  // Connection Status Component
+  const ConnectionStatus = () => {
+    if (!connectionError && !isRetrying) return null;
+
+    return (
+      <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-50 border-b border-yellow-200 px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isRetrying ? (
+              <>
+                <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-sm text-yellow-800">
+                  Reconnecting... (attempt {retryCount})
+                </span>
+              </>
+            ) : connectionError?.fatal ? (
+              <>
+                <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                <span className="text-sm text-red-800">Connection failed</span>
+              </>
+            ) : (
+              <>
+                <div className="w-4 h-4 bg-yellow-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-yellow-800">
+                  Retrying in {connectionError?.nextRetryIn}s...
+                </span>
+              </>
+            )}
+          </div>
+          {connectionError?.code && (
+            <span className="text-xs text-yellow-600">
+              {connectionError.code}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Show auth view if no user
   if (!user) {
     return <AuthView />;
@@ -371,8 +435,17 @@ const App = () => {
         minHeight: '100dvh', // Dynamic viewport height for mobile (fallback to 100vh if not supported)
       }}
     >
+      {/* Connection Status Bar */}
+      <ConnectionStatus />
+      
       {/* Header */}
-      <div className="sticky top-0 bg-stone-50 z-10 pt-8 pb-2" style={{ backgroundColor: '#F6F6F4' }}>
+      <div 
+        className="sticky bg-stone-50 z-10 pt-8 pb-2" 
+        style={{ 
+          backgroundColor: '#F6F6F4',
+          top: (connectionError || isRetrying) ? '48px' : '0'
+        }}
+      >
         <div className="px-4 mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
@@ -411,7 +484,7 @@ const App = () => {
         <div className="flex items-center justify-around">
           <button
             onClick={() => navigateToScreen('home')}
-            className={`flex flex-col items-center gap-1 px-4 py-2 transition-all ${
+            className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors duration-150 ${
               currentScreen === 'home'
                 ? 'text-teal-700'
                 : 'text-gray-500 hover:text-gray-700'
@@ -424,7 +497,7 @@ const App = () => {
 
           <button
             onClick={() => navigateToScreen('lists')}
-            className={`flex flex-col items-center gap-1 px-4 py-2 transition-all ${
+            className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors duration-150 ${
               currentScreen === 'lists' || currentScreen === 'list-detail' || currentScreen === 'item-detail'
                 ? 'text-teal-700'
                 : 'text-gray-500 hover:text-gray-700'
@@ -437,7 +510,7 @@ const App = () => {
 
           <button
             onClick={() => navigateToScreen('profile')}
-            className={`flex flex-col items-center gap-1 px-4 py-2 transition-all ${
+            className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors duration-150 ${
               currentScreen === 'profile'
                 ? 'text-teal-700'
                 : 'text-gray-500 hover:text-gray-700'
@@ -456,7 +529,10 @@ const App = () => {
           image={editingItem.image_url || editingItem.image}
                     lists={lists}
           onClose={() => setEditingItem(null)}
-          onSave={editingItem.id ? handleUpdateItem : handleAddItem}
+                      onSave={editingItem.id ? 
+              ((selectedListIds, item, isStayAway) => handleUpdateItem(item)) : 
+              handleAddItem
+            }
           item={editingItem}
                     onCreateList={handleCreateList}
                   />

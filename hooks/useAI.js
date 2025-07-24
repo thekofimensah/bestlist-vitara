@@ -138,14 +138,21 @@ Focus on food and beverage products, household items, and consumer goods.`;
         }
 
         // Return data in the format expected by the app
-        return {
+        const aiResult = {
           productName: aiData.product || aiData.name || 'Unknown Product',
+          brand: aiData.brand || '',
+          category: aiData.category || aiData.type || '',
           species: aiData.description || 'Unknown',
           certainty: Math.round((aiData.confidence || 0) * 100),
           tags: aiData.tags || ['Untagged'],
           productType: aiData.category || 'Unknown',
           allergens: aiData.allergens || []
         };
+
+        console.log('🤖 [AI] Raw AI response from server:', JSON.stringify(aiData, null, 2));
+        console.log('🤖 [AI] Formatted result for app:', JSON.stringify(aiResult, null, 2));
+
+        return aiResult;
       } catch (err) {
         // If it's a retry attempt and still failing, bubble up the error
         if (attempt >= maxAttempts || !err.message.includes('503')) {

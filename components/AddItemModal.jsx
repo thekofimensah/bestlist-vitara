@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
+import { RatingOverlay } from './Elements';
 import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { RatingOverlay } from './Elements';
 import { 
   allCurrencies, 
   getCurrencyInfo, 
@@ -181,7 +181,8 @@ const AddItemModal = ({
   showRatingFirst = false,
   onUpdateAI,
   photoMetadata,
-  aiError
+  aiError,
+  onRetryAI
 }) => {
   
   const [currentImage, setCurrentImage] = useState(image); // image shown & saved
@@ -273,9 +274,9 @@ const AddItemModal = ({
     if (aiMetadata?.productName) return aiMetadata.productName;
     return initialState?.productName ?? item?.name ?? '';
   });
-  const [productType, setProductType] = useState(() => {
-    if (aiMetadata?.productType) return aiMetadata.productType;
-    return initialState?.productType ?? item?.type ?? '';
+  const [category, setCategory] = useState(() => {
+    if (aiMetadata?.category) return aiMetadata.category;
+    return initialState?.category ?? item?.category ?? '';
   });
   const [tags, setTags] = useState(() => {
     if (aiMetadata?.tags) return aiMetadata.tags;
@@ -385,14 +386,108 @@ const AddItemModal = ({
   });
   const [qualityOverview, setQualityOverview] = useState('');
 
-  // Mock attributes for detailed breakdown
-  const [attributes, setAttributes] = useState({
-    aroma: 3,
-    texture: 3,
-    freshness: 3,
-    balance: 3,
-    value: 3
-  });
+  // Replace the static attributes state with a dynamic system
+  const [newAttributeName, setNewAttributeName] = useState('');
+  const [showAddAttribute, setShowAddAttribute] = useState(false);
+
+  // Get default attributes for a list (remember user preferences)
+  const getListAttributes = useCallback((listId) => {
+    try {
+      const saved = localStorage.getItem(`listAttributes_${listId}`);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error('Error loading list attributes:', error);
+    }
+    
+    // Default attributes (removed "balance")
+    return ['aroma', 'texture', 'freshness', 'value'];
+  }, []);
+
+  // Save list attributes to localStorage
+  const saveListAttributes = useCallback((listId, attributes) => {
+    try {
+      localStorage.setItem(`listAttributes_${listId}`, JSON.stringify(attributes));
+    } catch (error) {
+      console.error('Error saving list attributes:', error);
+    }
+  }, []);
+
+  // Dynamic attributes state
+  const [attributes, setAttributes] = useState({});
+  const [attributeNames, setAttributeNames] = useState([]);
+
+  // Update attributes when selected lists change
+  useEffect(() => {
+    if (selectedLists.length > 0) {
+      const primaryListId = selectedLists[0]; // Use first selected list for attributes
+      const listAttributeNames = getListAttributes(primaryListId);
+      setAttributeNames(listAttributeNames);
+      
+      // Initialize attribute values from existing item or default to rating
+      const initialAttributes = {};
+      listAttributeNames.forEach(name => {
+        initialAttributes[name] = item?.detailed_breakdown?.[name] || rating || 3;
+      });
+      setAttributes(initialAttributes);
+    }
+  }, [selectedLists, getListAttributes, item?.detailed_breakdown, rating]);
+
+  // Sync attributes with overall rating when user changes rating
+  useEffect(() => {
+    if (rating > 0 && attributeNames.length > 0) {
+      const updatedAttributes = {};
+      attributeNames.forEach(name => {
+        updatedAttributes[name] = rating;
+      });
+      setAttributes(updatedAttributes);
+    }
+  }, [rating, attributeNames]);
+
+  // Handle attribute value change
+  const handleAttributeChange = (attribute, value) => {
+    setAttributes(prev => ({
+      ...prev,
+      [attribute]: value
+    }));
+  };
+
+  // Add new custom attribute
+  const addCustomAttribute = () => {
+    if (newAttributeName.trim() && !attributeNames.includes(newAttributeName.trim().toLowerCase())) {
+      const newName = newAttributeName.trim().toLowerCase();
+      const updatedNames = [...attributeNames, newName];
+      setAttributeNames(updatedNames);
+      setAttributes(prev => ({
+        ...prev,
+        [newName]: rating || 3
+      }));
+      
+      // Save to localStorage for the primary list
+      if (selectedLists.length > 0) {
+        saveListAttributes(selectedLists[0], updatedNames);
+      }
+      
+      setNewAttributeName('');
+      setShowAddAttribute(false);
+    }
+  };
+
+  // Remove attribute
+  const removeAttribute = (attributeName) => {
+    const updatedNames = attributeNames.filter(name => name !== attributeName);
+    setAttributeNames(updatedNames);
+    
+    const updatedAttributes = { ...attributes };
+    delete updatedAttributes[attributeName];
+    setAttributes(updatedAttributes);
+    
+    // Save to localStorage for the primary list
+    if (selectedLists.length > 0) {
+      saveListAttributes(selectedLists[0], updatedNames);
+    }
+  };
 
   // Initialize active tags from AI metadata or existing tags
   useEffect(() => {
@@ -442,7 +537,7 @@ const AddItemModal = ({
   useEffect(() => {
     if (aiMetadata) {
       setProductName(aiMetadata.productName);
-      setProductType(aiMetadata.productType);
+      setCategory(aiMetadata.category);
       setTags(aiMetadata.tags);
       setCertainty(aiMetadata.certainty);
       setActiveTags(aiMetadata.tags || []);
@@ -479,17 +574,69 @@ const AddItemModal = ({
         rating,
         notes,
         productName,
-        productType,
+        category,
         tags: activeTags,
         certainty,
         location,
       });
     }
     // eslint-disable-next-line
-  }, [selectedLists, rating, notes, productName, productType, activeTags, certainty, location]);
+  }, [selectedLists, rating, notes, productName, category, activeTags, certainty, location]);
 
   const handleSave = () => {
     console.log('🔍 Save button clicked');
+    
+    // Validate required fields
+    const errors = {};
+    
+    if (!productName.trim()) {
+      errors.productName = 'Required';
+    }
+    
+    if (selectedLists.length === 0) {
+      errors.selectedLists = 'Please select at least one list';
+    }
+    
+    // If there are validation errors, show them and scroll to first error
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setShowValidationErrors(true);
+      
+      // Scroll to the first error field
+      setTimeout(() => {
+        if (errors.productName && productNameRef.current) {
+          productNameRef.current.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+          productNameRef.current.focus();
+        } else if (errors.selectedLists && listsRef.current) {
+          listsRef.current.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }
+      }, 100);
+      
+      // Add haptic feedback if available
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
+      
+      // Clear validation errors after 5 seconds
+      setTimeout(() => {
+        setShowValidationErrors(false);
+        setValidationErrors({});
+      }, 5000);
+      
+      return;
+    }
+    
+    // Clear any existing validation errors
+    setValidationErrors({});
+    setShowValidationErrors(false);
+    
+    console.log('🔍 Validation passed, proceeding with save');
     console.log('🔍 selectedLists:', selectedLists);
     console.log('🔍 selectedLists type:', typeof selectedLists);
     console.log('🔍 selectedLists isArray:', Array.isArray(selectedLists));
@@ -497,13 +644,29 @@ const AddItemModal = ({
     console.log('🔍 rating:', rating);
     console.log('🔍 selectedLists.length:', selectedLists.length);
     
-    if (selectedLists.length === 0) return;
-    console.log('🔍 Validation passed, proceeding with save');
-    
     const isStayAway = rating <= 2;
     const newItem = buildItem({
+      // Preserve item ID if editing
+      id: item?.id,
+      
+      // AI Metadata from aiMetadata
+      ai_product_name: aiMetadata?.productName,
+      ai_brand: aiMetadata?.brand,
+      ai_category: aiMetadata?.category,
+      ai_confidence: aiMetadata?.certainty,
+      ai_description: aiMetadata?.description,
+      ai_tags: aiMetadata?.tags,
+      ai_allergens: aiMetadata?.allergens,
+      ai_lookup_status: aiError ? 'error' : 'success',
+      
+      // User overrides
+      user_product_name: productName,
+      user_description: qualityOverview,
+      user_tags: activeTags,
+      
+      // Core fields
       productName,
-      productType,
+      category,
       certainty,
       tags: activeTags,
       image: currentImage,
@@ -513,7 +676,15 @@ const AddItemModal = ({
       place,
       location,
       price: editPrice || null,
-      currency_code: currency || 'USD'
+      currency_code: currency || 'USD',
+      detailed_breakdown: attributes,
+      rarity,
+      
+      // Photo metadata from photoMetadata if available
+      photo_date_time: photoMetadata?.dateTime,
+      photo_location_source: getPhotoLocationSource(),
+      latitude: photoMetadata?.latitude,
+      longitude: photoMetadata?.longitude
     });
     console.log('🔍 Built item:', newItem);
     console.log('🔍 Built item JSON:', JSON.stringify(newItem, null, 2));
@@ -602,6 +773,31 @@ const AddItemModal = ({
     return labels[rating] || '';
   };
 
+  // Determine photo location source based on available data
+  const getPhotoLocationSource = () => {
+    // If we have EXIF GPS data, it came from the photo
+    if (photoMetadata?.hasEXIF && (photoMetadata?.latitude || photoMetadata?.longitude)) {
+      console.log('📍 [Location] Source: EXIF (GPS data from photo)');
+      return 'exif';
+    }
+    
+    // If user manually entered a location (not just device location)
+    if (locationManuallySet || (location && location !== 'Current Location' && location !== photoMetadata?.location)) {
+      console.log('📍 [Location] Source: Manual (user entered)');
+      return 'manual';
+    }
+    
+    // If we used device location during capture
+    if (photoMetadata?.location || location === 'Current Location') {
+      console.log('📍 [Location] Source: Device (current GPS)');
+      return 'device';
+    }
+    
+    // Default to manual if no specific source can be determined
+    console.log('📍 [Location] Source: Manual (default)');
+    return 'manual';
+  };
+
   const handlePriceEdit = () => {
     setIsEditingPrice(true);
   };
@@ -679,13 +875,6 @@ const AddItemModal = ({
   };
 
 
-
-  const handleAttributeChange = (attribute, value) => {
-    setAttributes(prev => ({
-      ...prev,
-      [attribute]: value
-    }));
-  };
 
   // Get device location with improved error handling
   const getCurrentLocation = async () => {
@@ -824,6 +1013,31 @@ const AddItemModal = ({
     }
   };
 
+  // Add a function to reset to default attributes
+  const resetToDefaultAttributes = () => {
+    const defaultAttributes = ['aroma', 'texture', 'freshness', 'value'];
+    setAttributeNames(defaultAttributes);
+    
+    const resetAttributes = {};
+    defaultAttributes.forEach(name => {
+      resetAttributes[name] = rating || 3;
+    });
+    setAttributes(resetAttributes);
+    
+    // Save to localStorage for the primary list
+    if (selectedLists.length > 0) {
+      saveListAttributes(selectedLists[0], defaultAttributes);
+    }
+  };
+
+  // Add validation state
+  const [validationErrors, setValidationErrors] = useState({});
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
+
+  // Refs for scrolling to validation errors
+  const productNameRef = useRef(null);
+  const listsRef = useRef(null);
+
   return (
     <div 
       className="fixed inset-0 bg-stone-50 z-50 overflow-y-auto modal-overlay" 
@@ -850,14 +1064,23 @@ const AddItemModal = ({
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Analysis Failed</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Unable to analyze this image. You can still add it manually using the back button.
+                {typeof aiError === 'string' ? aiError : 'Unable to analyze this image.'}
               </p>
-              <button
-                onClick={() => onClose('ai_error')}
-                className="w-full px-4 py-2 bg-red-600 text-white rounded-xl font-medium"
-              >
-                Go Back to Camera
-              </button>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={onRetryAI}
+                  className="w-full px-4 py-2 bg-teal-700 text-white rounded-xl font-medium"
+                  style={{ backgroundColor: '#1F6D5A' }}
+                >
+                  Retry Analysis
+                </button>
+                <button
+                  onClick={() => onClose()}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium"
+                >
+                  Add Manually
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1081,11 +1304,26 @@ const AddItemModal = ({
                   <div className="h-7 bg-gray-200 rounded-lg flex-1 skeleton-shimmer"></div>
                 ) : (
                   <input
+                    ref={productNameRef}
                     type="text"
                     value={productName}
-                    onChange={(e) => setProductName(e.target.value)}
-                    className="text-xl font-semibold text-gray-900 bg-transparent border-none outline-none flex-1 placeholder:text-base placeholder:font-normal placeholder:text-gray-400"
+                    onChange={(e) => {
+                      setProductName(e.target.value);
+                      // Clear validation error when user starts typing
+                      if (showValidationErrors && validationErrors.productName) {
+                        setValidationErrors(prev => ({ ...prev, productName: null }));
+                      }
+                    }}
+                    className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none flex-1 placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
+                      showValidationErrors && validationErrors.productName 
+                        ? 'ring-2 ring-red-500 ring-opacity-50 rounded-lg px-2 py-1 bg-red-50' 
+                        : ''
+                    }`}
                     placeholder="Product name..."
+                    autoComplete="off"
+                    autoCorrect="on"
+                    autoCapitalize="words"
+                    spellCheck="true"
                   />
                 )}
                 {!isAIProcessing && aiMetadata && (
@@ -1096,6 +1334,13 @@ const AddItemModal = ({
                   </div>
                 )}
               </div>
+              
+              {/* Product name validation error */}
+              {showValidationErrors && validationErrors.productName && (
+                <div className="mt-1 text-red-600 text-sm font-medium">
+                  {validationErrors.productName}
+                </div>
+              )}
               
               {/* Overall Rating Section - moved here */}
               <div className="mb-4">
@@ -1121,22 +1366,117 @@ const AddItemModal = ({
                 
                 {showDetailedAttributes && !isAIProcessing && (
                   <div className="mt-4 space-y-4 bg-stone-50 rounded-xl p-4" style={{ backgroundColor: '#F1F1EF' }}>
-                    {Object.entries(attributes).map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600 capitalize">{key}</span>
+                    {/* Existing attributes */}
+                    {attributeNames.map((attributeName) => (
+                      <div key={attributeName} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600 capitalize">{attributeName}</span>
+                          {/* Remove button - only show if more than 1 attribute */}
+                          {attributeNames.length > 1 && (
+                            <button
+                              onClick={() => removeAttribute(attributeName)}
+                              className="ml-1 w-4 h-4 flex items-center justify-center hover:bg-red-100 rounded-full text-gray-300 hover:text-red-500 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3">
                           <RatingDots 
-                            rating={value} 
-                            onChange={(newValue) => handleAttributeChange(key, newValue)}
+                            rating={attributes[attributeName] || 3} 
+                            onChange={(newValue) => handleAttributeChange(attributeName, newValue)}
                           />
-                          <span className="text-sm text-gray-500 w-3 font-medium">{value}</span>
+                          <span className="text-sm text-gray-500 w-3 font-medium">{attributes[attributeName] || 3}</span>
                         </div>
                       </div>
                     ))}
+                    
+                    {/* Add new attribute and reset to default */}
+                    <div className="pt-2 border-t border-gray-200">
+                      {showAddAttribute ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newAttributeName}
+                            onChange={(e) => setNewAttributeName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') addCustomAttribute();
+                              else if (e.key === 'Escape') {
+                                setShowAddAttribute(false);
+                                setNewAttributeName('');
+                              }
+                            }}
+                            placeholder="Attribute name..."
+                            className="flex-1 px-2 py-1 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
+                            autoFocus
+                          />
+                          <button
+                            onClick={addCustomAttribute}
+                            className="px-3 py-1 bg-teal-700 text-white rounded-lg text-sm hover:bg-teal-800 transition-colors"
+                            style={{ backgroundColor: '#1F6D5A' }}
+                          >
+                            Add
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowAddAttribute(false);
+                              setNewAttributeName('');
+                            }}
+                            className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {/* + button matching the style from tags section */}
+                          <button
+                            onClick={() => setShowAddAttribute(true)}
+                            className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap hover:bg-teal-200 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          
+                          {/* Reset to default button */}
+                          <button
+                            onClick={resetToDefaultAttributes}
+                            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap hover:bg-gray-200 transition-colors"
+                            title="Reset to default attributes"
+                          >
+                            <div className="flex items-center gap-1">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              <span>Reset</span>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 
-                <div className="flex items-center gap-3 mt-4">
+              </div>
+            </div>
+
+            {/* Personal Notes */}
+            <div className="mb-2 mt-2">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Your Notes</h3>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={isAIProcessing}
+                placeholder="Add your personal thoughts, memories, or additional notes..."
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
+                rows={3}
+                autoComplete="off"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck="true"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 mt-4 mb-4">
                   <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
                     <span>Rarity:</span>
                     <div className="flex items-center bg-gray-100 rounded-lg px-1 py-0.5">
@@ -1160,29 +1500,14 @@ const AddItemModal = ({
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Personal Notes */}
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Your Notes</h3>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={isAIProcessing}
-                placeholder="Add your personal thoughts, memories, or additional notes..."
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
-                rows={3}
-              />
-            </div>
 
             {/* AI Summary & Details Section */}
-            <div className="mb-6">
+            <div className="mb-6 mt-2">
               <button
                 onClick={() => setShowAISummary(!showAISummary)}
                 className="flex items-center justify-between w-full p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
               >
-                <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-teal-600" />
                   <span className="text-sm font-medium text-gray-900">AI Summary & Details</span>
                 </div>
@@ -1214,6 +1539,10 @@ const AddItemModal = ({
                       }
                       className="w-full text-sm text-gray-700 leading-relaxed bg-white border border-gray-200 rounded-lg p-3 outline-none focus:border-teal-700 resize-none"
                       rows={3}
+                      autoComplete="off"
+                      autoCorrect="on"
+                      autoCapitalize="sentences"
+                      spellCheck="true"
                     />
                   </div>
                   
@@ -1246,16 +1575,6 @@ const AddItemModal = ({
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-medium text-gray-900">Location</h3>
-                  {photoMetadata?.location && (
-                    <div className="flex items-center gap-1 bg-blue-50 rounded-full px-2 py-0.5">
-                      <span className="text-xs text-blue-600 font-medium">📷 From Photo</span>
-                    </div>
-                  )}
-                  {photoMetadata?.dateTime && (
-                    <div className="flex items-center gap-1 bg-green-50 rounded-full px-2 py-0.5">
-                      <span className="text-xs text-green-600 font-medium">🕒 {new Date(photoMetadata.dateTime).toLocaleDateString()}</span>
-                    </div>
-                  )}
                 </div>
               </div>
               <div className="flex gap-3">
@@ -1267,6 +1586,10 @@ const AddItemModal = ({
                     onChange={(e) => setPlace(e.target.value)}
                     placeholder="Place name.."
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
+                    autoComplete="off"
+                    autoCorrect="on"
+                    autoCapitalize="words"
+                    spellCheck="true"
                   />
                 </div>
                 
@@ -1285,6 +1608,10 @@ const AddItemModal = ({
                               placeholder="Search location..."
                               className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
                               autoFocus
+                              autoComplete="off"
+                              autoCorrect="on"
+                              autoCapitalize="words"
+                              spellCheck="true"
                             />
                             <MapPin className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
                             {isSearchingLocation && (
@@ -1408,11 +1735,27 @@ const AddItemModal = ({
 
             {/* List Selection */}
             <div className="mb-16" ref={listDropdownRef}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-900">Select lists</h3>
+              <div className="flex items-center justify-between mb-3" ref={listsRef}>
+                <h3 className={`text-sm font-medium ${
+                  showValidationErrors && validationErrors.selectedLists 
+                    ? 'text-red-600' 
+                    : 'text-gray-900'
+                }`}>
+                  Select lists {showValidationErrors && validationErrors.selectedLists && '*'}
+                </h3>
                 <button
-                  onClick={() => setShowListDropdown(!showListDropdown)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm relative"
+                  onClick={() => {
+                    setShowListDropdown(!showListDropdown);
+                    // Clear validation error when user interacts
+                    if (showValidationErrors && validationErrors.selectedLists) {
+                      setValidationErrors(prev => ({ ...prev, selectedLists: null }));
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm relative transition-colors ${
+                    showValidationErrors && validationErrors.selectedLists
+                      ? 'bg-red-100 text-red-700 border-2 border-red-500'
+                      : 'bg-gray-100'
+                  }`}
                 >
                   {showListDropdown && (
                     <button
@@ -1430,6 +1773,13 @@ const AddItemModal = ({
                   <ChevronDown className={`w-4 h-4 transition-transform ${showListDropdown ? 'rotate-180' : ''}`} />
                 </button>
               </div>
+
+              {/* List selection validation error */}
+              {showValidationErrors && validationErrors.selectedLists && (
+                <div className="mb-3 text-red-600 text-sm font-medium">
+                  {validationErrors.selectedLists}
+                </div>
+              )}
 
               {/* Dropdown */}
               {showListDropdown && (
@@ -1495,14 +1845,14 @@ const AddItemModal = ({
             <div className="flex items-center justify-between">
               <button
                 onClick={handleSave}
-                disabled={selectedLists.length === 0 || isAIProcessing}
+                disabled={isAIProcessing}
                 className={`flex-1 h-13 rounded-full font-semibold text-base flex items-center justify-center gap-2 mr-4 transition-all duration-200 ${
-                  selectedLists.length > 0 && !isAIProcessing
+                  !isAIProcessing
                     ? 'bg-teal-700 text-white hover:bg-teal-800 active:scale-95'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
                 style={{ 
-                  backgroundColor: selectedLists.length > 0 && !isAIProcessing ? '#1F6D5A' : undefined,
+                  backgroundColor: !isAIProcessing ? '#1F6D5A' : undefined,
                   height: '52px' 
                 }}
               >
@@ -1656,6 +2006,10 @@ const AddItemModal = ({
               className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreateList()}
+              autoComplete="off"
+              autoCorrect="on"
+              autoCapitalize="words"
+              spellCheck="true"
             />
             <div className="flex gap-3">
               <button

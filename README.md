@@ -115,7 +115,7 @@ Gamify
 
 Fix sending version/other metadata to supabase
 
-Need to add a little slider on the additemmodal that can say private or public. (default public)
+
 
 
 Notifications
@@ -124,17 +124,16 @@ Be able to delete items on lists
 
 Be able to rearrange lists
 
-Remove "love" from lists view
-
 Feed (this should follow tandard and follow bes ui practice and design as well as match the current design )
-   Share functionality internally and externally
+   Share functionality internally and externally.. maybe need to change supabase permissions -- check
    Heart and Comments on public lists and photos
    Need to have an ability to follow a persons profile, so there should be an easy way to go from image to user and from user you can see their lists and like/comment
    Add to ai that if detected to be innappropriate, do not allow and flag to admin somehow.
    Feed should remove the current default ones and start showing real ones.
       Each photo should be a photo, and list the product name, rating, the location, and then what their notes are on it, a well as how many like and comments ther are adn share
       For you for now will just pull the up to date ones, and following will be for all those that you'rre following.
-   Small issue, the feed has a greyed out section betwen the bottom of the card and the footer. It's pretty big, so good to remove it.
+   Small visual issue, the feed has a greyed out section betwen the bottom of the card and the footer. It's pretty big, so good to remove it.
+   Need to add a little slider on the additemmodal that can say private or public. (default public)
 
 ///////////////////////////
 breadcrumbs

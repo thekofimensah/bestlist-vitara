@@ -1316,7 +1316,7 @@ const AddItemModal = ({
                     }}
                     className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none flex-1 placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
                       showValidationErrors && validationErrors.productName 
-                        ? 'ring-2 ring-red-500 ring-opacity-50 rounded-lg px-2 py-1 bg-red-50' 
+                        ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
                         : ''
                     }`}
                     placeholder="Product name..."
@@ -1337,7 +1337,7 @@ const AddItemModal = ({
               
               {/* Product name validation error */}
               {showValidationErrors && validationErrors.productName && (
-                <div className="mt-1 text-red-600 text-sm font-medium">
+                <div className="mt-1 text-rose-600 text-sm font-medium">
                   {validationErrors.productName}
                 </div>
               )}
@@ -1753,7 +1753,7 @@ const AddItemModal = ({
                   }}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm relative transition-colors ${
                     showValidationErrors && validationErrors.selectedLists
-                      ? 'bg-red-100 text-red-700 border-2 border-red-500'
+                      ? 'bg-rose-50 text-rose-700 border-2 border-rose-300'
                       : 'bg-gray-100'
                   }`}
                 >
@@ -1776,7 +1776,7 @@ const AddItemModal = ({
 
               {/* List selection validation error */}
               {showValidationErrors && validationErrors.selectedLists && (
-                <div className="mb-3 text-red-600 text-sm font-medium">
+                <div className="mb-3 text-rose-600 text-sm font-medium">
                   {validationErrors.selectedLists}
                 </div>
               )}

@@ -1344,21 +1344,18 @@ const AddItemModal = ({
               
               {/* Overall Rating Section - moved here */}
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <StarRating rating={rating} onChange={setRating} editable={!isAIProcessing} showNumber={false} />
-                    <span className="text-sm font-medium text-gray-600">{getRatingLabel(rating)}</span>
-                  </div>
+                <div className="flex items-center gap-3 mb-2">
+                  <StarRating rating={rating} onChange={setRating} editable={!isAIProcessing} showNumber={false} />
+                  <span className="text-sm font-medium text-gray-600">{getRatingLabel(rating)}</span>
                   {!isAIProcessing && (
                     <button
                       onClick={() => setShowDetailedAttributes(!showDetailedAttributes)}
-                      className="flex items-center gap-1 text-xs text-teal-700 hover:text-teal-800"
+                      className="flex items-center justify-center w-6 h-6 text-gray-400 hover:text-gray-600 transition-colors"
                     >
-                      <span>Detailed Breakdown</span>
                       {showDetailedAttributes ? (
-                        <ChevronUp className="w-3 h-3" />
+                        <ChevronUp className="w-4 h-4" />
                       ) : (
-                        <ChevronDown className="w-3 h-3" />
+                        <ChevronDown className="w-4 h-4" />
                       )}
                     </button>
                   )}

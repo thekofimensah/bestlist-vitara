@@ -108,6 +108,7 @@ Add logging for durations for page loads, imports and AI -- because supabase may
 First time flow: a sliding in pop up should say "Welcome to ___" (next) "So many choices, so many products, but now you can finally save and share the best ones!" (next) "Let's create your first memory list where we'll save your images" (Name <The best....>, Decript (optional), next) "Now take a snap and never forget your faves!"
 
 
+Need to make images smaller I think 300-600kb too big?
 
 Gamify
    Achievemnts future and completed -- allow me to add new ones without sending and update. Design to interact with a db to pull the data rahter than hard coded
@@ -159,8 +160,12 @@ topist
 Topivore
 picky
 aficionado
-foodivore
+foodivore -- looks too much like divorce
 Nombook
+Foodex
+Tastest
+
+
 
 
 Name generation:
@@ -186,19 +191,14 @@ Need to make the supabase tables more comprehensive
    Save all AI metadata
    Save all the lsits information
 
-There should be more padding between sections in the add item modal. IT's a bit tight right now
-
-Create first time login permissions page
 
 Crop still not draggging from corners
 
 Change it so no more avoid or love. But on the screen maybe on the right of the stars it can display just there Love, like, Meh, Avoid, Hate
 
-Android native back not working
+Android native back not working from within list
 
-Product name place holder should be smaller, but not the actual text
-
-For sparkleing, I gave 3 stars, it gave 4, I gave 4 stars it gave 1. The logic is messed
+Add a refresh on slide down for any pages that make sense to be refreshed 
 
 When entering price, it would be gopd if it defaulted to number keyboard
 
@@ -206,6 +206,4 @@ The price should default to the currency of the current location (and it can als
 
 The x during the ai detection should only stop the ai detection, it shouldn't exit out. The x should also be placed in the middle of the image. If AI generation fails, a retry button should also be present for them to retry (max 3 times)
 
-On the add item modal view, if they scroll up, then the card should scroll down so the entire image can be seen. Also darken the card a little bit to put more emphasis on the image. Do this using the latest in UI techinques to bring a nice flow to this. Default should be what the current code shows
-
-For the add item modal, instead of showing the description by default, put it in an "AI Summary & Details" section  that is hidden by default. When the user clicks on it, it should show the genereated description and allergens (in bubbles with a background)
+Instead of detailed dropdown, put an arrow next to the stars, kinda hidden but pro users will find eventually

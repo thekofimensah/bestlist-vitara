@@ -7,6 +7,7 @@ import ProfileView from './components/ProfileView';
 import ShowItemsInListView from './components/ShowItemsInListView';
 import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
+import PullToRefresh from './ui/PullToRefresh';
 import { supabase, signOut, searchUserContent } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
@@ -22,7 +23,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
         </div>
         
         {/* App Name */}
-        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>crumbs</h1>
+        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Nombook</h1>
         <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
         
         {/* Progress Bar */}
@@ -298,73 +299,95 @@ const App = () => {
     return newList;
   };
 
+  const handleRefresh = async () => {
+    // Add a small delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 800));
+    refreshLists(false); // false = not background refresh
+  };
+
   const renderScreen = () => {
     if (currentScreen === 'item-detail' && selectedItem) {
       // Render individual item detail view
       return (
-        <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
-          <div className="p-4">
-            <button onClick={handleBackFromItem} className="mb-4">
-              ← Back
-            </button>
-            <h1>{selectedItem.name}</h1>
-            <img src={selectedItem.image_url || selectedItem.image} alt={selectedItem.name} className="w-full h-64 object-cover rounded-xl" />
-            <p>{selectedItem.notes}</p>
-            {/* Add more item details here */}
+        <PullToRefresh onRefresh={handleRefresh}>
+          <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
+            <div className="p-4">
+              <button onClick={handleBackFromItem} className="mb-4">
+                ← Back
+              </button>
+              <h1>{selectedItem.name}</h1>
+              <img src={selectedItem.image_url || selectedItem.image} alt={selectedItem.name} className="w-full h-64 object-cover rounded-xl" />
+              <p>{selectedItem.notes}</p>
+              {/* Add more item details here */}
+            </div>
           </div>
-        </div>
+        </PullToRefresh>
       );
     }
 
     if (currentScreen === 'list-detail' && selectedList) {
-    return (
+      return (
+        <PullToRefresh onRefresh={handleRefresh}>
           <ShowItemsInListView 
             list={selectedList} 
-          onBack={handleBackFromList}
-          onAddItem={handleAddItem}
-          onEditItem={handleEditItem}
+            onBack={handleBackFromList}
+            onAddItem={handleAddItem}
+            onEditItem={handleEditItem}
             refreshList={refreshLists}
-        />
+          />
+        </PullToRefresh>
       );
     }
 
     switch (currentScreen) {
       case 'home':
         return (
-          <MainScreen
-            lists={lists}
-            loading={imagesLoading}
-            onAddItem={handleAddItem}
-            onSelectList={handleSelectList}
-            onCreateList={handleCreateList}
-          />
+          <PullToRefresh onRefresh={handleRefresh}>
+            <MainScreen
+              lists={lists}
+              loading={imagesLoading}
+              onAddItem={handleAddItem}
+              onSelectList={handleSelectList}
+              onCreateList={handleCreateList}
+            />
+          </PullToRefresh>
         );
       case 'lists':
         return (
-          <ListsView
-            lists={lists}
-            onSelectList={handleSelectList}
-            onCreateList={handleCreateList}
-            onEditItem={handleEditItem}
-            onViewItemDetail={handleViewItemDetail}
-            onReorderLists={reorderLists}
-          />
+          <PullToRefresh onRefresh={handleRefresh}>
+            <ListsView
+              lists={lists}
+              onSelectList={handleSelectList}
+              onCreateList={handleCreateList}
+              onEditItem={handleEditItem}
+              onViewItemDetail={handleViewItemDetail}
+              onReorderLists={reorderLists}
+            />
+          </PullToRefresh>
         );
       case 'profile':
         return (
-          <ProfileView 
-            onBack={() => navigateToScreen('home')}
-          />
+          <PullToRefresh 
+            onRefresh={() => Promise.resolve()} 
+            refreshingText="Profile updated!"
+            pullText="Pull to refresh profile"
+          >
+            <ProfileView 
+              onBack={() => navigateToScreen('home')}
+            />
+          </PullToRefresh>
         );
       default:
         return (
-          <MainScreen
+          <PullToRefresh onRefresh={handleRefresh}>
+            <MainScreen
               lists={lists}
-            loading={imagesLoading}
-            onAddItem={handleAddItem}
-            onSelectList={handleSelectList}
-            onCreateList={handleCreateList}
-          />
+              loading={imagesLoading}
+              onAddItem={handleAddItem}
+              onSelectList={handleSelectList}
+              onCreateList={handleCreateList}
+            />
+          </PullToRefresh>
         );
     }
   };
@@ -375,8 +398,8 @@ const App = () => {
       <MultiStepLoadingScreen
         step={1}
         totalSteps={3}
-        messages={['Connecting to crumbs...', 'Loading your profile...', 'Setting up your kitchen...']}
-        currentMessage="Connecting to crumbs..."
+        messages={['Connecting to Nombook...', 'Loading your profile...', 'Setting up your kitchen...']}
+        currentMessage="Connecting to Nombook..."
       />
     );
   }
@@ -451,7 +474,7 @@ const App = () => {
             <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
               <span className="text-white text-xs font-bold">b</span>
             </div>
-            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>crumbs</h1>
+            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Nombook</h1>
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -471,8 +494,8 @@ const App = () => {
         </div>
       </div>
 
-      {/* Main Content */}
-      <main className="pb-20 relative">
+      {/* Main Content - Updated height for PullToRefresh */}
+      <main className="relative" style={{ height: 'calc(100vh - 140px)' }}>
         {renderScreen()}
       </main>
 

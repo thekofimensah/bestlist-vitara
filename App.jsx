@@ -121,6 +121,8 @@ const App = () => {
     refreshLists, 
     createList, 
     reorderLists,
+    deleteList,
+    updateList,
     retryCount,
     connectionError,
     isRetrying 
@@ -293,7 +295,10 @@ const App = () => {
       if (error) {
         console.error('❌ Feed loading error:', error?.message || 'Unknown error');
         setFeedError(error.message || 'Failed to load feed');
-        setFeedPosts([]);
+        // On refresh, do not clear posts on error. Keep stale data.
+        if (!refreshing) {
+          setFeedPosts([]);
+        }
       } else {
         if (!rawPosts || rawPosts.length === 0) {
           setFeedPosts([]);
@@ -315,7 +320,10 @@ const App = () => {
     } catch (error) {
       console.error('❌ Feed loading exception:', error);
       setFeedError(error.message || 'Failed to load feed');
-      setFeedPosts([]);
+      // On refresh, do not clear posts on error. Keep stale data.
+      if (!refreshing) {
+        setFeedPosts([]);
+      }
     } finally {
       setIsLoadingFeed(false);
     }
@@ -480,6 +488,7 @@ const App = () => {
     setRefreshing(true);
     
     try {
+      // It is critical to await the data loading before setting refreshing to false
       await Promise.all([
         refreshLists(false),
         loadFeedData()
@@ -488,6 +497,7 @@ const App = () => {
     } catch (error) {
       console.error('❌ Home refresh error:', error);
     } finally {
+      // This ensures the spinner disappears only after all data is loaded
       setRefreshing(false);
     }
   };
@@ -578,6 +588,8 @@ const App = () => {
             onAddItem={handleAddItem}
             onEditItem={handleEditItem}
             refreshList={refreshLists}
+            onDeleteList={deleteList}
+            onUpdateList={updateList}
           />
         </PullToRefresh>
       );
@@ -615,6 +627,8 @@ const App = () => {
               onViewItemDetail={handleViewItemDetail}
               onReorderLists={reorderLists}
               isRefreshing={refreshing}
+              onDeleteList={deleteList}
+              onUpdateList={updateList}
               // Pass feed data down as props
               feedPosts={feedPosts}
               isLoadingFeed={isLoadingFeed}

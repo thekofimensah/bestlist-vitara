@@ -86,7 +86,9 @@ const ShowItemsInListView = ({
   onBack, 
   onAddItem, 
   onEditItem, 
-  refreshList 
+  refreshList,
+  onDeleteList,
+  onUpdateList
 }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +99,9 @@ const ShowItemsInListView = ({
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [showAddModal, setShowAddModal] = useState(false);
   const [shareModal, setShareModal] = useState({ isOpen: false, list: null });
+  const [listMenu, setListMenu] = useState({ isOpen: false, x: 0, y: 0 });
+  const [renameDialog, setRenameDialog] = useState({ isOpen: false, newName: '' });
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false });
 
   // Combine all items
   const allItems = [
@@ -147,8 +152,8 @@ const ShowItemsInListView = ({
   }, [allItems, searchQuery, sortBy, filterBy]);
 
   // Calculate counts
-  const favoriteItems = allItems.filter(item => !item.is_stay_away);
-  const avoidItems = allItems.filter(item => item.is_stay_away);
+  // const favoriteItems = allItems.filter(item => !item.is_stay_away);
+  // const avoidItems = allItems.filter(item => item.is_stay_away);
 
   const handleItemTap = (item) => {
     if (selectedItems.length > 0) {
@@ -219,6 +224,18 @@ const ShowItemsInListView = ({
     setSelectedItems([]);
   };
 
+  const handleRenameList = async () => {
+    if (renameDialog.newName.trim()) {
+      await onUpdateList(list.id, { name: renameDialog.newName.trim() });
+      setRenameDialog({ isOpen: false, newName: '' });
+    }
+  };
+
+  const handleDeleteList = async () => {
+    await onDeleteList(list.id);
+    onBack(); // Go back to lists view after deleting
+  };
+
   return (
     <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
       {/* Header */}
@@ -231,20 +248,6 @@ const ShowItemsInListView = ({
             >
               <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
-            <div className="flex-1">
-              <h2 className="text-xl font-semibold text-gray-900">{list.name}</h2>
-              <div className="flex items-center gap-4 text-sm text-gray-500">
-                <span className="flex items-center gap-1">
-                  <Star className="w-3 h-3 text-yellow-500" />
-                  {favoriteItems.length} favorites
-                </span>
-                <span className="flex items-center gap-1">
-                  <X className="w-3 h-3 text-red-500" />
-                  {avoidItems.length} avoided
-                </span>
-                <span>{allItems.length} total</span>
-              </div>
-            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -260,7 +263,10 @@ const ShowItemsInListView = ({
             >
               <Share className="w-5 h-5 text-gray-700" />
             </button>
-            <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
+            <button 
+              onClick={(e) => setListMenu({ isOpen: true, x: e.pageX, y: e.pageY })}
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
+            >
               <MoreHorizontal className="w-5 h-5 text-gray-700" />
             </button>
           </div>
@@ -457,6 +463,73 @@ const ShowItemsInListView = ({
         onClose={() => setShareModal({ isOpen: false, list: null })}
         list={shareModal.list}
       />
+
+      {/* List Context Menu */}
+      {listMenu.isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-40"
+            onClick={() => setListMenu({ ...listMenu, isOpen: false })}
+          />
+          <div 
+            className="fixed bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50"
+            style={{ left: listMenu.x, top: listMenu.y, transform: 'translateX(-100%)' }}
+          >
+            <button
+              onClick={() => {
+                setRenameDialog({ isOpen: true, newName: list.name });
+                setListMenu({ isOpen: false, x: 0, y: 0 });
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
+            >
+              Rename
+            </button>
+            <button
+              onClick={() => {
+                setDeleteDialog({ isOpen: true });
+                setListMenu({ isOpen: false, x: 0, y: 0 });
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-3"
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Rename List Dialog */}
+      {renameDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Rename List</h3>
+            <input
+              type="text"
+              value={renameDialog.newName}
+              onChange={(e) => setRenameDialog({ ...renameDialog, newName: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setRenameDialog({ isOpen: false, newName: '' })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
+              <button onClick={handleRenameList} disabled={!renameDialog.newName.trim()} className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50">Rename</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete List Confirmation */}
+      {deleteDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete List?</h3>
+            <p className="text-gray-600 mb-4">Are you sure you want to delete "{list.name}"? This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteDialog({ isOpen: false })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
+              <button onClick={handleDeleteList} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

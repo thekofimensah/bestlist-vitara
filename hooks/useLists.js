@@ -876,6 +876,69 @@ export const useLists = (userId) => {
     }
   };
 
+  const updateList = async (listId, updates) => {
+    if (!userId) {
+      throw new Error('User is not authenticated.');
+    }
+
+    // Optimistic update
+    setLists(prev => prev.map(list => (list.id === listId ? { ...list, ...updates } : list)));
+
+    try {
+      const { data, error } = await supabase
+        .from('lists')
+        .update(updates)
+        .eq('id', listId)
+        .select()
+        .single();
+
+      if (error) {
+        // Rollback on error
+        refreshLists(true);
+        throw error;
+      }
+      
+      // Update with final data from DB
+      setLists(prev => prev.map(list => (list.id === listId ? { ...list, ...data } : list)));
+      return data;
+    } catch (error) {
+      console.error('❌ Error updating list:', error);
+      refreshLists(true); // Rollback
+      throw error;
+    }
+  };
+
+  const deleteList = async (listId) => {
+    if (!userId) {
+      throw new Error('User is not authenticated.');
+    }
+
+    const originalLists = lists;
+    // Optimistic update
+    setLists(prev => prev.filter(list => list.id !== listId));
+
+    try {
+      // In Supabase, you should have cascading deletes set up on the 'items' table
+      // for the 'list_id' foreign key. This will delete all items in the list.
+      const { error } = await supabase
+        .from('lists')
+        .delete()
+        .eq('id', listId);
+
+      if (error) {
+        // Rollback on error
+        setLists(originalLists);
+        throw error;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error deleting list:', error);
+      setLists(originalLists); // Rollback
+      throw error;
+    }
+  };
+
   const reorderLists = async (newOrderedLists) => {
     console.log('🔧 reorderLists called with:', newOrderedLists.map(l => ({ id: l.id, name: l.name })));
     
@@ -922,6 +985,8 @@ export const useLists = (userId) => {
     preloadLists,
     loadListItems,
     loadRemainingLists,
+    deleteList,
+    updateList,
     // Retry state for UI feedback
     retryCount,
     connectionError,

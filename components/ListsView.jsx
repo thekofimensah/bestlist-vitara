@@ -157,7 +157,7 @@ const ListRow = ({
               <Share className="w-4 h-4" />
             </button>
             <button
-              onClick={() => onListMenu(list.id)}
+              onClick={(e) => onListMenu(list, e)}
               className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
             >
               <MoreHorizontal className="w-4 h-4" />
@@ -192,7 +192,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [isReorderMode, setIsReorderMode] = useState(false);
@@ -201,6 +201,9 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   const scrollContainerRef = useRef(null);
   const savedScrollPosition = useRef(0);
   const hasScrolled = useRef(false);
+  const [contextMenu, setContextMenu] = useState({ isOpen: false, listId: null, x: 0, y: 0 });
+  const [renameDialog, setRenameDialog] = useState({ isOpen: false, list: null, newName: '' });
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, list: null });
 
   // Update reordered lists when lists prop changes
   useEffect(() => {
@@ -255,9 +258,41 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
-  const handleListMenu = (listId) => {
-    // Show context menu for list management
-    console.log('List menu for:', listId);
+  const handleListMenu = (list, event) => {
+    event.stopPropagation();
+    
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // Approximate menu dimensions (adjust based on your menu size)
+    const menuWidth = 160;
+    const menuHeight = 96; // Approximate height for 2 menu items
+    
+    // Calculate position, adjusting if menu would go off-screen
+    let x = event.pageX;
+    let y = event.pageY;
+    
+    // Adjust horizontal position if menu would overflow right edge
+    if (x + menuWidth > viewportWidth) {
+      x = viewportWidth - menuWidth - 16; // 16px padding from edge
+    }
+    
+    // Adjust vertical position if menu would overflow bottom edge
+    if (y + menuHeight > viewportHeight) {
+      y = event.pageY - menuHeight; // Position above the click point
+    }
+    
+    // Ensure menu doesn't go off the left or top edges
+    x = Math.max(16, x); // 16px minimum padding from left edge
+    y = Math.max(16, y); // 16px minimum padding from top edge
+    
+    setContextMenu({
+      isOpen: true,
+      listId: list.id,
+      x: x,
+      y: y,
+    });
   };
 
   const handleShareList = (list) => {
@@ -302,6 +337,20 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     // Save the new order if it changed
     if (onReorderLists && JSON.stringify(reorderedLists) !== JSON.stringify(lists)) {
       onReorderLists(reorderedLists);
+    }
+  };
+
+  const handleRenameList = async () => {
+    if (renameDialog.list && renameDialog.newName.trim()) {
+      await onUpdateList(renameDialog.list.id, { name: renameDialog.newName.trim() });
+      setRenameDialog({ isOpen: false, list: null, newName: '' });
+    }
+  };
+
+  const handleDeleteList = async () => {
+    if (deleteDialog.list) {
+      await onDeleteList(deleteDialog.list.id);
+      setDeleteDialog({ isOpen: false, list: null });
     }
   };
 
@@ -396,6 +445,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         onAddItem={handleAddItem}
                         onListMenu={handleListMenu}
                         onListTitleTap={handleListTitleTap}
+                        onShareList={handleShareList}
                         isReorderMode={isReorderMode}
                       />
                     </Reorder.Item>
@@ -483,6 +533,75 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         onClose={handleCloseShare}
         list={shareModal.list}
       />
+
+      {/* Context Menu */}
+      {contextMenu.isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-40"
+            onClick={() => setContextMenu({ ...contextMenu, isOpen: false })}
+          />
+          <div 
+            className="fixed bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              onClick={() => {
+                const listToRename = lists.find(l => l.id === contextMenu.listId);
+                setRenameDialog({ isOpen: true, list: listToRename, newName: listToRename.name });
+                setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
+            >
+              Rename
+            </button>
+            <button
+              onClick={() => {
+                const listToDelete = lists.find(l => l.id === contextMenu.listId);
+                setDeleteDialog({ isOpen: true, list: listToDelete });
+                setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-3"
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Rename List Dialog */}
+      {renameDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Rename List</h3>
+            <input
+              type="text"
+              value={renameDialog.newName}
+              onChange={(e) => setRenameDialog({ ...renameDialog, newName: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setRenameDialog({ isOpen: false, list: null, newName: '' })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
+              <button onClick={handleRenameList} disabled={!renameDialog.newName.trim()} className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50">Rename</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete List Confirmation */}
+      {deleteDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete List?</h3>
+            <p className="text-gray-600 mb-4">Are you sure you want to delete "{deleteDialog.list?.name}"? All items in this list will be permanently removed.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteDialog({ isOpen: false, list: null })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
+              <button onClick={handleDeleteList} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

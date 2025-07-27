@@ -29,14 +29,6 @@ const PullToRefresh = ({
 
     const handleTouchStart = (e) => {
       const isAtTop = container.scrollTop <= 5; // Small tolerance
-      
-      console.log('🔄 PullToRefresh: Touch start', JSON.stringify({ 
-        isAtTop, 
-        isRefreshing, 
-        disabled, 
-        scrollTop: container.scrollTop
-      }));
-
       if (!isAtTop || isRefreshing || disabled) return;
 
       startY.current = e.touches[0].clientY;

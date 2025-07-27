@@ -329,6 +329,18 @@ const App = () => {
     }
   };
 
+  // Handle tab change and reload feed with appropriate type
+  const handleTabChange = async (feedType) => {
+    console.log('🔄 Tab changed to:', feedType);
+    // Clear current posts to show loading state
+    setFeedPosts([]);
+    // Force reload by setting refreshing temporarily
+    const wasRefreshing = refreshing;
+    setRefreshing(true);
+    await loadFeedData(feedType);
+    setRefreshing(wasRefreshing);
+  };
+
   // Load initial data once when the app starts
   useEffect(() => {
     if (user) {
@@ -608,6 +620,7 @@ const App = () => {
               onCreateList={handleCreateList}
               onNavigateToUser={handleNavigateToUser}
               onRefreshFeed={handleFeedRefresh}
+              onTabChange={handleTabChange}
               // Pass feed data down as props
               feedPosts={feedPosts}
               isLoadingFeed={isLoadingFeed}
@@ -666,6 +679,7 @@ const App = () => {
               onCreateList={handleCreateList}
               onNavigateToUser={handleNavigateToUser}
               onRefreshFeed={handleFeedRefresh}
+              onTabChange={handleTabChange}
               // Pass feed data down as props
               feedPosts={feedPosts}
               isLoadingFeed={isLoadingFeed}

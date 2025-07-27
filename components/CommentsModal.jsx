@@ -312,7 +312,7 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
               {replyingTo && (
                 <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-teal-50 rounded-xl">
                   <span className="text-sm text-teal-700">
-                    Replying to @{replyingTo.username}
+                    Replying to {replyingTo.username}
                   </span>
                   <button
                     onClick={cancelReply}

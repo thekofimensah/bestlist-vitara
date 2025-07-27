@@ -9,7 +9,7 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
-import { uploadPhotoWithOwner, supabase, likePost, unlikePost, getPostCommentCount } from '../lib/supabase';
+import { uploadPhotoWithOwner, supabase, likePost, unlikePost, getPostCommentCount, isUserFollowingAnyone } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -351,6 +351,7 @@ const MainScreen = React.forwardRef(({
   onCreateList, 
   onNavigateToUser, 
   onRefreshFeed,
+  onTabChange,
   // Feed-related props from App.jsx
   feedPosts,
   isLoadingFeed,
@@ -375,6 +376,7 @@ const MainScreen = React.forwardRef(({
   const [selectedTab, setSelectedTab] = useState('For You');
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
+  const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
   
   // Comments modal state
   const [commentsModal, setCommentsModal] = useState({ isOpen: false, post: null });
@@ -523,6 +525,23 @@ const MainScreen = React.forwardRef(({
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // Check if user is following anyone when component mounts or tab changes
+  useEffect(() => {
+    const checkFollowingStatus = async () => {
+      if (selectedTab === 'Following') {
+        try {
+          const { isFollowing } = await isUserFollowingAnyone();
+          setUserFollowingAnyone(isFollowing);
+        } catch (error) {
+          console.error('Error checking following status:', error);
+          setUserFollowingAnyone(false);
+        }
+      }
+    };
+    
+    checkFollowingStatus();
+  }, [selectedTab]);
 
   // Load feed data only once - never reload on navigation
   useEffect(() => {
@@ -993,8 +1012,12 @@ const MainScreen = React.forwardRef(({
             <button
               key={tab}
               onClick={() => {
-                // Only change tab, don't reload feed
                 setSelectedTab(tab);
+                // Notify parent component of tab change
+                if (onTabChange) {
+                  const feedType = tab === 'Following' ? 'following' : 'for_you';
+                  onTabChange(feedType);
+                }
               }}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                 selectedTab === tab
@@ -1045,10 +1068,15 @@ const MainScreen = React.forwardRef(({
             {/* Empty State */}
             {!isLoadingFeed && !feedError && feedPosts.length === 0 && (
               <div className="text-center py-8">
-                <div className="text-gray-500 mb-2">No posts yet</div>
+                <div className="text-gray-500 mb-2">
+                  {selectedTab === 'Following' ? 'No posts from followed users' : 'No posts yet'}
+                </div>
                 <div className="text-gray-400 text-sm">
                   {selectedTab === 'Following' 
-                    ? 'Follow other users to see their posts here' 
+                    ? (userFollowingAnyone === false 
+                        ? 'Follow other users first to see their posts here!' 
+                        : 'Users you follow haven\'t posted anything yet'
+                      )
                     : 'Be the first to share something amazing!'
                   }
                 </div>

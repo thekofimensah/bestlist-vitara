@@ -22,6 +22,12 @@ const PullToRefresh = ({
   const startY = useRef(0);
   const currentY = useRef(0);
   const pullStarted = useRef(false);
+  const pullDistanceRef = useRef(0);
+
+  // Keep pullDistanceRef in sync
+  useEffect(() => {
+    pullDistanceRef.current = pullDistance;
+  }, [pullDistance]);
 
   // Check if we can pull (at top of page)
   const checkCanPull = () => {
@@ -40,26 +46,30 @@ const PullToRefresh = ({
     };
 
     const handleTouchStart = (e) => {
-      if (!canPull || isRefreshing || disabled) return;
+      // Always check scroll position fresh - don't rely on state
+      const isAtTop = container.scrollTop <= 0;
+      
+      if (!isAtTop || isRefreshing || disabled) return;
       
       startY.current = e.touches[0].clientY;
       pullStarted.current = true;
     };
 
     const handleTouchMove = (e) => {
-      if (!pullStarted.current || !canPull || isRefreshing || disabled) return;
+      if (!pullStarted.current || isRefreshing || disabled) return;
 
       currentY.current = e.touches[0].clientY;
       const deltaY = currentY.current - startY.current;
 
       if (deltaY > 0) {
-        // Calculate pull distance with resistance
-        const distance = Math.min(deltaY / resistance, threshold * 1.5);
+        // Calculate distance with resistance
+        const distance = Math.min(deltaY / resistance, threshold * 2);
+        
         setPullDistance(distance);
         setIsPulling(distance > threshold);
 
-        // Prevent default scrolling when pulling down significantly
-        if (distance > 10) {
+        // Prevent scrolling when pulling down
+        if (distance > 5) {
           e.preventDefault();
         }
       }
@@ -70,37 +80,33 @@ const PullToRefresh = ({
       
       pullStarted.current = false;
       
-      if (isPulling && pullDistance > threshold && !isRefreshing) {
+      // Use ref to get current pullDistance value
+      const currentDistance = pullDistanceRef.current;
+      
+      if (currentDistance > threshold && !isRefreshing) {
         setIsRefreshing(true);
         setIsPulling(false);
         
-        // Keep the pull distance at threshold during refresh
-        setPullDistance(threshold);
-        
         // Trigger refresh
         Promise.resolve(onRefresh()).finally(() => {
-          // Smooth animation back to 0
           setTimeout(() => {
             setIsRefreshing(false);
             setPullDistance(0);
           }, 300);
         });
       } else {
-        // Animate back to 0
         setIsPulling(false);
         setPullDistance(0);
       }
     };
 
-    // Add scroll listener as passive
+    // Add listeners
     container.addEventListener('scroll', handleScroll, { passive: true });
-    
-    // Add touch listeners as non-passive so we can preventDefault
     container.addEventListener('touchstart', handleTouchStart, { passive: false });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd, { passive: false });
     
-    checkCanPull(); // Initial check
+    checkCanPull();
 
     return () => {
       container.removeEventListener('scroll', handleScroll);
@@ -108,7 +114,7 @@ const PullToRefresh = ({
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [canPull, isRefreshing, disabled, isPulling, pullDistance, threshold, resistance, onRefresh]);
+  }, [threshold, onRefresh, isRefreshing, disabled]);
 
   const getRefreshText = () => {
     if (isRefreshing) return refreshingText;
@@ -135,60 +141,52 @@ const PullToRefresh = ({
         WebkitOverflowScrolling: 'touch',
         // Prevent pull-to-refresh on Safari
         overscrollBehavior: 'contain',
+        // Ensure touch events can be captured
+        touchAction: 'pan-y',
       }}
     >
-      {/* Pull-to-refresh indicator */}
+            {/* Pull-to-refresh indicator */}
       <motion.div 
         className="flex flex-col items-center justify-center bg-stone-50"
         style={{ backgroundColor: '#F6F6F4' }}
         initial={{ height: 0, marginTop: 0, opacity: 0 }}
         animate={{ 
-          height: pullDistance,
-          marginTop: -pullDistance,
-          opacity: getIndicatorOpacity(),
+          height: isRefreshing ? 50 : pullDistance,
+          marginTop: isRefreshing ? -50 : -pullDistance,
+          opacity: isRefreshing ? 1 : getIndicatorOpacity(),
         }}
         transition={{ 
           type: "spring", 
-          stiffness: 300, 
-          damping: 30,
-          duration: 0.3 
+          stiffness: 400, 
+          damping: 25,
+          duration: 0.2 
         }}
       >
-        <div className="bg-white rounded-full p-3 shadow-lg border border-gray-100 mb-2">
-          <motion.div
-            animate={{ 
-              rotate: getIconRotation(),
-            }}
-            transition={{ 
-              type: "spring", 
-              stiffness: 200, 
-              damping: 20 
-            }}
-          >
-            <RefreshCw 
-              className={`w-5 h-5 text-teal-700 ${
-                isRefreshing ? 'animate-spin' : ''
-              }`}
-              style={{ color: '#1F6D5A' }}
-            />
-          </motion.div>
-        </div>
-        
-        <motion.div 
-          className="text-sm text-gray-600 font-medium"
+        {/* Simple, clean refresh indicator */}
+        <motion.div
+          className="w-6 h-6 border-2 border-gray-300 border-t-teal-700 rounded-full"
           animate={{ 
-            scale: isPulling ? 1.05 : 1,
-            color: isPulling ? '#1F6D5A' : '#6B7280'
+            rotate: isRefreshing ? 360 : getIconRotation(),
           }}
-          transition={{ duration: 0.2 }}
-        >
-          {getRefreshText()}
+          transition={{ 
+            duration: isRefreshing ? 1 : 0.3,
+            repeat: isRefreshing ? Infinity : 0,
+            ease: isRefreshing ? "linear" : "easeOut"
+          }}
+          style={{ 
+            borderTopColor: '#1F6D5A',
+            opacity: isRefreshing ? 1 : Math.min(pullDistance / 40, 1)
+          }}
+        />
         </motion.div>
-      </motion.div>
-      
-      {/* Page content */}
-      <div className="relative">
+        
+
+        
+        {/* Page content */}
+      <div className="relative min-h-full">
         {children}
+        {/* Add extra height to ensure scrollable content */}
+        <div style={{ height: '50px' }}></div>
       </div>
     </div>
   );

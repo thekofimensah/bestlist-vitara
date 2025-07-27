@@ -19,6 +19,7 @@ import {
   getCurrencyDisplay,
   getCurrencyFromCountryName
 } from '../lib/currencyUtils';
+import { createPost } from '../lib/supabase';
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
   const [justClicked, setJustClicked] = useState(null);
@@ -385,6 +386,9 @@ const AddItemModal = ({
     }
   });
   const [qualityOverview, setQualityOverview] = useState('');
+  
+  // Public/Private toggle state
+  const [isPublic, setIsPublic] = useState(true);
 
   // Replace the static attributes state with a dynamic system
   const [newAttributeName, setNewAttributeName] = useState('');

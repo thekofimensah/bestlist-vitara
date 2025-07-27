@@ -74,6 +74,7 @@ Remember:
 - Always run `npx cap update android` before `./gradlew build` if you changed web files
 - Use `./gradlew clean assembleDebug` as a last resort when builds fail
 
+
 Command I use for changes:
 npm run build && npx cap sync android
 
@@ -99,7 +100,7 @@ Profile view
    Add button for contact support/ give feedback
 
 
-Sign up and login a bit whack
+Sign up and login a bit whack -- add also to tables login count (or like how many times the user opens the screen)
 
 Add cache for lists locally -- every time referesh hapens update teh cache -- tried and failed, couldn't get it to work. Need to add backend apparently
 

@@ -23,7 +23,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
         </div>
         
         {/* App Name */}
-        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Nombook</h1>
+        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>ChefKiss</h1>
         <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
         
         {/* Progress Bar */}
@@ -85,6 +85,7 @@ const App = () => {
   } = useLists(user?.id);
   const [editingItem, setEditingItem] = useState(null);
   const [editingList, setEditingList] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleSignOut = async () => {
     try {
@@ -299,17 +300,58 @@ const App = () => {
     return newList;
   };
 
-  const handleRefresh = async () => {
-    // Add a small delay for better UX
+  // Screen-specific refresh handlers
+  const handleHomeRefresh = async () => {
+    setRefreshing(true);
+    
+    // Reset images loading state to show visual feedback
+    setImagesLoading(true);
+    
+    // Refresh lists and reset any loading states
+    refreshLists(false);
+    
+    // Quick refresh with subtle loading
     await new Promise(resolve => setTimeout(resolve, 800));
-    refreshLists(false); // false = not background refresh
+    
+    setImagesLoading(false);
+    setRefreshing(false);
+  };
+
+  const handleListsRefresh = async () => {
+    setRefreshing(true);
+    
+    refreshLists(false);
+    
+    // Quick loading feedback
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    setRefreshing(false);
+  };
+
+  const handleProfileRefresh = async () => {
+    setRefreshing(true);
+    
+    // In a real app, this would refresh profile data
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    setRefreshing(false);
+  };
+
+  const handleListDetailRefresh = async () => {
+    setRefreshing(true);
+    
+    refreshLists(false);
+    
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    setRefreshing(false);
   };
 
   const renderScreen = () => {
     if (currentScreen === 'item-detail' && selectedItem) {
       // Render individual item detail view
       return (
-        <PullToRefresh onRefresh={handleRefresh}>
+        <PullToRefresh onRefresh={handleListDetailRefresh} disabled={refreshing}>
           <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
             <div className="p-4">
               <button onClick={handleBackFromItem} className="mb-4">
@@ -327,7 +369,7 @@ const App = () => {
 
     if (currentScreen === 'list-detail' && selectedList) {
       return (
-        <PullToRefresh onRefresh={handleRefresh}>
+        <PullToRefresh onRefresh={handleListDetailRefresh} disabled={refreshing}>
           <ShowItemsInListView 
             list={selectedList} 
             onBack={handleBackFromList}
@@ -342,10 +384,10 @@ const App = () => {
     switch (currentScreen) {
       case 'home':
         return (
-          <PullToRefresh onRefresh={handleRefresh}>
+          <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
             <MainScreen
               lists={lists}
-              loading={imagesLoading}
+              loading={imagesLoading || listsLoading || refreshing}
               onAddItem={handleAddItem}
               onSelectList={handleSelectList}
               onCreateList={handleCreateList}
@@ -354,7 +396,7 @@ const App = () => {
         );
       case 'lists':
         return (
-          <PullToRefresh onRefresh={handleRefresh}>
+          <PullToRefresh onRefresh={handleListsRefresh} disabled={refreshing}>
             <ListsView
               lists={lists}
               onSelectList={handleSelectList}
@@ -367,11 +409,7 @@ const App = () => {
         );
       case 'profile':
         return (
-          <PullToRefresh 
-            onRefresh={() => Promise.resolve()} 
-            refreshingText="Profile updated!"
-            pullText="Pull to refresh profile"
-          >
+          <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
             <ProfileView 
               onBack={() => navigateToScreen('home')}
             />
@@ -379,10 +417,10 @@ const App = () => {
         );
       default:
         return (
-          <PullToRefresh onRefresh={handleRefresh}>
+          <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
             <MainScreen
               lists={lists}
-              loading={imagesLoading}
+              loading={imagesLoading || listsLoading || refreshing}
               onAddItem={handleAddItem}
               onSelectList={handleSelectList}
               onCreateList={handleCreateList}
@@ -398,8 +436,8 @@ const App = () => {
       <MultiStepLoadingScreen
         step={1}
         totalSteps={3}
-        messages={['Connecting to Nombook...', 'Loading your profile...', 'Setting up your kitchen...']}
-        currentMessage="Connecting to Nombook..."
+        messages={['Connecting to ChefKiss...', 'Loading your profile...', 'Setting up your kitchen...']}
+        currentMessage="Connecting to ChefKiss..."
       />
     );
   }
@@ -474,7 +512,7 @@ const App = () => {
             <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
               <span className="text-white text-xs font-bold">b</span>
             </div>
-            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Nombook</h1>
+            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>ChefKiss</h1>
           </div>
           <div className="flex items-center gap-3">
             <button 

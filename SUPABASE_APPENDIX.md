@@ -496,3 +496,267 @@ SET statement_timeout = '60s';
 -- For permanent setting, contact Supabase support or upgrade plan
 -- Alternatively, these settings may be available in Dashboard → Settings → Database
 ``` 
+
+---
+
+## Feed System Tables & Setup
+
+### Core Feed Tables
+
+```sql
+-- User profiles (extend existing auth.users)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT UNIQUE,
+  display_name TEXT,
+  bio TEXT,
+  avatar_url TEXT,
+  is_private BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Posts (public items from lists)
+CREATE TABLE IF NOT EXISTS public.posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  item_id UUID REFERENCES public.items(id) ON DELETE CASCADE,
+  list_id UUID REFERENCES public.lists(id) ON DELETE CASCADE,
+  is_public BOOLEAN DEFAULT true,
+  location TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Likes
+CREATE TABLE IF NOT EXISTS public.likes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, post_id)
+);
+
+-- Comments
+CREATE TABLE IF NOT EXISTS public.comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Follows
+CREATE TABLE IF NOT EXISTS public.follows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  follower_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  following_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(follower_id, following_id)
+);
+
+-- Content moderation flags
+CREATE TABLE IF NOT EXISTS public.content_flags (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  reason TEXT,
+  status TEXT DEFAULT 'pending', -- pending, reviewed, dismissed
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### Update Existing Tables for Feed Support
+
+```sql
+-- Add privacy settings to items
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT true;
+
+-- Add privacy settings to lists  
+ALTER TABLE public.lists ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT true;
+```
+
+### Feed Performance Indexes
+
+```sql
+-- Posts table indexes
+CREATE INDEX IF NOT EXISTS idx_posts_user_id ON public.posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON public.posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_public ON public.posts(is_public, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_item_id ON public.posts(item_id);
+
+-- Likes table indexes
+CREATE INDEX IF NOT EXISTS idx_likes_post_id ON public.likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_likes_user_id ON public.likes(user_id);
+
+-- Comments table indexes
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON public.comments(post_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_user_id ON public.comments(user_id);
+
+-- Follows table indexes
+CREATE INDEX IF NOT EXISTS idx_follows_follower ON public.follows(follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON public.follows(following_id);
+
+-- Profiles table indexes
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
+```
+
+### Row Level Security (RLS) Policies
+
+```sql
+-- Enable RLS on all feed tables
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.content_flags ENABLE ROW LEVEL SECURITY;
+
+-- Profiles policies
+CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can update own profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Posts policies
+CREATE POLICY "Public posts are viewable by everyone" ON public.posts
+  FOR SELECT USING (is_public = true);
+
+CREATE POLICY "Users can view their own posts" ON public.posts
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own posts" ON public.posts
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own posts" ON public.posts
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own posts" ON public.posts
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Likes policies  
+CREATE POLICY "Anyone can view likes" ON public.likes
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can like posts" ON public.likes
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own likes" ON public.likes
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Comments policies
+CREATE POLICY "Anyone can view comments" ON public.comments
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can add comments" ON public.comments
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own comments" ON public.comments
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own comments" ON public.comments
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Follows policies
+CREATE POLICY "Anyone can view follows" ON public.follows
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can follow others" ON public.follows
+  FOR INSERT WITH CHECK (auth.uid() = follower_id);
+
+CREATE POLICY "Users can unfollow others" ON public.follows
+  FOR DELETE USING (auth.uid() = follower_id);
+```
+
+### Useful Feed Queries
+
+```sql
+-- Get feed posts with user data and engagement counts
+CREATE OR REPLACE VIEW feed_posts_view AS
+SELECT 
+  p.*,
+  u.email as user_email,
+  pr.username,
+  pr.display_name,
+  pr.avatar_url,
+  i.name as item_name,
+  i.image_url,
+  i.rating,
+  i.notes,
+  i.tags,
+  i.is_stay_away,
+  l.name as list_name,
+  (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+  (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
+FROM posts p
+LEFT JOIN auth.users u ON p.user_id = u.id
+LEFT JOIN profiles pr ON p.user_id = pr.id
+LEFT JOIN items i ON p.item_id = i.id
+LEFT JOIN lists l ON p.list_id = l.id
+WHERE p.is_public = true
+ORDER BY p.created_at DESC;
+
+-- Get user's feed (posts from users they follow)
+CREATE OR REPLACE FUNCTION get_user_feed(user_id_param UUID, limit_param INT DEFAULT 20, offset_param INT DEFAULT 0)
+RETURNS TABLE(
+  post_id UUID,
+  user_id UUID,
+  item_id UUID,
+  list_id UUID,
+  user_email TEXT,
+  username TEXT,
+  display_name TEXT,
+  avatar_url TEXT,
+  item_name TEXT,
+  image_url TEXT,
+  rating INT,
+  notes TEXT,
+  tags TEXT[],
+  is_stay_away BOOLEAN,
+  list_name TEXT,
+  location TEXT,
+  like_count BIGINT,
+  comment_count BIGINT,
+  user_liked BOOLEAN,
+  created_at TIMESTAMP WITH TIME ZONE
+) LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT 
+    p.id as post_id,
+    p.user_id,
+    p.item_id,
+    p.list_id,
+    u.email as user_email,
+    pr.username,
+    pr.display_name,
+    pr.avatar_url,
+    i.name as item_name,
+    i.image_url,
+    i.rating,
+    i.notes,
+    i.tags,
+    i.is_stay_away,
+    l.name as list_name,
+    p.location,
+    (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+    (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
+    (SELECT COUNT(*) > 0 FROM likes WHERE post_id = p.id AND user_id = user_id_param) as user_liked,
+    p.created_at
+  FROM posts p
+  LEFT JOIN auth.users u ON p.user_id = u.id
+  LEFT JOIN profiles pr ON p.user_id = pr.id
+  LEFT JOIN items i ON p.item_id = i.id
+  LEFT JOIN lists l ON p.list_id = l.id
+  WHERE p.is_public = true 
+    AND (
+      p.user_id IN (SELECT following_id FROM follows WHERE follower_id = user_id_param)
+      OR p.user_id = user_id_param
+    )
+  ORDER BY p.created_at DESC
+  LIMIT limit_param OFFSET offset_param;
+$$;
+```

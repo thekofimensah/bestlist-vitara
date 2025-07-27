@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, List, User, Search, Bell, X } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -10,9 +10,48 @@ import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
 import UserProfile from './components/secondary/UserProfile';
 import PullToRefresh from './ui/PullToRefresh';
-import { supabase, signOut, searchUserContent } from './lib/supabase';
+import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
+
+// Helper function to format post data from database (moved from MainScreen)
+const formatPostForDisplay = (post) => {
+  const getTimeAgo = (dateString) => {
+    if (!dateString) return '';
+    const now = new Date();
+    const postDate = new Date(dateString);
+    const diffInHours = Math.floor((now - postDate) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`;
+    return `${Math.floor(diffInHours / 168)}w`;
+  };
+
+  const getVerdictFromRating = (rating, isStayAway) => {
+    if (isStayAway) return 'AVOID';
+    return rating >= 4 ? 'KEEP' : 'MEH';
+  };
+
+  return {
+    id: post.id,
+    user: {
+      name: post.profiles?.username || 'User',
+      avatar: post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
+    },
+    image: post.items?.image_url || '',
+    rating: post.items?.rating || 3,
+    verdict: getVerdictFromRating(post.items?.rating, post.items?.is_stay_away),
+    snippet: post.items?.notes || '',
+    timestamp: getTimeAgo(post.created_at),
+    likes: post.like_count || 0,
+    comments: post.comment_count || 0,
+    user_liked: post.user_liked || false,
+    item_name: post.items?.name || 'Unknown Item',
+    list_name: post.lists?.name || 'Unknown List',
+    location: post.location || null
+  };
+};
 
 // Custom loading component
 const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) => {
@@ -92,6 +131,11 @@ const App = () => {
   const [deepLinkData, setDeepLinkData] = useState(null);
   const mainScreenRef = useRef(null);
 
+  // Feed-related state, now living in the main App component
+  const [feedPosts, setFeedPosts] = useState([]);
+  const [isLoadingFeed, setIsLoadingFeed] = useState(false);
+  const [feedError, setFeedError] = useState(null);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -104,6 +148,7 @@ const App = () => {
       setSelectedItem(null);
       setEditingItem(null);
       setEditingList(null);
+      setFeedPosts([]); // Reset feed on sign out
     } catch (error) {
       console.error('Error signing out:', {
         message: error.message,
@@ -228,6 +273,60 @@ const App = () => {
     );
     return () => subscription?.unsubscribe();
   }, []);
+
+  // Load feed data, now living in the main App component
+  const loadFeedData = async (feedType = 'for_you') => {
+    // Do not reload if we already have posts, unless it's a manual refresh
+    if (feedPosts.length > 0 && !refreshing) {
+      console.log('✅ Feed already loaded, skipping reload.');
+      return;
+    }
+
+    try {
+      setIsLoadingFeed(true);
+      setFeedError(null);
+      
+      console.log('🔍 Loading feed data for:', feedType);
+      
+      const { data: rawPosts, error } = await getFeedPosts(feedType, 20, 0);
+      
+      if (error) {
+        console.error('❌ Feed loading error:', error?.message || 'Unknown error');
+        setFeedError(error.message || 'Failed to load feed');
+        setFeedPosts([]);
+      } else {
+        if (!rawPosts || rawPosts.length === 0) {
+          setFeedPosts([]);
+        } else {
+          const formattedPosts = rawPosts.map(formatPostForDisplay);
+          const postsWithCommentCounts = await Promise.all(
+            formattedPosts.map(async (post) => {
+              try {
+                const { count } = await getPostCommentCount(post.id);
+                return { ...post, comments: count };
+              } catch {
+                return post;
+              }
+            })
+          );
+          setFeedPosts(postsWithCommentCounts);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Feed loading exception:', error);
+      setFeedError(error.message || 'Failed to load feed');
+      setFeedPosts([]);
+    } finally {
+      setIsLoadingFeed(false);
+    }
+  };
+
+  // Load initial data once when the app starts
+  useEffect(() => {
+    if (user) {
+      loadFeedData();
+    }
+  }, [user]);
 
   // Handle deep links
   useEffect(() => {
@@ -381,14 +480,10 @@ const App = () => {
     setRefreshing(true);
     
     try {
-      // Refresh lists and reset any loading states
-      await refreshLists(false);
-      
-      // Trigger feed refresh by calling the feed refresh function
-      await handleFeedRefresh();
-      
-      // Quick refresh with subtle loading
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await Promise.all([
+        refreshLists(false),
+        loadFeedData()
+      ]);
       
     } catch (error) {
       console.error('❌ Home refresh error:', error);
@@ -501,6 +596,11 @@ const App = () => {
               onCreateList={handleCreateList}
               onNavigateToUser={handleNavigateToUser}
               onRefreshFeed={handleFeedRefresh}
+              // Pass feed data down as props
+              feedPosts={feedPosts}
+              isLoadingFeed={isLoadingFeed}
+              feedError={feedError}
+              setFeedPosts={setFeedPosts}
             />
           </PullToRefresh>
         );
@@ -515,6 +615,11 @@ const App = () => {
               onViewItemDetail={handleViewItemDetail}
               onReorderLists={reorderLists}
               isRefreshing={refreshing}
+              // Pass feed data down as props
+              feedPosts={feedPosts}
+              isLoadingFeed={isLoadingFeed}
+              feedError={feedError}
+              setFeedPosts={setFeedPosts}
             />
           </PullToRefresh>
         );
@@ -547,6 +652,11 @@ const App = () => {
               onCreateList={handleCreateList}
               onNavigateToUser={handleNavigateToUser}
               onRefreshFeed={handleFeedRefresh}
+              // Pass feed data down as props
+              feedPosts={feedPosts}
+              isLoadingFeed={isLoadingFeed}
+              feedError={feedError}
+              setFeedPosts={setFeedPosts}
             />
           </PullToRefresh>
         );

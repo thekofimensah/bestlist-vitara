@@ -205,6 +205,7 @@ const AddItemModal = ({
   
   // AI Summary section state
   const [showAISummary, setShowAISummary] = useState(false);
+  const [createListError, setCreateListError] = useState(null);
 
   const onCropComplete = useCallback((_ignored, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -723,6 +724,7 @@ const AddItemModal = ({
 
   const handleCreateList = async () => {
     if (newListName.trim() && onCreateList) {
+      setCreateListError(null);
       try {
         console.log('🔧 AddItemModal: Creating list with name:', newListName.trim());
         const newList = await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
@@ -731,15 +733,15 @@ const AddItemModal = ({
         if (newList && newList.id) {
           console.log('✅ AddItemModal: List created successfully, selecting it');
           setSelectedLists([newList.id]);
+          setNewListName('');
+          setShowCreateListDialog(false);
         } else {
           console.error('❌ AddItemModal: List creation failed - no ID returned');
+          setCreateListError('Could not create list. Please try again.');
         }
-        setNewListName('');
-        setShowCreateListDialog(false);
       } catch (error) {
         console.error('❌ AddItemModal: Error creating list:', error);
-        // Keep dialog open on error
-        // Could show error message to user here
+        setCreateListError(error.message || 'An unexpected error occurred.');
       }
     }
   };
@@ -2067,11 +2069,15 @@ const AddItemModal = ({
               autoCapitalize="words"
               spellCheck="true"
             />
+            {createListError && (
+              <p className="text-red-500 text-sm mb-4">{createListError}</p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => {
                   setShowCreateListDialog(false);
                   setNewListName('');
+                  setCreateListError(null);
                 }}
                 className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium"
               >

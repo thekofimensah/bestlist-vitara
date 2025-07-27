@@ -313,11 +313,11 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     <div 
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className="min-h-screen bg-stone-50 pb-28 overflow-y-auto" 
+      className="h-screen bg-stone-50 overflow-y-auto" 
       style={{ backgroundColor: '#F6F6F4' }}
     >
       {/* Content */}
-      <div className="pb-6">
+      <div className="pb-32">
         {lists.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
             <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-sm">

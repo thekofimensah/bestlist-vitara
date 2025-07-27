@@ -9,7 +9,7 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
-import { uploadPhotoWithOwner, supabase, getFeedPosts, likePost, unlikePost, getPostCommentCount } from '../lib/supabase';
+import { uploadPhotoWithOwner, supabase, likePost, unlikePost, getPostCommentCount } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -343,7 +343,20 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
   );
 };
 
-const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, onCreateList, onNavigateToUser, onRefreshFeed }, ref) => {
+const MainScreen = React.forwardRef(({ 
+  lists, 
+  loading, 
+  onAddItem, 
+  onSelectList, 
+  onCreateList, 
+  onNavigateToUser, 
+  onRefreshFeed,
+  // Feed-related props from App.jsx
+  feedPosts,
+  isLoadingFeed,
+  feedError,
+  setFeedPosts
+}, ref) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const feedRef = useRef(null);
@@ -363,11 +376,6 @@ const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, 
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   
-  // Real feed data state
-  const [feedPosts, setFeedPosts] = useState([]);
-  const [isLoadingFeed, setIsLoadingFeed] = useState(true);
-  const [feedError, setFeedError] = useState(null);
-  
   // Comments modal state
   const [commentsModal, setCommentsModal] = useState({ isOpen: false, post: null });
   
@@ -378,72 +386,6 @@ const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, 
   const [deviceLocation, setDeviceLocation] = useState(null);
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
-
-  // Load feed data
-  const loadFeedData = async () => {
-    try {
-      setIsLoadingFeed(true);
-      setFeedError(null);
-      
-      const feedType = selectedTab === 'For You' ? 'for_you' : 'following';
-      console.log('🔍 Loading feed data for:', feedType);
-      
-      const { data: rawPosts, error } = await getFeedPosts(feedType, 20, 0);
-      
-      if (error) {
-        console.error('❌ Feed loading error:', error?.message || 'Unknown error');
-        console.error('❌ Error details:', JSON.stringify({
-          message: error?.message,
-          details: error?.details,
-          hint: error?.hint,
-          code: error?.code,
-          name: error?.name
-        }, null, 2));
-        setFeedError(error.message || error.details || error.hint || 'Failed to load feed');
-        setFeedPosts([]);
-      } else {
-        console.log('✅ Raw feed data loaded:', rawPosts?.length || 0, 'posts');
-        
-        // If no posts and no error, show empty state
-        if (!rawPosts || rawPosts.length === 0) {
-          console.log('📭 No posts found - showing empty state');
-          setFeedPosts([]);
-          setFeedError(null);
-        } else {
-          const formattedPosts = rawPosts.map(formatPostForDisplay);
-          console.log('✅ Formatted feed data:', formattedPosts);
-          
-          // Load accurate comment counts for each post
-          const postsWithCommentCounts = await Promise.all(
-            formattedPosts.map(async (post) => {
-              try {
-                const { count } = await getPostCommentCount(post.id);
-                return { ...post, comments: count };
-              } catch (error) {
-                console.error('❌ Error loading comment count for post:', post.id);
-                return post;
-              }
-            })
-          );
-          
-          setFeedPosts(postsWithCommentCounts);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Feed loading exception:', error?.message || 'Unknown error');
-      console.error('❌ Exception details:', JSON.stringify({
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code,
-        name: error?.name
-      }, null, 2));
-      setFeedError(error.message || 'Failed to load feed');
-      setFeedPosts([]);
-    } finally {
-      setIsLoadingFeed(false);
-    }
-  };
 
   // Calculate camera and feed heights based on scroll
   const cameraHeight = Math.max(0, 45 - (scrollY * 0.15));
@@ -582,24 +524,24 @@ const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, 
     getCurrentLocation();
   }, []);
 
-  // Load feed data only on mount
+  // Load feed data only once - never reload on navigation
   useEffect(() => {
-    loadFeedData();
+    // This useEffect is no longer needed as feed data is passed as a prop
+    // The parent App component will manage its own state and pass it down.
   }, []);
-
-  // Load feed data when tab changes (but only if feed is empty)
-  useEffect(() => {
-    if (feedPosts.length === 0) {
-      loadFeedData();
-    }
-  }, [selectedTab]);
 
   // Add a function to refresh feed data (for pull-to-refresh)
   const refreshFeedData = async () => {
     console.log('🔄 MainScreen: Starting feed refresh...');
-    setIsLoadingFeed(true);
+    // setIsLoadingFeed(true); // This state is now managed by the parent
     setFeedError(null);
-    await loadFeedData();
+    
+    // Reload camera to fix any camera errors
+    console.log('📷 MainScreen: Reloading camera...');
+    await startCamera(facingMode);
+    
+    // Refresh feed data
+    // await loadFeedData(); // This function is no longer needed
     console.log('✅ MainScreen: Feed refresh completed');
   };
 
@@ -1050,7 +992,10 @@ const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, 
           {tabs.map((tab) => (
             <button
               key={tab}
-              onClick={() => setSelectedTab(tab)}
+              onClick={() => {
+                // Only change tab, don't reload feed
+                setSelectedTab(tab);
+              }}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                 selectedTab === tab
                   ? 'bg-teal-700 text-white'
@@ -1088,7 +1033,7 @@ const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, 
               <div className="text-center py-8">
                 <div className="text-gray-500 mb-4">Failed to load feed</div>
                 <button
-                  onClick={loadFeedData}
+                  onClick={refreshFeedData}
                   className="px-4 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium"
                   style={{ backgroundColor: '#1F6D5A' }}
                 >

@@ -815,7 +815,8 @@ export const useLists = (userId) => {
     
     if (!userId) {
       console.error('❌ No userId provided to createList');
-      return null;
+      // Throw an error to ensure the calling function can catch it
+      throw new Error('User is not authenticated.');
     }
 
     try {
@@ -846,7 +847,8 @@ export const useLists = (userId) => {
           hint: error.hint,
           code: error.code
         });
-        throw error;
+        // Do not re-throw the error here, let the caller handle it if needed
+        return null;
       }
 
       console.log('✅ List created successfully:', JSON.stringify(data, null, 2));
@@ -869,7 +871,8 @@ export const useLists = (userId) => {
         code: error.code,
         fullError: error
       }, null, 2));
-      throw error;
+      // Do not re-throw the error here, let the caller handle it if needed
+      return null;
     }
   };
 

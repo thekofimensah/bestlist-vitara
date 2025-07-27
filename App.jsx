@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, List, User, Search, Bell, X } from 'lucide-react';
+import { App as CapacitorApp } from '@capacitor/app';
 import MainScreen from './components/MainScreen';
 import ListsView from './components/ListsView';
 import ProfileView from './components/ProfileView';
-import ShowItemsInListView from './components/ShowItemsInListView';
+import ShowItemsInListView from './components/secondary/ShowItemsInListView';
 import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
+import UserProfile from './components/secondary/UserProfile';
 import PullToRefresh from './ui/PullToRefresh';
 import { supabase, signOut, searchUserContent } from './lib/supabase';
 import { useLists } from './hooks/useLists';
@@ -68,6 +70,7 @@ const App = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [selectedUsername, setSelectedUsername] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -86,6 +89,8 @@ const App = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingList, setEditingList] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [deepLinkData, setDeepLinkData] = useState(null);
+  const mainScreenRef = useRef(null);
 
   const handleSignOut = async () => {
     try {
@@ -176,6 +181,17 @@ const App = () => {
     setCurrentScreen(screen);
     setSelectedList(null);
     setSelectedItem(null);
+    setSelectedUsername(null);
+  };
+
+  const handleNavigateToUser = (username) => {
+    setSelectedUsername(username);
+    setCurrentScreen('user-profile');
+  };
+
+  const handleBackFromUserProfile = () => {
+    setSelectedUsername(null);
+    setCurrentScreen('home'); // Go back to feed
   };
 
   const handleSearch = () => {
@@ -213,6 +229,53 @@ const App = () => {
     return () => subscription?.unsubscribe();
   }, []);
 
+  // Handle deep links
+  useEffect(() => {
+    const handleDeepLink = async () => {
+      try {
+        // Handle app open from deep link
+        CapacitorApp.addListener('appUrlOpen', (event) => {
+          console.log('🔗 Deep link opened:', event.url);
+          
+          try {
+            const url = new URL(event.url);
+            const path = url.pathname;
+            
+            if (path.startsWith('/post/')) {
+              const postId = path.split('/post/')[1];
+              console.log('📱 Navigate to post:', postId);
+              setDeepLinkData({ type: 'post', id: postId });
+              // Navigate to home screen to show the post
+              setCurrentScreen('home');
+            } else if (path.startsWith('/list/')) {
+              const listId = path.split('/list/')[1];
+              console.log('📱 Navigate to list:', listId);
+              setDeepLinkData({ type: 'list', id: listId });
+              // Navigate to lists screen to show the list
+              setCurrentScreen('lists');
+            }
+          } catch (error) {
+            console.error('❌ Error parsing deep link:', error);
+          }
+        });
+
+        // Handle app state changes
+        CapacitorApp.addListener('appStateChange', (state) => {
+          console.log('📱 App state changed:', state);
+        });
+
+        return () => {
+          // Clean up listeners
+          CapacitorApp.removeAllListeners();
+        };
+      } catch (error) {
+        console.error('❌ Error setting up deep link listeners:', error);
+      }
+    };
+
+    handleDeepLink();
+  }, []);
+
   const handleAddItem = async (selectedListIds, item, isStayAway = false) => {
     console.log('🔧 App.handleAddItem called with:', JSON.stringify({
       selectedListIds,
@@ -228,17 +291,23 @@ const App = () => {
         is_stay_away: isStayAway
       };
       console.log('🔧 Calling addItemToList with selectedListIds array:', selectedListIds);
-      await addItemToList(selectedListIds, itemData, isStayAway);
+      const result = await addItemToList(selectedListIds, itemData, isStayAway);
       console.log('✅ addItemToList completed successfully');
+      
+      if (result.error) {
+        throw result.error;
+      }
+      
+      return result.data; // Return the saved item
     } catch (error) {
       console.error('❌ Error in handleAddItem:', error);
       throw error;
-    }
-    
-    setImagesLoading(false);
-    setEditingItem(null);
-    if (selectedList) {
-      refreshLists();
+    } finally {
+      setImagesLoading(false);
+      setEditingItem(null);
+      if (selectedList) {
+        refreshLists();
+      }
     }
   };
 
@@ -296,55 +365,93 @@ const App = () => {
   };
 
   const handleCreateList = async (name, color) => {
-    const newList = await createList(name, color);
-    return newList;
+    try {
+      console.log('🔧 App: handleCreateList called with:', { name, color });
+      const newList = await createList(name, color);
+      console.log('🔧 App: createList returned:', newList);
+      return newList;
+    } catch (error) {
+      console.error('❌ App: Error in handleCreateList:', error);
+      throw error; // Re-throw so AddItemModal can handle it
+    }
   };
 
   // Screen-specific refresh handlers
   const handleHomeRefresh = async () => {
     setRefreshing(true);
     
-    // Reset images loading state to show visual feedback
-    setImagesLoading(true);
-    
-    // Refresh lists and reset any loading states
-    refreshLists(false);
-    
-    // Quick refresh with subtle loading
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    setImagesLoading(false);
-    setRefreshing(false);
+    try {
+      // Refresh lists and reset any loading states
+      await refreshLists(false);
+      
+      // Trigger feed refresh by calling the feed refresh function
+      await handleFeedRefresh();
+      
+      // Quick refresh with subtle loading
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+    } catch (error) {
+      console.error('❌ Home refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Feed refresh function for MainScreen
+  const handleFeedRefresh = async () => {
+    console.log('🔄 App: Feed refresh triggered');
+    // Call MainScreen's refresh function directly
+    if (mainScreenRef.current && mainScreenRef.current.refreshFeedData) {
+      await mainScreenRef.current.refreshFeedData();
+    }
   };
 
   const handleListsRefresh = async () => {
     setRefreshing(true);
     
-    refreshLists(false);
-    
-    // Quick loading feedback
-    await new Promise(resolve => setTimeout(resolve, 600));
-    
-    setRefreshing(false);
+    try {
+      // Refresh lists from database
+      await refreshLists(false);
+      
+      // Quick loading feedback
+      await new Promise(resolve => setTimeout(resolve, 600));
+      
+    } catch (error) {
+      console.error('❌ Lists refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleProfileRefresh = async () => {
     setRefreshing(true);
     
-    // In a real app, this would refresh profile data
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    setRefreshing(false);
+    try {
+      // Refresh profile data (in a real app, this would fetch updated stats)
+      // For now, just simulate a refresh
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+    } catch (error) {
+      console.error('❌ Profile refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleListDetailRefresh = async () => {
     setRefreshing(true);
     
-    refreshLists(false);
-    
-    await new Promise(resolve => setTimeout(resolve, 600));
-    
-    setRefreshing(false);
+    try {
+      // Refresh lists from database
+      await refreshLists(false);
+      
+      await new Promise(resolve => setTimeout(resolve, 600));
+      
+    } catch (error) {
+      console.error('❌ List detail refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const renderScreen = () => {
@@ -386,11 +493,14 @@ const App = () => {
         return (
           <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
             <MainScreen
+              ref={mainScreenRef}
               lists={lists}
               loading={imagesLoading || listsLoading || refreshing}
               onAddItem={handleAddItem}
               onSelectList={handleSelectList}
               onCreateList={handleCreateList}
+              onNavigateToUser={handleNavigateToUser}
+              onRefreshFeed={handleFeedRefresh}
             />
           </PullToRefresh>
         );
@@ -404,6 +514,7 @@ const App = () => {
               onEditItem={handleEditItem}
               onViewItemDetail={handleViewItemDetail}
               onReorderLists={reorderLists}
+              isRefreshing={refreshing}
             />
           </PullToRefresh>
         );
@@ -412,18 +523,30 @@ const App = () => {
           <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
             <ProfileView 
               onBack={() => navigateToScreen('home')}
+              isRefreshing={refreshing}
             />
           </PullToRefresh>
+        );
+      case 'user-profile':
+        return (
+          <UserProfile
+            username={selectedUsername}
+            onBack={handleBackFromUserProfile}
+            onNavigateToUser={handleNavigateToUser}
+          />
         );
       default:
         return (
           <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
             <MainScreen
+              ref={mainScreenRef}
               lists={lists}
               loading={imagesLoading || listsLoading || refreshing}
               onAddItem={handleAddItem}
               onSelectList={handleSelectList}
               onCreateList={handleCreateList}
+              onNavigateToUser={handleNavigateToUser}
+              onRefreshFeed={handleFeedRefresh}
             />
           </PullToRefresh>
         );

@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Edit3 } from 'lucide-react';
-import AddItemModal from './AddItemModal';
-import { deleteItemFromList } from '../lib/supabase';
+import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Edit3, Share } from 'lucide-react';
+import AddItemModal from '../AddItemModal';
+import ShareModal from './ShareModal';
+import { deleteItemFromList } from '../../lib/supabase';
 
 const VerdictBadge = ({ verdict }) => {
   const getVerdictStyle = () => {
@@ -95,6 +96,7 @@ const ShowItemsInListView = ({
   const [showContextMenu, setShowContextMenu] = useState(null);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [showAddModal, setShowAddModal] = useState(false);
+  const [shareModal, setShareModal] = useState({ isOpen: false, list: null });
 
   // Combine all items
   const allItems = [
@@ -244,9 +246,24 @@ const ShowItemsInListView = ({
               </div>
             </div>
           </div>
-          <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
-            <MoreHorizontal className="w-5 h-5 text-gray-700" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const listWithUserData = {
+                  ...list,
+                  itemCount: allItems.length,
+                  user: { name: 'You' }
+                };
+                setShareModal({ isOpen: true, list: listWithUserData });
+              }}
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
+            >
+              <Share className="w-5 h-5 text-gray-700" />
+            </button>
+            <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
+              <MoreHorizontal className="w-5 h-5 text-gray-700" />
+            </button>
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -433,6 +450,13 @@ const ShowItemsInListView = ({
           }}
         />
       )}
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={shareModal.isOpen}
+        onClose={() => setShareModal({ isOpen: false, list: null })}
+        list={shareModal.list}
+      />
     </div>
   );
 };

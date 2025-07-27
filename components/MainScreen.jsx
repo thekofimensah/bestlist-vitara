@@ -1,12 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, FlipHorizontal, Zap, Image, X, Plus, Star, Heart, MessageCircle, Send, MoreHorizontal, RefreshCw, Bookmark, Share } from 'lucide-react'; 
 import AddItemModal from './AddItemModal';
+import CommentsModal from './secondary/CommentsModal';
+import ShareModal from './secondary/ShareModal';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
 import { dataURLtoFile } from '../lib/imageUtils';
-import { uploadPhotoWithOwner, supabase } from '../lib/supabase';
+import { uploadPhotoWithOwner, supabase, getFeedPosts, likePost, unlikePost, getPostCommentCount } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -103,45 +106,44 @@ const extractEXIFData = async (file) => {
   });
 };
 
-// Mock social feed data - matches MainScreen.tsx exactly
-const mockPosts = [
-  {
-    id: '1',
-    user: { name: 'chef_maria', avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=100' },
-    image: 'https://images.pexels.com/photos/4198019/pexels-photo-4198019.jpeg?auto=compress&cs=tinysrgb&w=400',
-    rating: 4,
-    verdict: 'KEEP',
-    tags: ['Artisanal', 'Local'],
-    snippet: 'Complex umami with perfect salt balance. Worth the premium price.',
-    timestamp: '2h',
-    likes: 24,
-    comments: 8
-  },
-  {
-    id: '2',
-    user: { name: 'foodie_alex', avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=100' },
-    image: 'https://images.pexels.com/photos/4110256/pexels-photo-4110256.jpeg?auto=compress&cs=tinysrgb&w=400',
-    rating: 2,
-    verdict: 'AVOID',
-    tags: ['Organic', 'Expensive'],
-    snippet: 'Overly bitter finish. Better options available at this price point.',
-    timestamp: '4h',
-    likes: 12,
-    comments: 3
-  },
-  {
-    id: '3',
-    user: { name: 'taste_curator', avatar: 'https://images.pexels.com/photos/1181690/pexels-photo-1181690.jpeg?auto=compress&cs=tinysrgb&w=100' },
-    image: 'https://images.pexels.com/photos/4198017/pexels-photo-4198017.jpeg?auto=compress&cs=tinysrgb&w=400',
-    rating: 5,
-    verdict: 'KEEP',
-    tags: ['Single Origin', 'Premium'],
-    snippet: 'Exceptional terroir expression. Notes of dark cherry and tobacco.',
-    timestamp: '6h',
-    likes: 45,
-    comments: 15
-  }
-];
+// Helper function to format post data from database
+const formatPostForDisplay = (post) => {
+  const getTimeAgo = (dateString) => {
+    const now = new Date();
+    const postDate = new Date(dateString);
+    const diffInHours = Math.floor((now - postDate) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`;
+    return `${Math.floor(diffInHours / 168)}w`;
+  };
+
+  const getVerdictFromRating = (rating, isStayAway) => {
+    if (isStayAway) return 'AVOID';
+    return rating >= 4 ? 'KEEP' : 'MEH';
+  };
+
+  return {
+    id: post.id,
+    user: {
+      name: post.profiles?.username || 'User',
+      avatar: post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
+    },
+    image: post.items?.image_url || '',
+    rating: post.items?.rating || 3,
+    verdict: getVerdictFromRating(post.items?.rating, post.items?.is_stay_away),
+    // tags: post.items?.tags || [],
+    snippet: post.items?.notes || '',
+    timestamp: getTimeAgo(post.created_at),
+    likes: post.like_count || 0,
+    comments: post.comment_count || 0,
+    user_liked: post.user_liked || false,
+    item_name: post.items?.name || 'Unknown Item',
+    list_name: post.lists?.name || 'Unknown List',
+    location: post.location || null
+  };
+};
 
 const StarRating = ({ rating, size = 'sm' }) => {
   const starSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
@@ -184,12 +186,51 @@ const VerdictBadge = ({ verdict, size = 'sm' }) => {
   );
 };
 
-const PostCard = ({ post, onTap }) => {
-  const [liked, setLiked] = useState(false);
+const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareTap }) => {
+  const [liked, setLiked] = useState(post.user_liked);
+  const [likeCount, setLikeCount] = useState(post.likes);
+  const [isLiking, setIsLiking] = useState(false);
 
-  const handleLike = (e) => {
+  const handleLike = async (e) => {
     e.stopPropagation();
-    setLiked(!liked);
+    
+    if (isLiking) return; // Prevent double-clicks
+    
+    try {
+      setIsLiking(true);
+      const newLikedState = !liked;
+      
+      // Optimistic update
+      setLiked(newLikedState);
+      setLikeCount(prev => newLikedState ? prev + 1 : prev - 1);
+      
+      // Call API
+      if (newLikedState) {
+        await likePost(post.id);
+      } else {
+        await unlikePost(post.id);
+      }
+      
+      // Notify parent component
+      if (onLikeChange) {
+        onLikeChange(post.id, newLikedState);
+      }
+      
+    } catch (error) {
+      console.error('Like/unlike error:', error);
+      // Revert optimistic update on error
+      setLiked(!liked);
+      setLikeCount(prev => liked ? prev + 1 : prev - 1);
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  const handleUserTap = (e) => {
+    e.stopPropagation();
+    if (onUserTap && post.user?.name) {
+      onUserTap(post.user.name);
+    }
   };
 
   const handleDoubleTap = (e) => {
@@ -201,13 +242,20 @@ const PostCard = ({ post, onTap }) => {
     <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm" onClick={onTap}>
       {/* Header */}
       <div className="flex items-center gap-3 mb-3">
-        <img
-          src={post.user.avatar}
-          alt={post.user.name}
-          className="w-8 h-8 rounded-full object-cover"
-        />
-        <div className="flex-1">
-          <div className="text-sm font-medium text-gray-900">{post.user.name}</div>
+        <button onClick={handleUserTap} className="flex-shrink-0">
+          <img
+            src={post.user.avatar}
+            alt={post.user.name}
+            className="w-8 h-8 rounded-full object-cover"
+          />
+        </button>
+        <div className="flex-1 min-w-0">
+          <button 
+            onClick={handleUserTap}
+            className="text-sm font-medium text-gray-900 hover:text-teal-700 transition-colors text-left"
+          >
+            {post.user.name}
+          </button>
           <div className="text-xs text-gray-500">{post.timestamp}</div>
         </div>
         <div className="flex items-center gap-2">
@@ -228,7 +276,7 @@ const PostCard = ({ post, onTap }) => {
         />
       </div>
 
-      {/* Tags */}
+      {/* Tags
       {post.tags.length > 0 && (
         <div className="flex gap-1 mb-2 overflow-x-auto">
           {post.tags.slice(0, 3).map((tag, index) => (
@@ -246,7 +294,7 @@ const PostCard = ({ post, onTap }) => {
             </span>
           )}
         </div>
-      )}
+      )} */}
 
       {/* Snippet */}
       <p className="text-sm text-gray-700 mb-3 leading-relaxed">
@@ -263,9 +311,15 @@ const PostCard = ({ post, onTap }) => {
             } hover:text-red-500 transition-colors`}
           >
             <Heart className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
-            <span>{post.likes + (liked ? 1 : 0)}</span>
+            <span>{likeCount}</span>
           </button>
-          <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onCommentTap && onCommentTap(post);
+            }}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          >
             <MessageCircle className="w-4 h-4" />
             <span>{post.comments}</span>
           </button>
@@ -274,7 +328,13 @@ const PostCard = ({ post, onTap }) => {
           <button className="text-gray-500 hover:text-gray-700 transition-colors">
             <Bookmark className="w-4 h-4" />
           </button>
-          <button className="text-gray-500 hover:text-gray-700 transition-colors">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onShareTap && onShareTap(post);
+            }}
+            className="text-gray-500 hover:text-gray-700 transition-colors"
+          >
             <Share className="w-4 h-4" />
           </button>
         </div>
@@ -283,7 +343,7 @@ const PostCard = ({ post, onTap }) => {
   );
 };
 
-const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) => {
+const MainScreen = React.forwardRef(({ lists, loading, onAddItem, onSelectList, onCreateList, onNavigateToUser, onRefreshFeed }, ref) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const feedRef = useRef(null);
@@ -303,10 +363,87 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   
+  // Real feed data state
+  const [feedPosts, setFeedPosts] = useState([]);
+  const [isLoadingFeed, setIsLoadingFeed] = useState(true);
+  const [feedError, setFeedError] = useState(null);
+  
+  // Comments modal state
+  const [commentsModal, setCommentsModal] = useState({ isOpen: false, post: null });
+  
+  // Share modal state
+  const [shareModal, setShareModal] = useState({ isOpen: false, post: null });
+  
   // Location state for AI context
   const [deviceLocation, setDeviceLocation] = useState(null);
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
+
+  // Load feed data
+  const loadFeedData = async () => {
+    try {
+      setIsLoadingFeed(true);
+      setFeedError(null);
+      
+      const feedType = selectedTab === 'For You' ? 'for_you' : 'following';
+      console.log('🔍 Loading feed data for:', feedType);
+      
+      const { data: rawPosts, error } = await getFeedPosts(feedType, 20, 0);
+      
+      if (error) {
+        console.error('❌ Feed loading error:', error?.message || 'Unknown error');
+        console.error('❌ Error details:', JSON.stringify({
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+          code: error?.code,
+          name: error?.name
+        }, null, 2));
+        setFeedError(error.message || error.details || error.hint || 'Failed to load feed');
+        setFeedPosts([]);
+      } else {
+        console.log('✅ Raw feed data loaded:', rawPosts?.length || 0, 'posts');
+        
+        // If no posts and no error, show empty state
+        if (!rawPosts || rawPosts.length === 0) {
+          console.log('📭 No posts found - showing empty state');
+          setFeedPosts([]);
+          setFeedError(null);
+        } else {
+          const formattedPosts = rawPosts.map(formatPostForDisplay);
+          console.log('✅ Formatted feed data:', formattedPosts);
+          
+          // Load accurate comment counts for each post
+          const postsWithCommentCounts = await Promise.all(
+            formattedPosts.map(async (post) => {
+              try {
+                const { count } = await getPostCommentCount(post.id);
+                return { ...post, comments: count };
+              } catch (error) {
+                console.error('❌ Error loading comment count for post:', post.id);
+                return post;
+              }
+            })
+          );
+          
+          setFeedPosts(postsWithCommentCounts);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Feed loading exception:', error?.message || 'Unknown error');
+      console.error('❌ Exception details:', JSON.stringify({
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        name: error?.name
+      }, null, 2));
+      setFeedError(error.message || 'Failed to load feed');
+      setFeedPosts([]);
+    } finally {
+      setIsLoadingFeed(false);
+    }
+  };
 
   // Calculate camera and feed heights based on scroll
   const cameraHeight = Math.max(0, 45 - (scrollY * 0.15));
@@ -444,6 +581,35 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // Load feed data only on mount
+  useEffect(() => {
+    loadFeedData();
+  }, []);
+
+  // Load feed data when tab changes (but only if feed is empty)
+  useEffect(() => {
+    if (feedPosts.length === 0) {
+      loadFeedData();
+    }
+  }, [selectedTab]);
+
+  // Add a function to refresh feed data (for pull-to-refresh)
+  const refreshFeedData = async () => {
+    console.log('🔄 MainScreen: Starting feed refresh...');
+    setIsLoadingFeed(true);
+    setFeedError(null);
+    await loadFeedData();
+    console.log('✅ MainScreen: Feed refresh completed');
+  };
+
+  // Use the passed refresh function if available, otherwise use local one
+  const handleFeedRefresh = onRefreshFeed || refreshFeedData;
+
+  // Expose refreshFeedData to parent component via ref
+  useImperativeHandle(ref, () => ({
+    refreshFeedData
+  }));
 
   const handleCapture = async () => {
     setError(null);
@@ -592,11 +758,12 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     }
   };
 
-  const handleSave = (...args) => {
+  const handleSave = async (...args) => {
     setWasSaved(true);
-    onAddItem(...args);
+    const savedItem = await onAddItem(...args);
     setShowModal(false);
     setCapturedImage(null);
+    return savedItem; // Return the saved item for post creation
   };
 
   const handleGalleryUpload = () => {
@@ -738,6 +905,36 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
     console.log('Post tapped');
   };
 
+  const handleCommentTap = (post) => {
+    setCommentsModal({ isOpen: true, post });
+  };
+
+  const handleCommentAdded = async (postId) => {
+    // Update the comment count for the specific post when a new comment is added
+    try {
+      const { count } = await getPostCommentCount(postId);
+      setFeedPosts(prev => prev.map(p => 
+        p.id === postId ? { ...p, comments: count } : p
+      ));
+    } catch (error) {
+      console.error('❌ Error updating comment count:', error);
+    }
+  };
+
+  const handleShareTap = (post) => {
+    setShareModal({ isOpen: true, post });
+  };
+
+  const handleCloseComments = () => {
+    setCommentsModal({ isOpen: false, post: null });
+  };
+
+  const handleCloseShare = () => {
+    setShareModal({ isOpen: false, post: null });
+  };
+
+
+
   return (
     <div 
       className="h-screen bg-stone-50 overflow-hidden safe-area-inset" 
@@ -866,22 +1063,75 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           ))}
         </div>
 
-        {/* Feed Content - Always show social feed */}
+        {/* Feed Content - Real social feed */}
         <div 
           ref={feedRef}
           onScroll={handleScroll}
-          className="px-6 pb-6 overflow-y-auto"
-          style={{ height: isCameraHidden ? 'calc(100vh - 160px)' : `calc(${feedHeight}vh - 120px)` }}
+          className="px-6 overflow-y-auto"
+          style={{ 
+            height: isCameraHidden 
+              ? 'calc(100vh - 140px)' 
+              : `calc(${feedHeight}vh - 100px)`
+          }}
         >
           <div className="space-y-4">
-            {/* Social Feed Posts */}
-            {mockPosts.map((post) => (
+            {/* Loading State */}
+            {isLoadingFeed && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <LoadingSpinner size="lg" color="teal" />
+                <p className="text-gray-500 mt-4 text-sm">Loading feed...</p>
+              </div>
+            )}
+
+            {/* Error State */}
+            {feedError && !isLoadingFeed && (
+              <div className="text-center py-8">
+                <div className="text-gray-500 mb-4">Failed to load feed</div>
+                <button
+                  onClick={loadFeedData}
+                  className="px-4 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium"
+                  style={{ backgroundColor: '#1F6D5A' }}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoadingFeed && !feedError && feedPosts.length === 0 && (
+              <div className="text-center py-8">
+                <div className="text-gray-500 mb-2">No posts yet</div>
+                <div className="text-gray-400 text-sm">
+                  {selectedTab === 'Following' 
+                    ? 'Follow other users to see their posts here' 
+                    : 'Be the first to share something amazing!'
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* Real Feed Posts */}
+            {!isLoadingFeed && feedPosts.map((post) => (
               <PostCard
                 key={post.id}
                 post={post}
                 onTap={handlePostTap}
+                onUserTap={onNavigateToUser}
+                onCommentTap={handleCommentTap}
+                onShareTap={handleShareTap}
+                onLikeChange={(postId, liked) => {
+                  // Update the local feedPosts state when a post is liked/unliked
+                  setFeedPosts(prev => prev.map(p => 
+                    p.id === postId 
+                      ? { ...p, user_liked: liked, likes: liked ? p.likes + 1 : p.likes - 1 }
+                      : p
+                  ));
+                }}
               />
             ))}
+            
+            {/* Bottom padding for last post */}
+            <div className="pb-6"></div>
           </div>
         </div>
       </div>
@@ -943,8 +1193,23 @@ const MainScreen = ({ lists, loading, onAddItem, onSelectList, onCreateList }) =
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Comments Modal */}
+      <CommentsModal
+        isOpen={commentsModal.isOpen}
+        onClose={handleCloseComments}
+        post={commentsModal.post}
+        onCommentAdded={handleCommentAdded}
+      />
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={shareModal.isOpen}
+        onClose={handleCloseShare}
+        post={shareModal.post}
+      />
     </div>
   );
-};
+});
 
 export default MainScreen; 

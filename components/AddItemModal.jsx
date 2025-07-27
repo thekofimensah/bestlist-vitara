@@ -587,7 +587,7 @@ const AddItemModal = ({
     // eslint-disable-next-line
   }, [selectedLists, rating, notes, productName, category, activeTags, certainty, location]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('🔍 Save button clicked');
     
     // Validate required fields
@@ -684,6 +684,9 @@ const AddItemModal = ({
       detailed_breakdown: attributes,
       rarity,
       
+      // Privacy setting
+      is_public: isPublic,
+      
       // Photo metadata from photoMetadata if available
       photo_date_time: photoMetadata?.dateTime,
       photo_location_source: getPhotoLocationSource(),
@@ -698,19 +701,46 @@ const AddItemModal = ({
       newItem,
       isStayAway
     }, null, 2));
-    onSave(selectedLists, newItem, isStayAway);
+    
+    // Save the item first
+    const savedItem = await onSave(selectedLists, newItem, isStayAway);
+    
+    // Create public post if item is public and not editing existing item
+    if (isPublic && !item?.id && savedItem) {
+      try {
+        console.log('🔍 Creating public post for item:', savedItem.id);
+        await createPost(savedItem.id, selectedLists[0], true, location);
+        console.log('✅ Public post created successfully');
+      } catch (error) {
+        console.error('❌ Failed to create public post:', error);
+        // Don't block the flow if post creation fails
+      }
+    }
+    
     if (isBulk && onNext) onNext();
     else onClose();
   };
 
   const handleCreateList = async () => {
     if (newListName.trim() && onCreateList) {
-      const newList = await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
-      if (newList && newList.id) {
-        setSelectedLists([newList.id]);
+      try {
+        console.log('🔧 AddItemModal: Creating list with name:', newListName.trim());
+        const newList = await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
+        console.log('🔧 AddItemModal: Got result from onCreateList:', newList);
+        
+        if (newList && newList.id) {
+          console.log('✅ AddItemModal: List created successfully, selecting it');
+          setSelectedLists([newList.id]);
+        } else {
+          console.error('❌ AddItemModal: List creation failed - no ID returned');
+        }
+        setNewListName('');
+        setShowCreateListDialog(false);
+      } catch (error) {
+        console.error('❌ AddItemModal: Error creating list:', error);
+        // Keep dialog open on error
+        // Could show error message to user here
       }
-      setNewListName('');
-      setShowCreateListDialog(false);
     }
   };
 
@@ -1840,6 +1870,31 @@ const AddItemModal = ({
                   </div>
                 </>
               )}
+            </div>
+
+            {/* Public/Private Toggle */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 mb-1">Share with community</h3>
+                  <p className="text-xs text-gray-500">
+                    {isPublic ? 'Others can see this in their feed' : 'Only you can see this item'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsPublic(!isPublic)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
+                    isPublic ? 'bg-teal-600' : 'bg-gray-200'
+                  }`}
+                  style={{ backgroundColor: isPublic ? '#1F6D5A' : undefined }}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
+                      isPublic ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Action Bar */}

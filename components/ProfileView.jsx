@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Camera, LogOut, Shield, FileText, User, Settings, Search, Bell, List, Heart, Star, Share } from 'lucide-react';
+import { ArrowLeft, Camera, LogOut, Shield, FileText, Settings, Search, Bell, List, Heart, Star, Share, User } from 'lucide-react';
 import { signOut } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 const StatCard = ({ icon, value, label }) => {
   return (
@@ -22,32 +23,37 @@ const StatCard = ({ icon, value, label }) => {
   );
 };
 
-const ProfileView = ({ onBack }) => {
+const ProfileView = ({ onBack, isRefreshing = false }) => {
   const { user, userProfile, updateProfile } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(userProfile?.name || '');
-  const [country, setCountry] = useState(userProfile?.country || '');
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   const handleSave = async () => {
     setLoading(true);
-    const { error } = await updateProfile({ name, country });
-    if (!error) {
-      setIsEditing(false);
-    }
+    // Bio update functionality would go here
     setLoading(false);
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      console.log('🚪 Signing out...');
+      const { error } = await signOut();
+      if (error) {
+        console.error('❌ Sign out error:', error);
+      } else {
+        console.log('✅ Signed out successfully');
+        // The auth listener in the parent app should handle the redirect
+      }
+    } catch (error) {
+      console.error('❌ Sign out exception:', error);
+    }
   };
 
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
         title: 'My Food Journey',
-        text: `Check out my food discoveries on breadcrumbs!`,
+                  text: `Check out ${userProfile?.username ? `@${userProfile.username}` : 'my'}'s food discoveries on breadcrumbs!`,
         url: window.location.href
       });
     } else {
@@ -74,17 +80,31 @@ const ProfileView = ({ onBack }) => {
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile</h3>
             <div className="space-y-3">
-              {/* Username */}
+              {/* Username (read-only) */}
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block">Username</label>
+                    <p className="text-base text-gray-900">
+                      {userProfile?.username ? `@${userProfile.username}` : 'Username not set'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bio */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Name</label>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Bio</label>
                     <input
                       type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      value={userProfile?.bio || ''}
+                      onChange={(e) => {
+                        // Update bio functionality would go here
+                      }}
                       className="w-full text-base text-gray-900 bg-transparent border-none outline-none placeholder-gray-400"
-                      placeholder="Your name"
+                      placeholder="Tell people about yourself"
                     />
                   </div>
                   <button
@@ -95,22 +115,6 @@ const ProfileView = ({ onBack }) => {
                   >
                     {loading ? 'Saving...' : 'Save'}
                   </button>
-                </div>
-              </div>
-
-              {/* Country */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Country</label>
-                    <input
-                      type="text"
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="w-full text-base text-gray-900 bg-transparent border-none outline-none placeholder-gray-400"
-                      placeholder="Your country"
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -235,7 +239,7 @@ const ProfileView = ({ onBack }) => {
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-semibold text-gray-900 mb-2" style={{ color: '#1E1F1E' }}>
-                {userProfile?.name || user?.email?.split('@')[0] || 'User'}
+                {userProfile?.username ? `@${userProfile.username}` : 'Setup Required'}
               </h2>
               <div className="flex items-center gap-2 mb-3">
                 <div 
@@ -247,7 +251,7 @@ const ProfileView = ({ onBack }) => {
                 </div>
               </div>
               <div className="text-sm font-medium text-gray-500">
-                {user?.email}
+                {userProfile?.bio || 'Food Explorer'}
               </div>
             </div>
           </div>
@@ -290,17 +294,6 @@ const ProfileView = ({ onBack }) => {
           
           <div className="space-y-3">
             <button 
-              onClick={() => setIsEditing(!isEditing)}
-              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <User className="w-5 h-5 text-gray-600" />
-                <span className="text-base font-medium text-gray-900">Edit Profile</span>
-              </div>
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-            </button>
-
-            <button 
               onClick={() => setShowSettings(true)}
               className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
             >
@@ -313,53 +306,7 @@ const ProfileView = ({ onBack }) => {
           </div>
         </div>
 
-        {/* Quick Profile Edit */}
-        {isEditing && (
-          <div className="bg-white rounded-3xl p-6 shadow-sm" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-            <h3 className="text-base font-semibold text-gray-900 mb-4">Edit Profile</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:border-teal-700"
-                  placeholder="Enter your name"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
-                <input
-                  type="text"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:border-teal-700"
-                  placeholder="Enter your country"
-                />
-              </div>
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={loading}
-                  className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
-                  style={{ backgroundColor: '#1F6D5A' }}
-                >
-                  {loading ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Share CTA */}
         <button

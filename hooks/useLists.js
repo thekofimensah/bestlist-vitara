@@ -59,8 +59,8 @@ export const useLists = (userId) => {
   const fetchLists = async (background = false, attemptNumber = 0) => {
     if (!userId) return;
     
-    // Prevent multiple simultaneous fetches
-    if (isFetching && !isRetrying) {
+    // Allow refresh even if fetch is in progress (for pull-to-refresh)
+    if (isFetching && !isRetrying && background) {
       console.log('[useLists] Fetch already in progress, skipping...');
       return;
     }
@@ -255,8 +255,22 @@ export const useLists = (userId) => {
       console.log('🚨 [useLists] Error message:', error.message);
       
       if (error.name === 'AbortError') {
-        console.log('🚨 [useLists] Fetch aborted due to timeout (30 seconds)');
+        console.log('🚨 [useLists] Fetch aborted due to timeout (60 seconds)');
         console.log('🚨 [useLists] This suggests the database query is hanging due to high latency');
+        
+        // For pull-to-refresh, don't retry automatically - let user try again
+        if (background) {
+          console.log('🔄 [useLists] Background fetch aborted - allowing manual retry');
+          setConnectionError({
+            message: 'Request timed out - pull down to try again',
+            code: error.code,
+            fatal: false
+          });
+          setIsFetching(false);
+          setIsRetrying(false);
+          if (!background) setLoading(false);
+          return;
+        }
         
         // Calculate exponential backoff delay: 2^attempt * 1000ms, max 30 seconds
         const baseDelay = Math.min(Math.pow(2, attemptNumber) * 1000, 30000);
@@ -278,7 +292,7 @@ export const useLists = (userId) => {
         setTimeout(() => {
           fetchLists(true, attemptNumber + 1); // Retry in background mode
         }, jitterDelay);
-        return;
+        return Promise.resolve();
       } else {
         console.error('🚨 [useLists] Database error details:', JSON.stringify({
           message: error.message,
@@ -327,7 +341,7 @@ export const useLists = (userId) => {
           setTimeout(() => {
             fetchLists(true, attemptNumber + 1);
           }, jitterDelay);
-          return;
+          return Promise.resolve();
         } else {
           console.log('🚨 [useLists] Non-retryable error, stopping attempts');
           setConnectionError({
@@ -360,6 +374,9 @@ export const useLists = (userId) => {
         setRetryCount(0); // Reset retry count on success
       }
     }
+    
+    // Return success/failure for await support
+    return { success: !connectionError?.fatal, error: connectionError };
   };
 
   // Preload function for authentication flow
@@ -449,7 +466,7 @@ export const useLists = (userId) => {
   };
 
   const addItemToList = async (listIds, item, isStayAway = false) => {
-    if (!userId) return;
+    if (!userId) return { data: null, error: new Error('No user ID') };
     
     console.log('🔧 addItemToList called with:', JSON.stringify({
       listIds,
@@ -565,6 +582,9 @@ export const useLists = (userId) => {
         return list;
       }));
       
+      // Return the first result's data (or all results if multiple lists)
+      return { data: results.length === 1 ? results[0].data : results.map(r => r.data), error: null };
+      
     } catch (error) {
       console.error('Error adding item:', JSON.stringify({ message: error.message, details: error.details, hint: error.hint, code: error.code }, null, 2));
       
@@ -579,6 +599,8 @@ export const useLists = (userId) => {
         }
         return list;
       }));
+      
+      return { data: null, error };
     }
   };
 
@@ -798,12 +820,18 @@ export const useLists = (userId) => {
 
     try {
       console.log('🔧 Attempting to create list in Supabase...');
+      
+      // First test if we can access the lists table
+      console.log('🔧 Testing lists table access...');
+      const testQuery = await supabase.from('lists').select('count').limit(1);
+      console.log('🔧 Table access test result:', testQuery);
+      
       const { data, error } = await supabase
         .from('lists')
         .insert([{
           user_id: userId,
           name: name,
-          color: color
+          color: color || '#1F6D5A'
         }])
         .select()
         .single();
@@ -812,6 +840,12 @@ export const useLists = (userId) => {
 
       if (error) {
         console.error('❌ Supabase error:', JSON.stringify(error, null, 2));
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         throw error;
       }
 
@@ -864,10 +898,14 @@ export const useLists = (userId) => {
     }
   };
 
-  const refreshLists = (background = true) => {
+  const refreshLists = async (background = true) => {
     if (userId) {
-      fetchLists(background);
+      // Reset error state for fresh attempt
+      setConnectionError(null);
+      setRetryCount(0);
+      return fetchLists(background, 0);
     }
+    return Promise.resolve();
   };
 
   return {

@@ -20,6 +20,7 @@ const PullToRefresh = ({
   
   const containerRef = useRef(null);
   const startY = useRef(0);
+  const startX = useRef(0);
   const currentY = useRef(0);
   const pullStarted = useRef(false);
   const pullDistanceRef = useRef(0);
@@ -51,7 +52,13 @@ const PullToRefresh = ({
       
       if (!isAtTop || isRefreshing || disabled) return;
       
+      // Only start pull if this is a center-ish touch (avoid edge gestures for native back)
+      const screenWidth = window.innerWidth;
+      const touchX = e.touches[0].clientX;
+      if (touchX < 80 || touchX > screenWidth - 80) return;
+      
       startY.current = e.touches[0].clientY;
+      startX.current = e.touches[0].clientX;
       pullStarted.current = true;
     };
 
@@ -60,6 +67,15 @@ const PullToRefresh = ({
 
       currentY.current = e.touches[0].clientY;
       const deltaY = currentY.current - startY.current;
+      const deltaX = Math.abs(e.touches[0].clientX - startX.current);
+
+      // If horizontal movement is greater than vertical, don't interfere (allow back gesture)
+      if (deltaX > Math.abs(deltaY)) {
+        pullStarted.current = false;
+        setPullDistance(0);
+        setIsPulling(false);
+        return;
+      }
 
       if (deltaY > 0) {
         // Calculate distance with resistance
@@ -68,8 +84,8 @@ const PullToRefresh = ({
         setPullDistance(distance);
         setIsPulling(distance > threshold);
 
-        // Prevent scrolling when pulling down
-        if (distance > 5) {
+        // Only prevent default for significant vertical pulls
+        if (distance > 20 && deltaX < deltaY) {
           e.preventDefault();
         }
       }
@@ -102,9 +118,9 @@ const PullToRefresh = ({
 
     // Add listeners
     container.addEventListener('scroll', handleScroll, { passive: true });
-    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
     
     checkCanPull();
 
@@ -139,10 +155,6 @@ const PullToRefresh = ({
       className={`h-full overflow-auto ${className}`}
       style={{
         WebkitOverflowScrolling: 'touch',
-        // Prevent pull-to-refresh on Safari
-        overscrollBehavior: 'contain',
-        // Ensure touch events can be captured
-        touchAction: 'pan-y',
       }}
     >
             {/* Pull-to-refresh indicator */}

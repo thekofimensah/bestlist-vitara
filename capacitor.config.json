@@ -12,5 +12,10 @@
     "allowMixedContent": true,
     "captureInput": true,
     "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "App": {
+      "urlScheme": "breadcrumbs"
+    }
   }
 }

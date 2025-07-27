@@ -32,6 +32,13 @@ export const useAuth = () => {
         
         if (session?.user) {
           await fetchUserProfile(session.user.id);
+          
+          // If profile doesn't exist and this is a sign-in event, try to create it
+          if (event === 'SIGNED_IN' && !userProfile) {
+            console.log('User signed in but no profile found, checking if we can create one...');
+            // This handles cases where users confirmed email later
+            // We don't have their original username here, so we'll just wait for them to complete setup
+          }
         } else {
           setUserProfile(null);
         }
@@ -46,29 +53,20 @@ export const useAuth = () => {
   const fetchUserProfile = async (userId) => {
     try {
       const { data, error } = await supabase
-        .from('users')
+        .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
       
       if (error && error.code === 'PGRST116') {
-        // User doesn't exist in users table, create them
-        const currentUser = await supabase.auth.getUser();
-        const { data: newUser, error: createError } = await supabase
-          .from('users')
-          .insert([{
-            id: userId,
-            email: currentUser.data.user?.email,
-            name: currentUser.data.user?.user_metadata?.name || currentUser.data.user?.email?.split('@')[0]
-          }])
-          .select()
-          .single();
-        
-        if (!createError) {
-          setUserProfile(newUser);
-        }
+        // User doesn't exist in profiles table yet
+        console.log('Profile not found for user:', userId);
+        setUserProfile(null);
       } else if (!error) {
         setUserProfile(data);
+      } else {
+        console.error('Error fetching user profile:', error);
+        setUserProfile(null);
       }
     } catch (err) {
       console.error('Error fetching user profile:', err);
@@ -80,7 +78,7 @@ export const useAuth = () => {
     
     try {
       const { data, error } = await supabase
-        .from('users')
+        .from('profiles')
         .update(updates)
         .eq('id', user.id)
         .select()

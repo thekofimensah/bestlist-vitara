@@ -507,13 +507,17 @@ SET statement_timeout = '60s';
 -- User profiles (extend existing auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username TEXT UNIQUE,
+  username TEXT UNIQUE NOT NULL,
   display_name TEXT,
   bio TEXT,
   avatar_url TEXT,
   is_private BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- Constraints
+  CONSTRAINT username_format CHECK (username ~ '^[a-z0-9_]{3,20}$'),
+  CONSTRAINT username_length CHECK (length(username) >= 3 AND length(username) <= 20)
 );
 
 -- Posts (public items from lists)
@@ -542,6 +546,7 @@ CREATE TABLE IF NOT EXISTS public.comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
+  parent_id UUID REFERENCES public.comments(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -600,6 +605,7 @@ CREATE INDEX IF NOT EXISTS idx_follows_following ON public.follows(following_id)
 
 -- Profiles table indexes
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username_unique ON public.profiles(lower(username));
 ```
 
 ### Row Level Security (RLS) Policies

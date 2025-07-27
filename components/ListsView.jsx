@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical } from 'lucide-react';
+import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical, Share } from 'lucide-react';
+import ShareModal from './secondary/ShareModal';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 
 const StarRating = ({ rating }) => {
@@ -78,6 +80,7 @@ const ListRow = ({
   onAddItem, 
   onListMenu, 
   onListTitleTap,
+  onShareList,
   isReorderMode = false
 }) => {
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
@@ -146,12 +149,20 @@ const ListRow = ({
         </button>
         
         {!isReorderMode && (
-          <button
-            onClick={() => onListMenu(list.id)}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onShareList(list)}
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <Share className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onListMenu(list.id)}
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -181,11 +192,12 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [reorderedLists, setReorderedLists] = useState(lists);
+  const [shareModal, setShareModal] = useState({ isOpen: false, list: null });
   const scrollContainerRef = useRef(null);
   const savedScrollPosition = useRef(0);
   const hasScrolled = useRef(false);
@@ -248,6 +260,20 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     console.log('List menu for:', listId);
   };
 
+  const handleShareList = (list) => {
+    // Prepare list data for sharing
+    const listWithUserData = {
+      ...list,
+      itemCount: [...(list.items || []), ...(list.stayAways || [])].length,
+      user: { name: 'You' } // You could get this from user context
+    };
+    setShareModal({ isOpen: true, list: listWithUserData });
+  };
+
+  const handleCloseShare = () => {
+    setShareModal({ isOpen: false, list: null });
+  };
+
   const handleListTitleTap = (list) => {
     // Navigate to single list view
     if (onSelectList) {
@@ -297,21 +323,29 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-sm">
               <Plus className="w-10 h-10 text-gray-400" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Start organizing tastes</h3>
-            <p className="text-gray-600 mb-6">Create your first list to group ingredients and dishes</p>
-            <button
-              onClick={() => setShowNewListDialog(true)}
-              className="px-6 py-3 bg-teal-700 text-white rounded-full font-medium"
-              style={{ backgroundColor: '#1F6D5A' }}
-            >
-              Create Your First List
-            </button>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Start organizing tastes
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {isRefreshing ? 'Loading your lists...' : 'Create your first list to group ingredients and dishes'}
+            </p>
+            {!isRefreshing && (
+              <button
+                onClick={() => setShowNewListDialog(true)}
+                className="px-6 py-3 bg-teal-700 text-white rounded-full font-medium"
+                style={{ backgroundColor: '#1F6D5A' }}
+              >
+                Create Your First List
+              </button>
+            )}
           </div>
         ) : (
           <>
             {/* Header with reorder button */}
             <div className="flex items-center justify-between px-6 pt-4 pb-2">
-              <h2 className="text-xl font-semibold text-gray-900">Your Lists</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Your Lists
+              </h2>
               <div className="flex items-center gap-2">
                 {isReorderMode ? (
                   <button
@@ -326,6 +360,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                     onClick={handleEnterReorderMode}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
                     title="Reorder lists"
+                    disabled={isRefreshing}
                   >
                     <GripVertical className="w-4 h-4" />
                   </button>
@@ -377,6 +412,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                       onAddItem={handleAddItem}
                       onListMenu={handleListMenu}
                       onListTitleTap={handleListTitleTap}
+                      onShareList={handleShareList}
                       isReorderMode={isReorderMode}
                     />
                   ))}
@@ -440,6 +476,13 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           </div>
         </div>
       )}
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={shareModal.isOpen}
+        onClose={handleCloseShare}
+        list={shareModal.list}
+      />
     </div>
   );
 };

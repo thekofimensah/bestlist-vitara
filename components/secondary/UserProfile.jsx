@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Calendar, Users, Heart, MessageCircle, UserPlus, UserMinus } from 'lucide-react';
-import { getUserProfile, getUserPosts, followUser, unfollowUser, getUserFollowers, getUserFollowing } from '../../lib/supabase';
+import { getUserProfile, getUserPosts, followUser, unfollowUser, getUserFollowers, getUserFollowing, supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 
 const UserProfile = ({ username, onBack, onNavigateToUser }) => {
@@ -44,21 +44,26 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
         
         setUserProfile(profile);
         
-        // Load follower/following counts
-        const [followersResult, followingResult] = await Promise.all([
+        // Load follower/following counts and check follow status
+        const [followersResult, followingResult, followStatusResult] = await Promise.all([
           getUserFollowers(profile.id),
-          getUserFollowing(profile.id)
+          getUserFollowing(profile.id),
+          // Check if current user is following this user directly
+          currentUser ? supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', profile.id)
+            .single() : Promise.resolve({ data: null, error: null })
         ]);
         
         setFollowersCount(followersResult.data?.length || 0);
         setFollowingCount(followingResult.data?.length || 0);
         
-        // Check if current user is following this user
-        if (currentUser && followersResult.data) {
-          const isCurrentlyFollowing = followersResult.data.some(
-            follower => follower.follower_id === currentUser.id
-          );
-          setIsFollowing(isCurrentlyFollowing);
+        // Set follow status based on direct query
+        if (currentUser) {
+          const isFollowingUser = !!followStatusResult.data && !followStatusResult.error;
+          setIsFollowing(isFollowingUser);
         }
         
       } catch (error) {
@@ -128,6 +133,8 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
         if (!error) {
           setIsFollowing(false);
           setFollowersCount(prev => Math.max(0, prev - 1));
+        } else {
+          console.error('❌ Error unfollowing user:', error);
         }
       } else {
         // Follow
@@ -135,6 +142,8 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
         if (!error) {
           setIsFollowing(true);
           setFollowersCount(prev => prev + 1);
+        } else {
+          console.error('❌ Error following user:', error);
         }
       }
     } catch (error) {

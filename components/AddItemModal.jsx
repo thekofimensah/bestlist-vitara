@@ -20,6 +20,7 @@ import {
   getCurrencyFromCountryName
 } from '../lib/currencyUtils';
 import { createPost } from '../lib/supabase';
+import { getInstagramClassicFilter } from '../lib/imageUtils';
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
   const [justClicked, setJustClicked] = useState(null);
@@ -1193,6 +1194,7 @@ const AddItemModal = ({
           className={`w-full h-full object-cover transition-all duration-500 cursor-pointer ${
             isAIProcessing ? 'saturate-150 contrast-110' : 'saturate-100 contrast-100'
           }`}
+          style={{ filter: getInstagramClassicFilter() }}
           onClick={handlePhotoClick}
         />
 
@@ -2141,7 +2143,10 @@ const AddItemModal = ({
                 src={currentImage}
                 alt="Food item"
                 className="max-w-full max-h-full object-contain"
-                style={{ maxHeight: 'calc(100vh - 120px)' }}
+                style={{ 
+                  maxHeight: 'calc(100vh - 120px)',
+                  filter: getInstagramClassicFilter()
+                }}
               />
             </div>
 

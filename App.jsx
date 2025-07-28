@@ -344,7 +344,8 @@ const App = () => {
   // Load initial data once when the app starts
   useEffect(() => {
     if (user) {
-      loadFeedData();
+      // loadFeedData(); // Commented out - using following by default for now
+      loadFeedData('following'); // Default to following feed
     }
   }, [user]);
 
@@ -503,7 +504,8 @@ const App = () => {
       // It is critical to await the data loading before setting refreshing to false
       await Promise.all([
         refreshLists(false),
-        loadFeedData()
+        // loadFeedData() // Commented out - using following by default for now
+        loadFeedData('following') // Default to following feed
       ]);
       
     } catch (error) {
@@ -887,6 +889,10 @@ const App = () => {
                   placeholder="Search lists and items..."
                   className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700"
                   autoFocus
+                  autoComplete="on"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  spellCheck="true"
                 />
                 {isSearching && (
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">

@@ -8,7 +8,7 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 
 import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
-import { dataURLtoFile } from '../lib/imageUtils';
+import { dataURLtoFile, getInstagramClassicFilter } from '../lib/imageUtils';
 import { uploadPhotoWithOwner, supabase, likePost, unlikePost, getPostCommentCount, isUserFollowingAnyone } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
@@ -239,9 +239,9 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm" onClick={onTap}>
+    <div className="bg-white mb-4 shadow-sm overflow-hidden" onClick={onTap}>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 mb-3 px-4 pt-4">
         <button onClick={handleUserTap} className="flex-shrink-0">
           <img
             src={post.user.avatar}
@@ -264,7 +264,7 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
         </div>
       </div>
 
-      {/* Image */}
+      {/* Image - Edge to Edge */}
       <div 
         className="relative mb-3 cursor-pointer"
         onDoubleClick={handleDoubleTap}
@@ -272,7 +272,8 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
         <img
           src={post.image}
           alt="Food item"
-          className="w-full aspect-square object-cover rounded-2xl"
+          className="w-full aspect-square object-cover"
+          style={{ filter: getInstagramClassicFilter() }}
         />
       </div>
 
@@ -297,12 +298,12 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
       )} */}
 
       {/* Snippet */}
-      <p className="text-sm text-gray-700 mb-3 leading-relaxed">
+      <p className="text-sm text-gray-700 mb-3 leading-relaxed px-4">
         {post.snippet}
       </p>
 
       {/* Actions */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100 px-4 pb-4">
         <div className="flex items-center gap-4">
           <button
             onClick={handleLike}
@@ -373,7 +374,8 @@ const MainScreen = React.forwardRef(({
   const [error, setError] = useState(null);
   const [wasSaved, setWasSaved] = useState(false);
   const [scrollY, setScrollY] = useState(0);
-  const [selectedTab, setSelectedTab] = useState('For You');
+  // const [selectedTab, setSelectedTab] = useState('For You'); // Commented out - using Following only for now
+  const [selectedTab, setSelectedTab] = useState('Following');
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
@@ -390,11 +392,12 @@ const MainScreen = React.forwardRef(({
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
 
   // Calculate camera and feed heights based on scroll
-  const cameraHeight = Math.max(0, 45 - (scrollY * 0.15));
-  const feedHeight = Math.min(100, 55 + (scrollY * 0.15));
+  const cameraHeight = Math.max(0, 60 - (scrollY * 0.15)); // Increased camera height to push feed lower
+  const feedHeight = Math.min(100, 40 + (scrollY * 0.15)); // Reduced initial feed height to deemphasize
   const isCameraHidden = scrollY > 150;
 
-  const tabs = ['For You', 'Following'];
+  // const tabs = ['For You', 'Following']; // Commented out - using Following only for now
+  const tabs = ['Following']; // Only Following tab for now
 
   // Get device location for AI context
   const getCurrentLocation = async () => {
@@ -1015,7 +1018,8 @@ const MainScreen = React.forwardRef(({
                 setSelectedTab(tab);
                 // Notify parent component of tab change
                 if (onTabChange) {
-                  const feedType = tab === 'Following' ? 'following' : 'for_you';
+                  // const feedType = tab === 'Following' ? 'following' : 'for_you'; // Commented out - always following for now
+                  const feedType = 'following'; // Always use following for now
                   onTabChange(feedType);
                 }
               }}
@@ -1035,7 +1039,7 @@ const MainScreen = React.forwardRef(({
         <div 
           ref={feedRef}
           onScroll={handleScroll}
-          className="px-6 overflow-y-auto"
+          className="overflow-y-auto"
           style={{ 
             height: isCameraHidden 
               ? 'calc(100vh - 140px)' 
@@ -1045,7 +1049,7 @@ const MainScreen = React.forwardRef(({
           <div className="space-y-4">
             {/* Loading State */}
             {isLoadingFeed && (
-              <div className="flex flex-col items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 px-6">
                 <LoadingSpinner size="lg" color="teal" />
                 <p className="text-gray-500 mt-4 text-sm">Loading feed...</p>
               </div>
@@ -1053,7 +1057,7 @@ const MainScreen = React.forwardRef(({
 
             {/* Error State */}
             {feedError && !isLoadingFeed && (
-              <div className="text-center py-8">
+              <div className="text-center py-8 px-6">
                 <div className="text-gray-500 mb-4">Failed to load feed</div>
                 <button
                   onClick={refreshFeedData}
@@ -1067,7 +1071,7 @@ const MainScreen = React.forwardRef(({
 
             {/* Empty State */}
             {!isLoadingFeed && !feedError && feedPosts.length === 0 && (
-              <div className="text-center py-8">
+              <div className="text-center py-8 px-6">
                 <div className="text-gray-500 mb-2">
                   {selectedTab === 'Following' ? 'No posts from followed users' : 'No posts yet'}
                 </div>

@@ -208,3 +208,5 @@ The price should default to the currency of the current location (and it can als
 The x during the ai detection should only stop the ai detection, it shouldn't exit out. The x should also be placed in the middle of the image. If AI generation fails, a retry button should also be present for them to retry (max 3 times)
 
 Instead of detailed dropdown, put an arrow next to the stars, kinda hidden but pro users will find eventually
+
+Remove feed for you, and only following for now. Push it lower on the page and maybe make the images go edge to edge and immersive.

@@ -52,56 +52,71 @@ export const RatingOverlay = ({
   const starOrder = [3, 2, 4, 1, 5]; // Center out cascade
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Background with image */}
-      <div className="absolute inset-0 bg-black/20">
-        <img 
-          src={image} 
-          alt="Captured" 
-          className="w-full h-full object-cover"
-          style={{ filter: getInstagramClassicFilter() }}
-        />
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      {/* Card Container */}
+      <motion.div 
+        className="bg-white rounded-3xl overflow-hidden w-full max-w-md mx-auto flex flex-col"
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
+        {/* Image Section */}
+        <div className="relative bg-gray-100 aspect-square">
+          <img 
+            src={image} 
+            alt="Captured" 
+            className="w-full h-full object-cover"
+            style={{ filter: getInstagramClassicFilter() }}
+          />
+          
+          {/* Sparkle effects over image */}
+          <div className="absolute inset-0 pointer-events-none">
+            <AnimatePresence>
+              {sparkles.map((sparkle) => (
+                <motion.div
+                  key={sparkle.id}
+                  className="absolute text-yellow-300"
+                  style={{ 
+                    left: `${sparkle.x}%`, 
+                    top: `${sparkle.y}%` 
+                  }}
+                  initial={{ opacity: 0, scale: 0, rotate: 0 }}
+                  animate={{ 
+                    opacity: [0, 1, 0], 
+                    scale: [0, 1, 0],
+                    rotate: 360
+                  }}
+                  transition={{ 
+                    duration: 2, 
+                    delay: sparkle.delay,
+                    repeat: Infinity,
+                    repeatDelay: 1
+                  }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
 
-      {/* Sparkle effects */}
-      <div className="absolute inset-0 pointer-events-none">
-        <AnimatePresence>
-          {sparkles.map((sparkle) => (
-            <motion.div
-              key={sparkle.id}
-              className="absolute text-yellow-300"
-              style={{ 
-                left: `${sparkle.x}%`, 
-                top: `${sparkle.y}%` 
-              }}
-              initial={{ opacity: 0, scale: 0, rotate: 0 }}
-              animate={{ 
-                opacity: [0, 1, 0], 
-                scale: [0, 1, 0],
-                rotate: 360
-              }}
-              transition={{ 
-                duration: 2, 
-                delay: sparkle.delay,
-                repeat: Infinity,
-                repeatDelay: 1
-              }}
-            >
-              <Sparkles className="w-4 h-4" />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+        {/* Content Section */}
+        <div className="p-6 flex flex-col items-center text-center">
+          {/* Title/Header */}
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Rate this item</h2>
+            <p className="text-gray-600">How would you rate this experience?</p>
+          </div>
 
-      {/* Star Rating Section */}
-      <div className="relative z-10 flex flex-col items-center">
+          {/* Star Rating Section */}
+          <div className="flex flex-col items-center">
         <AnimatePresence>
           {showStars && !showExit && (
             <>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-white text-lg font-medium mb-8 text-center px-6"
+                className="text-gray-700 text-lg font-medium mb-6 text-center px-6"
               >
                 How would you rate this?
               </motion.div>
@@ -130,10 +145,17 @@ export const RatingOverlay = ({
                     <Star
                       className={`w-12 h-12 transition-all duration-200 ${
                         selectedStar === rating
-                          ? 'text-teal-400 fill-teal-400'
-                          : 'text-white hover:text-yellow-300'
+                          ? 'text-teal-500 fill-teal-500'
+                          : 'text-gray-400 hover:text-yellow-400'
                       }`}
                       fill={selectedStar === rating ? 'currentColor' : 'none'}
+                      style={{
+                        filter: selectedStar === rating 
+                          ? 'drop-shadow(0 2px 4px rgba(20, 184, 166, 0.3))' 
+                          : 'none',
+                        stroke: selectedStar === rating ? 'none' : '#6B7280',
+                        strokeWidth: selectedStar === rating ? 0 : 1.5
+                      }}
                     />
                     
                     {/* Glow effect for selected star */}
@@ -203,18 +225,20 @@ export const RatingOverlay = ({
           )}
         </AnimatePresence>
 
-        {/* Helper text */}
-        {showStars && !showExit && (
-          <motion.p
-            className="text-white/70 text-sm mt-6 text-center px-6"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-          >
-            Tap a star to continue
-          </motion.p>
-        )}
-      </div>
+            {/* Helper text */}
+            {showStars && !showExit && (
+              <motion.p
+                className="text-gray-600 text-sm mt-4 text-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1 }}
+              >
+                Tap a star to continue
+              </motion.p>
+            )}
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }; 

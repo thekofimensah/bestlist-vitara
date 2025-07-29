@@ -529,6 +529,25 @@ const MainScreen = React.forwardRef(({
     getCurrentLocation();
   }, []);
 
+  // Handle app visibility changes - restart camera when app becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // App became visible again - restart camera after a short delay
+        console.log('📷 App visible - restarting camera...');
+        setTimeout(() => {
+          startCamera(facingMode);
+        }, 200);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [facingMode]);
+
   // Check if user is following anyone when component mounts or tab changes
   useEffect(() => {
     const checkFollowingStatus = async () => {

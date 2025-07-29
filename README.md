@@ -151,8 +151,7 @@ Cultured
 Cultured crumb
 Cultiveat
 Cultivate
-Nama
-Like nama cream
+Nama Like nama cream
 flavaru
 Crumbs
 trove
@@ -165,6 +164,8 @@ foodivore -- looks too much like divorce
 Nombook
 Foodex
 Tastest
+Bestist
+Bestest
 
 
 
@@ -203,10 +204,12 @@ Add a refresh on slide down for any pages that make sense to be refreshed
 
 When entering price, it would be gopd if it defaulted to number keyboard
 
-The price should default to the currency of the current location (and it can also be changed) If they change it, then use that currency for now on, but if they click on the currency, they can change to a different one. Remove the word Cost
+The price should default to the currency of the current location (and it can also be changed) If they change it, then use that currency for now on, but if they click on the currency, they can change to a different one. 
 
-The x during the ai detection should only stop the ai detection, it shouldn't exit out. The x should also be placed in the middle of the image. If AI generation fails, a retry button should also be present for them to retry (max 3 times)
 
-Instead of detailed dropdown, put an arrow next to the stars, kinda hidden but pro users will find eventually
 
 Remove feed for you, and only following for now. Push it lower on the page and maybe make the images go edge to edge and immersive.
+
+AI analysis stopped popup is so ugly
+
+Can't get the keyboard to act native, only when a popup with a native look comes, but that's no bueno

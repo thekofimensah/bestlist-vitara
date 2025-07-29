@@ -12,6 +12,8 @@ PODS:
     - Capacitor
   - CapacitorGeolocation (5.0.5):
     - Capacitor
+  - CapacitorKeyboard (5.0.5):
+    - Capacitor
   - CapacitorPreferences (5.0.5):
     - Capacitor
 
@@ -23,6 +25,7 @@ DEPENDENCIES:
   - "CapacitorDevice (from `../../node_modules/@capacitor/device`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
+  - "CapacitorKeyboard (from `../../node_modules/@capacitor/keyboard`)"
   - "CapacitorPreferences (from `../../node_modules/@capacitor/preferences`)"
 
 EXTERNAL SOURCES:
@@ -40,6 +43,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/filesystem"
   CapacitorGeolocation:
     :path: "../../node_modules/@capacitor/geolocation"
+  CapacitorKeyboard:
+    :path: "../../node_modules/@capacitor/keyboard"
   CapacitorPreferences:
     :path: "../../node_modules/@capacitor/preferences"
 
@@ -51,8 +56,9 @@ SPEC CHECKSUMS:
   CapacitorDevice: abcf146cd1455ea9578fc153d12dd06adabd8f26
   CapacitorFilesystem: 0c22d8acd149c086d4870858dab6d471d5c36741
   CapacitorGeolocation: d3bea98fda331da437dd346264ce568e8f49a2e5
+  CapacitorKeyboard: 8c80f3b39c7ce66550a98402aa650000cd0a6846
   CapacitorPreferences: 8d5f22f3e2cf4d27d7879094ad82bb2064aeb178
 
-PODFILE CHECKSUM: 7c0c9510f946c27bfa53a73c212a4474754a1230
+PODFILE CHECKSUM: 3c45701cf08ce4cb8783748f9a7987735cdf691e
 
 COCOAPODS: 1.16.2

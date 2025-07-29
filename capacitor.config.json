@@ -11,11 +11,18 @@
   "android": {
     "allowMixedContent": true,
     "captureInput": true,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": true,
+    "overrideUserAgent": "Mozilla/5.0 (Mobile; rv:98.0) Gecko/98.0 Firefox/98.0",
+    "appendUserAgent": "CapacitorWebView"
   },
   "plugins": {
     "App": {
       "urlScheme": "breadcrumbs"
+    },
+    "Keyboard": {
+      "resize": "native",
+      "style": "native",
+      "resizeOnFullScreen": true
     }
   }
 }

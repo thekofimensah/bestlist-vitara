@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Sparkles } from 'lucide-react';
+import { getInstagramClassicFilter } from '../lib/imageUtils';
 
 // Rating Overlay Component - the sparkle intermediary screen
 export const RatingOverlay = ({ 
@@ -57,7 +58,8 @@ export const RatingOverlay = ({
         <img 
           src={image} 
           alt="Captured" 
-          className="w-full h-full object-cover" 
+          className="w-full h-full object-cover"
+          style={{ filter: getInstagramClassicFilter() }}
         />
       </div>
 

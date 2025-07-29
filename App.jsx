@@ -276,6 +276,24 @@ const App = () => {
     return () => subscription?.unsubscribe();
   }, []);
 
+  // Retry wrapper for network requests that might fail on app resume
+  const retryNetworkRequest = async (requestFn, maxRetries = 2) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await requestFn();
+      } catch (error) {
+        console.log(`🔄 Network request attempt ${attempt + 1} failed:`, error.message);
+        
+        if (attempt === maxRetries) {
+          throw error; // Final attempt failed
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+  };
+
   // Load feed data, now living in the main App component
   const loadFeedData = async (feedType = 'for_you') => {
     // Do not reload if we already have posts, unless it's a manual refresh
@@ -380,8 +398,40 @@ const App = () => {
         });
 
         // Handle app state changes
-        CapacitorApp.addListener('appStateChange', (state) => {
+        CapacitorApp.addListener('appStateChange', async (state) => {
           console.log('📱 App state changed:', state);
+          
+          if (state.isActive) {
+            // App is coming back from background
+            console.log('🔄 App resumed - refreshing data and camera...');
+            
+            try {
+              // Refresh authentication state
+              const { data: { user: currentUser } } = await supabase.auth.getUser();
+              if (currentUser && currentUser.id !== user?.id) {
+                setUser(currentUser);
+              }
+              
+              // Refresh data if user is logged in
+              if (user) {
+                // Refresh lists with retry
+                await retryNetworkRequest(() => refreshLists(false));
+                
+                // Refresh feed data with retry
+                await retryNetworkRequest(() => loadFeedData('following'));
+              }
+              
+              // Restart camera if on main screen
+              if (currentScreen === 'home' && mainScreenRef.current) {
+                setTimeout(() => {
+                  mainScreenRef.current?.refreshFeedData();
+                }, 500); // Small delay to ensure app is fully active
+              }
+              
+            } catch (error) {
+              console.error('❌ Error refreshing app data on resume:', error);
+            }
+          }
         });
 
         return () => {
@@ -881,26 +931,44 @@ const App = () => {
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={handleSearchChange}
-                  placeholder="Search lists and items..."
-                  className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700"
-                  autoFocus
-                  autoComplete="on"
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  spellCheck="true"
-                />
-                {isSearching && (
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
+           
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    placeholder="Search lists and items..."
+                    className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100 transition-all duration-200"
+                    autoFocus
+                    autoComplete="on"
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
+                    spellCheck="true"
+                    inputMode="text"
+                    enterKeyHint="search"
+                  />
+                  {/* Search Icon */}
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    <Search className="w-4 h-4 text-gray-400" />
                   </div>
-                )}
+                  {/* Loading/Clear Button */}
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    {isSearching ? (
+                      <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
+                    ) : searchQuery ? (
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSearchResults([]);
+                        }}
+                        className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-            </div>
 
             {/* Search Results */}
             {searchQuery && (

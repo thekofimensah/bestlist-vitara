@@ -186,10 +186,11 @@ const VerdictBadge = ({ verdict, size = 'sm' }) => {
   );
 };
 
-const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareTap }) => {
+const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareTap, onImageTap, recentComment }) => {
   const [liked, setLiked] = useState(post.user_liked);
   const [likeCount, setLikeCount] = useState(post.likes);
   const [isLiking, setIsLiking] = useState(false);
+  const [showFullCaption, setShowFullCaption] = useState(false);
 
   const handleLike = async (e) => {
     e.stopPropagation();
@@ -268,6 +269,10 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
       <div 
         className="relative mb-3 cursor-pointer"
         onDoubleClick={handleDoubleTap}
+        onClick={(e) => {
+          e.stopPropagation();
+          onImageTap && onImageTap(post.id);
+        }}
       >
         <img
           src={post.image}
@@ -297,13 +302,8 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
         </div>
       )} */}
 
-      {/* Snippet */}
-      <p className="text-sm text-gray-700 mb-3 leading-relaxed px-4">
-        {post.snippet}
-      </p>
-
       {/* Actions */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100 px-4 pb-4">
+      <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-4">
           <button
             onClick={handleLike}
@@ -311,8 +311,7 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
               liked ? 'text-red-500' : 'text-gray-500'
             } hover:text-red-500 transition-colors`}
           >
-            <Heart className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
-            <span>{likeCount}</span>
+            <Heart className={`w-5 h-5 ${liked ? 'fill-current' : ''}`} />
           </button>
           <button 
             onClick={(e) => {
@@ -321,13 +320,7 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
             }}
             className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
-            <MessageCircle className="w-4 h-4" />
-            <span>{post.comments}</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="text-gray-500 hover:text-gray-700 transition-colors">
-            <Bookmark className="w-4 h-4" />
+            <MessageCircle className="w-5 h-5" />
           </button>
           <button 
             onClick={(e) => {
@@ -336,8 +329,72 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
             }}
             className="text-gray-500 hover:text-gray-700 transition-colors"
           >
-            <Share className="w-4 h-4" />
+            <Share className="w-5 h-5" />
           </button>
+        </div>
+        <button className="text-gray-500 hover:text-gray-700 transition-colors">
+          <Bookmark className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Likes count */}
+      <div className="px-4">
+        <p className="text-sm font-medium text-gray-900 mb-1">
+          {likeCount} {likeCount === 1 ? 'like' : 'likes'}
+        </p>
+      </div>
+
+      {/* Caption & Comments - Instagram style */}
+      <div className="px-4 pb-3">
+        {/* Post caption */}
+        <div className="mb-2">
+          <span className="text-sm">
+            <span className="font-medium text-gray-900">{post.user.name}</span>{' '}
+            <span className="text-gray-700">
+              {showFullCaption ? post.snippet : `${post.snippet?.slice(0, 100)}${post.snippet?.length > 100 ? '...' : ''}`}
+            </span>
+            {post.snippet?.length > 100 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFullCaption(!showFullCaption);
+                }}
+                className="text-gray-500 ml-1"
+              >
+                {showFullCaption ? 'less' : 'more'}
+              </button>
+            )}
+          </span>
+        </div>
+
+        {/* Comments */}
+        {post.comments > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCommentTap && onCommentTap(post);
+            }}
+            className="text-sm text-gray-500 mb-2 block"
+          >
+            View all {post.comments} comments
+          </button>
+        )}
+
+        {/* Most recent comment or show if no comments */}
+        {recentComment ? (
+          <div className="text-sm mb-2">
+            <span className="font-medium text-gray-900">{recentComment.username}</span>{' '}
+            <span className="text-gray-700">{recentComment.content}</span>
+          </div>
+        ) : post.snippet && post.comments === 0 && (
+          <div className="text-sm text-gray-500">
+            Be the first to comment
+          </div>
+        )}
+
+        {/* Timestamp */}
+        <div className="text-xs text-gray-400 uppercase tracking-wide">
+          {post.timestamp}
         </div>
       </div>
     </div>
@@ -353,6 +410,7 @@ const MainScreen = React.forwardRef(({
   onNavigateToUser, 
   onRefreshFeed,
   onTabChange,
+  onImageTap,
   // Feed-related props from App.jsx
   feedPosts,
   isLoadingFeed,
@@ -1115,6 +1173,7 @@ const MainScreen = React.forwardRef(({
                 onUserTap={onNavigateToUser}
                 onCommentTap={handleCommentTap}
                 onShareTap={handleShareTap}
+                onImageTap={onImageTap}
                 onLikeChange={(postId, liked) => {
                   // Update the local feedPosts state when a post is liked/unliked
                   setFeedPosts(prev => prev.map(p => 

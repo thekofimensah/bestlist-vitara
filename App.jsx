@@ -10,9 +10,12 @@ import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
 import UserProfile from './components/secondary/UserProfile';
 import PullToRefresh from './ui/PullToRefresh';
-import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount } from './lib/supabase';
+import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
+import { NotificationsDropdown } from './components/secondary/NotificationsDropdown';
+import { useNotifications } from './hooks/useNotifications';
+import PostDetailView from './components/secondary/PostDetailView';
 
 // Helper function to format post data from database (moved from MainScreen)
 const formatPostForDisplay = (post) => {
@@ -100,6 +103,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
 
 const App = () => {
   const [user, setUser] = useState(null);
+  const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -113,6 +117,10 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchTab, setSearchTab] = useState('content'); // 'content' or 'users'
+  const [userResults, setUserResults] = useState([]);
+  const [followingUsers, setFollowingUsers] = useState(new Set());
+  const [selectedPostId, setSelectedPostId] = useState(null);
   const { 
     lists, 
     loading: listsLoading, 
@@ -166,23 +174,39 @@ const App = () => {
   const performSearch = async (query) => {
     if (!query.trim() || !user?.id) {
       setSearchResults([]);
+      setUserResults([]);
       return;
     }
 
     setIsSearching(true);
     
     try {
-      const { data, error } = await searchUserContent(user.id, query);
-      
-      if (error) {
-        console.error('Search error:', error);
-        setSearchResults([]);
+      if (searchTab === 'content') {
+        const { data, error } = await searchUserContent(user.id, query);
+        
+        if (error) {
+          console.error('Search error:', error);
+          setSearchResults([]);
+        } else {
+          setSearchResults(data || []);
+        }
       } else {
-        setSearchResults(data || []);
+        const { data, error } = await searchUsers(query);
+        
+        if (error) {
+          console.error('User search error:', error);
+          setUserResults([]);
+        } else {
+          setUserResults(data || []);
+        }
       }
     } catch (error) {
       console.error('Search failed:', error);
-      setSearchResults([]);
+      if (searchTab === 'content') {
+        setSearchResults([]);
+      } else {
+        setUserResults([]);
+      }
     } finally {
       setIsSearching(false);
     }
@@ -197,6 +221,39 @@ const App = () => {
     window.searchTimeout = setTimeout(() => {
       performSearch(query);
     }, 300);
+  };
+
+  const handleSearchTabChange = (tab) => {
+    setSearchTab(tab);
+    setSearchResults([]);
+    setUserResults([]);
+    if (searchQuery.trim()) {
+      performSearch(searchQuery);
+    }
+  };
+
+  const handleFollowUser = async (userId, username) => {
+    try {
+      await followUser(userId);
+      setFollowingUsers(prev => new Set([...prev, userId]));
+      console.log(`Started following ${username}`);
+    } catch (error) {
+      console.error('Follow error:', error);
+    }
+  };
+
+  const handleUnfollowUser = async (userId, username) => {
+    try {
+      await unfollowUser(userId);
+      setFollowingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+      console.log(`Unfollowed ${username}`);
+    } catch (error) {
+      console.error('Unfollow error:', error);
+    }
   };
 
   const handleSearchResultClick = (result) => {
@@ -246,7 +303,44 @@ const App = () => {
   };
 
   const handleNotifications = () => {
-    console.log('Show notifications');
+    // Debug logging for Android Studio
+    const logToAndroid = (message, data = null) => {
+      const logMessage = data ? `${message}: ${JSON.stringify(data)}` : message;
+      console.log(logMessage);
+      
+      // Also try to use Capacitor's logging if available
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Console) {
+        window.Capacitor.Plugins.Console.log({ message: logMessage });
+      }
+    };
+
+    logToAndroid('🔔 handleNotifications called');
+    logToAndroid('🔔 Current user:', user);
+    logToAndroid('🔔 User ID:', user?.id);
+    logToAndroid('🔔 Current notifications state:', { notifications, unreadCount, isOpen });
+    
+    toggleOpen();
+  };
+
+  const handleNavigateToPost = (postId) => {
+    // Close the notifications dropdown
+    if (isOpen) toggleOpen();
+    
+    // Navigate to post detail view
+    setSelectedPostId(postId);
+    setCurrentScreen('post-detail');
+    
+    console.log('🔔 Navigating to post:', postId);
+  };
+
+  const handleImageTap = (postId) => {
+    setSelectedPostId(postId);
+    setCurrentScreen('post-detail');
+  };
+
+  const handleBackFromPost = () => {
+    setSelectedPostId(null);
+    setCurrentScreen('home');
   };
 
   useEffect(() => {
@@ -624,6 +718,17 @@ const App = () => {
   };
 
   const renderScreen = () => {
+    if (currentScreen === 'post-detail' && selectedPostId) {
+      return (
+        <PostDetailView
+          postId={selectedPostId}
+          onBack={handleBackFromPost}
+          onEdit={handleEditItem}
+          currentUser={user}
+        />
+      );
+    }
+
     if (currentScreen === 'item-detail' && selectedItem) {
       // Render individual item detail view
       return (
@@ -673,6 +778,7 @@ const App = () => {
               onNavigateToUser={handleNavigateToUser}
               onRefreshFeed={handleFeedRefresh}
               onTabChange={handleTabChange}
+              onImageTap={handleImageTap}
               // Pass feed data down as props
               feedPosts={feedPosts}
               isLoadingFeed={isLoadingFeed}
@@ -834,13 +940,29 @@ const App = () => {
             >
               <Search className="w-4 h-4 text-gray-700" />
             </button>
-            <button 
-              onClick={handleNotifications}
-              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
-            >
-              <Bell className="w-4 h-4 text-gray-700" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={handleNotifications}
+                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+              >
+                <Bell className="w-4 h-4 text-gray-700" />
+                {unreadCount > 0 && (
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-[10px] font-medium text-white">{unreadCount}</span>
+                  </div>
+                )}
+              </button>
+              
+              <NotificationsDropdown
+                notifications={notifications}
+                unreadCount={unreadCount}
+                isOpen={isOpen}
+                onClose={toggleOpen}
+                onMarkRead={markAsRead}
+                onMarkAllRead={markAllAsRead}
+                onNavigateToPost={handleNavigateToPost}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -925,10 +1047,36 @@ const App = () => {
                     setShowSearch(false);
                     setSearchQuery('');
                     setSearchResults([]);
+                    setUserResults([]);
+                    setSearchTab('content');
                   }}
                   className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search Tabs */}
+              <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+                <button
+                  onClick={() => handleSearchTabChange('content')}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    searchTab === 'content'
+                      ? 'bg-white text-teal-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Content
+                </button>
+                <button
+                  onClick={() => handleSearchTabChange('users')}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    searchTab === 'users'
+                      ? 'bg-white text-teal-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Users
                 </button>
               </div>
            
@@ -937,7 +1085,7 @@ const App = () => {
                     type="text"
                     value={searchQuery}
                     onChange={handleSearchChange}
-                    placeholder="Search lists and items..."
+                    placeholder={searchTab === 'content' ? 'Search lists and items...' : 'Search users...'}
                     className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100 transition-all duration-200"
                     autoFocus
                     autoComplete="on"
@@ -960,6 +1108,7 @@ const App = () => {
                         onClick={() => {
                           setSearchQuery('');
                           setSearchResults([]);
+                          setUserResults([]);
                         }}
                         className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors"
                       >
@@ -973,7 +1122,7 @@ const App = () => {
             {/* Search Results */}
             {searchQuery && (
               <div className="flex-1 overflow-y-auto">
-                {searchResults.length > 0 ? (
+                {searchTab === 'content' && searchResults.length > 0 ? (
                   <div className="px-6 pb-6">
                     <div className="text-sm text-gray-500 mb-4">
                       {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
@@ -1054,11 +1203,77 @@ const App = () => {
                       );
                     })()}
                   </div>
+                ) : searchTab === 'users' && userResults.length > 0 ? (
+                  <div className="px-6 pb-6">
+                    <div className="text-sm text-gray-500 mb-4">
+                      {userResults.length} user{userResults.length !== 1 ? 's' : ''} found
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {userResults.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                        >
+                          <button
+                            onClick={() => {
+                              handleNavigateToUser(user.username);
+                              setShowSearch(false);
+                              setSearchQuery('');
+                              setSearchResults([]);
+                              setUserResults([]);
+                              setSearchTab('content');
+                            }}
+                            className="flex items-center gap-3 flex-1 text-left"
+                          >
+                            <img
+                              src={user.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
+                              alt={user.username}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">@{user.username}</div>
+                              {user.display_name && (
+                                <div className="text-sm text-gray-600">{user.display_name}</div>
+                              )}
+                              {user.bio && (
+                                <div className="text-xs text-gray-500 truncate">{user.bio}</div>
+                              )}
+                            </div>
+                          </button>
+                          
+                          {user.id !== user?.id && (
+                            <button
+                              onClick={() => {
+                                if (followingUsers.has(user.id)) {
+                                  handleUnfollowUser(user.id, user.username);
+                                } else {
+                                  handleFollowUser(user.id, user.username);
+                                }
+                              }}
+                              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                followingUsers.has(user.id)
+                                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  : 'bg-teal-600 text-white hover:bg-teal-700'
+                              }`}
+                            >
+                              {followingUsers.has(user.id) ? 'Following' : 'Follow'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : !isSearching ? (
                   <div className="px-6 pb-6 text-center">
-                    <div className="text-sm text-gray-500 mb-2">No results found</div>
+                    <div className="text-sm text-gray-500 mb-2">
+                      {searchTab === 'content' ? 'No content found' : 'No users found'}
+                    </div>
                     <div className="text-xs text-gray-400">
-                      Try different keywords or check spelling
+                      {searchTab === 'content' 
+                        ? 'Try different keywords or check spelling'
+                        : 'Try searching for exact usernames'
+                      }
                     </div>
                   </div>
                 ) : null}
@@ -1068,25 +1283,42 @@ const App = () => {
             {!searchQuery && (
               <div className="px-6 pb-6">
                 <div className="text-sm text-gray-500">
-                  Search through your lists and food items
+                  {searchTab === 'content' 
+                    ? 'Search through your lists and food items'
+                    : 'Search for other users to follow'
+                  }
                 </div>
                 <div className="mt-3 space-y-2">
                   <div className="text-xs text-gray-400">
-                    Try searching for:
+                    {searchTab === 'content' ? 'Try searching for:' : 'Search by username:'}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {['cheese', 'chocolate', 'olive oil', 'bread'].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => {
-                          setSearchQuery(suggestion);
-                          performSearch(suggestion);
-                        }}
-                        className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
+                    {searchTab === 'content' 
+                      ? ['cheese', 'chocolate', 'olive oil', 'bread'].map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            onClick={() => {
+                              setSearchQuery(suggestion);
+                              performSearch(suggestion);
+                            }}
+                            className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
+                          >
+                            {suggestion}
+                          </button>
+                        ))
+                      : ['foodie', 'chef', 'baker'].map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            onClick={() => {
+                              setSearchQuery(suggestion);
+                              performSearch(suggestion);
+                            }}
+                            className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
+                          >
+                            @{suggestion}
+                          </button>
+                        ))
+                    }
                   </div>
                 </div>
               </div>

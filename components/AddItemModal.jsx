@@ -1155,37 +1155,70 @@ const AddItemModal = ({
 
         {/* AI Failed/Cancelled State */}
         {aiCancelled && aiRetryCount < 3 && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/20">
-            <div className="bg-white rounded-2xl p-6 mx-6 text-center shadow-xl">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <X className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Analysis Stopped</h3>
-              <p className="text-sm text-gray-600 mb-4">Would you like to retry the analysis?</p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setAiCancelled(false);
-                    setAiRetryCount(prev => prev + 1);
-                    // Trigger retry logic here
-                  }}
-                  className="flex-1 px-4 py-2 bg-teal-700 text-white rounded-xl font-medium"
-                  style={{ backgroundColor: '#1F6D5A' }}
+          <AnimatePresence>
+            <motion.div
+              className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                className="w-full max-w-sm rounded-3xl bg-white p-5 text-center shadow-md"
+                initial={{ scale: 0.96, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.96, opacity: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                {/* Subtle icon */}
+                <div
+                  className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full"
+                  style={{ backgroundColor: '#FDEAEA' }}
                 >
-                  Retry ({3 - aiRetryCount} left)
-                </button>
-                <button
-                  onClick={() => {
-                    setAiCancelled(false);
-                    // Continue without AI
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
+                  <X className="h-4 w-4" style={{ color: '#B0443C' }} />
+                </div>
+
+                {/* Title + helper copy (smaller, calmer) */}
+                <h3 className="mb-1 text-base font-semibold text-gray-900">
+                  Analysis paused
+                </h3>
+                <p className="mb-4 text-xs text-gray-600">
+                  Retry AI now, or continue without it.
+                </p>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setAiCancelled(false);
+                      setAiRetryCount((prev) => prev + 1);
+                      // trigger retry logic
+                    }}
+                    className="flex-1 rounded-full px-4 py-2.5 text-sm font-medium text-white"
+                    style={{ backgroundColor: '#1F6D5A' }}
+                  >
+                    Retry
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setAiCancelled(false);
+                      // continue without AI
+                    }}
+                    className="flex-1 rounded-full px-4 py-2.5 text-sm font-medium bg-gray-50 text-gray-800 hover:bg-gray-100"
+                  >
+                    Continue
+                  </button>
+                </div>
+
+                {/* Quiet meta line */}
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Retries left: {3 - aiRetryCount}
+                </p>
+              </motion.div>
+            </motion.div>
+          </AnimatePresence>
         )}
 
         <img

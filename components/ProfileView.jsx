@@ -239,7 +239,7 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-semibold text-gray-900 mb-2" style={{ color: '#1E1F1E' }}>
-                {userProfile?.username ? `@${userProfile.username}` : 'Setup Required'}
+                {userProfile?.username ? `@${userProfile.username}` : 'missing'}
               </h2>
               <div className="flex items-center gap-2 mb-3">
                 <div 

@@ -188,15 +188,8 @@ Share to friends (not setup)
 Share to insta (it woudl be cool if you could upload a whole list)
 
 
-New to do:
-Need to make the supabase tables more comprehensive
-   Save all AI metadata
-   Save all the lsits information
-
-
 Crop still not draggging from corners
 
-Change it so no more avoid or love. But on the screen maybe on the right of the stars it can display just there Love, like, Meh, Avoid, Hate
 
 Android native back not working from within list
 

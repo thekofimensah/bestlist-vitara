@@ -55,6 +55,7 @@ export const useAI = () => {
       try {
         const base64Image = await encodeImageToBase64(imageFile);
         
+        // Simplified prompt - no JSON format instructions needed
         const prompt = `
 Identify the product in the image.${location ? `
 
@@ -62,23 +63,8 @@ LOCATION CONTEXT: This photo was taken in ${location}. Use this location informa
 - Prioritize brands and products commonly sold in ${location}
 - Consider local/regional brands, store chains, and specialties specific to this area
 - Account for regional product variations, labeling, and naming conventions
-- Focus on products that would realistically be found in grocery stores, markets, or shops in ${location}
-- If applicable, consider local food regulations, import restrictions, or regional preferences that affect product availability` : ''}
+- Focus on products that would realistically be found in restaurants, grocery stores, markets, or shops in ${location}` : ''}
 
-Provide your response as a JSON object with the following fields:
-- name: Product name (string)
-- brand: Brand/manufacturer name (string)
-- category: Product category (e.g., Dairy, Beverages, Snacks, Frozen Foods, Pantry Items) (string)
-- confidence: Your confidence in the identification (number between 0 and 1, e.g., 0.85) (number)
-- description: A concise, distinguishing description that helps identify this specific product variant. Focus on key differentiating features like flavor, type, size, dietary attributes, or unique characteristics that would help distinguish it from similar products. Keep it under 15 words and be specific (e.g., "Organic whole milk" vs "Chocolate chip cookies with sea salt" vs "Fat-free Greek yogurt"). IMPORTANT:This should describe the product, not the image.
-- product: A string with three parts/ There should not be repeat words:
-    1. Brand (if it exists, otherwise leave blank)
-    2. Quantifiers (e.g., 'fat free', 'organic', 'chocolate', 'red', 'large', etc.) (if it exists, otherwise leave blank)
-    3. What it is (e.g., 'milk', 'cheese', 'cookies')
-  Example: "Trader Joe's organic fat free milk" After creating the product, clean it up to remove repitions or unhelpful parts.
-- tags: Array of focused tags for filtering and categorization. Looking at the "category", decide what are the most important distinction of products within this category. Choose 3-4 relevant tags that would help users filter and understand this product. Include: dietary restrictions (vegan, gluten-free, dairy-free, etc.), health attributes (organic, low-sugar, high-protein, etc.), flavor profiles (chocolate, vanilla, spicy, sweet, etc.), dietary lifestyles (keto, paleo, etc.), product characteristics (artisanal, imported, premium, etc.), and meal context (breakfast, snack, dessert, etc.). AVOID: storage requirements (refrigerated, frozen), sizes/quantities (8oz, 900ml, large), basic categories that duplicate the category field (dairy, beverages), and overly generic terms (food, product, item, fresh).
-- allergens: Array of allergens if mentioned and take the description field, and infer allergens from that. (array of strings, optional)
-If you cannot identify the product with reasonable confidence, return a JSON object with a field 'error' explaining why (e.g., 'Image unclear', 'No product detected').
 Focus on food and beverage products, household items, and consumer goods.`;
 
         const requestBody = {
@@ -92,7 +78,52 @@ Focus on food and beverage products, household items, and consumer goods.`;
                 }
               }
             ]
-          }]
+          }],
+          // Configure structured output using responseSchema
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                name: {
+                  type: "STRING",
+                  description: "Product name"
+                },
+                brand: {
+                  type: "STRING", 
+                  description: "Brand/manufacturer name"
+                },
+                category: {
+                  type: "STRING",
+                  description: "Product category (e.g., Dairy, Beverages, Snacks, Frozen Foods, Pantry Items)"
+                },
+                confidence: {
+                  type: "NUMBER",
+                  description: "Confidence in the identification (between 0 and 1)"
+                },
+                description: {
+                  type: "STRING",
+                  description: "A concise, distinguishing description that helps identify this specific product variant. Focus on key differentiating features like flavor, type, size, dietary attributes, or unique characteristics. Keep it under 15 words and be specific."
+                },
+                product: {
+                  type: "STRING", 
+                  description: "A string with three parts: Brand (if exists), Quantifiers (e.g., 'fat free', 'organic', 'chocolate'), What it is (e.g., 'milk', 'cheese', 'cookies'). Clean up to remove repetitions. Must be in clear language without excessive commas"
+                },
+                tags: {
+                  type: "ARRAY",
+                  items: { type: "STRING" },
+                  description: "Array of 3-4 focused tags for filtering. Include dietary restrictions, health attributes, flavor profiles, dietary lifestyles, product characteristics, and meal context. Avoid storage requirements, sizes, basic categories."
+                },
+                allergens: {
+                  type: "ARRAY", 
+                  items: { type: "STRING" },
+                  description: "Array of allergens if mentioned or inferred from description"
+                }
+              },
+              required: ["name", "brand", "category", "confidence", "description", "product", "tags"],
+              propertyOrdering: ["name", "brand", "category", "confidence", "description", "product", "tags", "allergens"]
+            }
+          }
         };
 
         const response = await fetch(
@@ -129,19 +160,14 @@ Focus on food and beverage products, household items, and consumer goods.`;
           throw new Error('No response from AI');
         }
 
-        // Parse JSON response
-        const cleanedResponse = responseText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
-        const aiData = JSON.parse(cleanedResponse);
-
-        if (aiData.error) {
-          throw new Error(aiData.error);
-        }
+        // Parse the guaranteed valid JSON response (no cleanup needed!)
+        const aiData = JSON.parse(responseText);
 
         // Return data in the format expected by the app
         const aiResult = {
           productName: aiData.product || aiData.name || 'Unknown Product',
           brand: aiData.brand || '',
-          category: aiData.category || aiData.type || '',
+          category: aiData.category || '',
           species: aiData.description || 'Unknown',
           certainty: Math.round((aiData.confidence || 0) * 100),
           tags: aiData.tags || ['Untagged'],
@@ -149,7 +175,7 @@ Focus on food and beverage products, household items, and consumer goods.`;
           allergens: aiData.allergens || []
         };
 
-        console.log('🤖 [AI] Raw AI response from server:', JSON.stringify(aiData, null, 2));
+        console.log('🤖 [AI] Structured response from server:', JSON.stringify(aiData, null, 2));
         console.log('🤖 [AI] Formatted result for app:', JSON.stringify(aiResult, null, 2));
 
         return aiResult;

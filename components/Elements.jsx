@@ -105,7 +105,7 @@ export const RatingOverlay = ({
           {/* Title/Header */}
           <div className="mb-4">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Rate this item</h2>
-            <p className="text-gray-600">How would you rate this experience?</p>
+            
           </div>
 
           {/* Star Rating Section */}

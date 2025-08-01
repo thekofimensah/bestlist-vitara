@@ -334,6 +334,7 @@ const App = () => {
   };
 
   const handleImageTap = (postId) => {
+    console.log('🔍 handleImageTap called with postId:', postId);
     setSelectedPostId(postId);
     setCurrentScreen('post-detail');
   };
@@ -725,6 +726,7 @@ const App = () => {
           onBack={handleBackFromPost}
           onEdit={handleEditItem}
           currentUser={user}
+          onNavigateToUser={handleNavigateToUser}
         />
       );
     }

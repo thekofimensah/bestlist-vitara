@@ -3,18 +3,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User } from 'lucide-react';
 import { supabase, likePost, unlikePost, getPostComments, commentOnPost } from '../../lib/supabase';
 import { getInstagramClassicFilter } from '../../lib/imageUtils';
-import CommentsModal from './CommentsModal';
 
-const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
+const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser }) => {
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [comments, setComments] = useState([]);
-  const [showComments, setShowComments] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [isCommenting, setIsCommenting] = useState(false);
 
   useEffect(() => {
+    console.log('🔍 PostDetailView: postId received:', postId);
     if (postId) {
       loadPost();
       loadComments();
@@ -23,25 +24,66 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
 
   const loadPost = async () => {
     try {
-      const { data, error } = await supabase
+      // First, get the post data
+      const { data: postData, error: postError } = await supabase
         .from('posts')
-        .select(`
-          *,
-          items(*),
-          lists(name),
-          profiles(username, avatar_url),
-          likes(user_id)
-        `)
+        .select('*')
         .eq('id', postId)
         .single();
 
-      if (error) throw error;
+      if (postError) throw postError;
 
-      setPost(data);
-      setLiked(data.likes?.some(like => like.user_id === currentUser?.id) || false);
-      setLikeCount(data.like_count || 0);
+      // Get the item data
+      const { data: itemData, error: itemError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('id', postData.item_id)
+        .single();
+
+      if (itemError) throw itemError;
+
+      // Get the list data
+      const { data: listData, error: listError } = await supabase
+        .from('lists')
+        .select('name')
+        .eq('id', postData.list_id)
+        .single();
+
+      // Get the user profile data
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', postData.user_id)
+        .single();
+
+      // Check if current user liked this post
+      const { data: likeData, error: likeError } = await supabase
+        .from('likes')
+        .select('user_id')
+        .eq('post_id', postId)
+        .eq('user_id', currentUser?.id)
+        .single();
+
+      // Combine all the data
+      const combinedData = {
+        ...postData,
+        items: itemData,
+        lists: listData || { name: 'Unknown List' },
+        profiles: profileData || { username: 'Unknown User', avatar_url: null },
+        user_liked: !likeError && likeData !== null
+      };
+
+      setPost(combinedData);
+      setLiked(combinedData.user_liked);
+      setLikeCount(postData.like_count || 0);
     } catch (error) {
       console.error('Error loading post:', error);
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
     } finally {
       setLoading(false);
     }
@@ -85,6 +127,30 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
     await loadPost(); // Refresh comment count
   };
 
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !post || isCommenting) return;
+    
+    try {
+      setIsCommenting(true);
+      const { data: commentData, error: commentError } = await commentOnPost(postId, newComment);
+      if (commentError) throw commentError;
+      
+      setComments(prev => [commentData, ...prev]);
+      setNewComment('');
+      await loadPost(); // Refresh comment count
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    } finally {
+      setIsCommenting(false);
+    }
+  };
+
+  const handleUserTap = () => {
+    if (post?.profiles?.username && onNavigateToUser) {
+      onNavigateToUser(post.profiles.username);
+    }
+  };
+
   const isOwner = currentUser?.id === post?.user_id;
 
   if (loading) {
@@ -109,9 +175,9 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
   }
 
   return (
-    <div className="min-h-screen bg-black relative">
+    <div className="min-h-screen bg-black relative overflow-y-auto" style={{ paddingBottom: '80px' }}>
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/50 to-transparent">
+      <div className="sticky top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/50 to-transparent">
         <div className="flex items-center justify-between p-4 pt-8">
           <button
             onClick={onBack}
@@ -142,20 +208,25 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
       </div>
 
       {/* Content Section */}
-      <div className="bg-white rounded-t-3xl mt-[-24px] relative z-10 min-h-[40vh]">
+      <div className="bg-white rounded-t-3xl mt-[-24px] relative z-10">
         {/* Product Info */}
         <div className="p-6 pb-4">
           {/* User Info */}
           <div className="flex items-center gap-3 mb-4">
-            <img
-              src={post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
-              alt={post.profiles?.username}
-              className="w-10 h-10 rounded-full object-cover"
-            />
-            <div>
-              <p className="font-medium text-gray-900">@{post.profiles?.username}</p>
-              <p className="text-sm text-gray-500">{post.lists?.name}</p>
-            </div>
+            <button
+              onClick={handleUserTap}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            >
+              <img
+                src={post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
+                alt={post.profiles?.username}
+                className="w-10 h-10 rounded-full object-cover"
+              />
+              <div>
+                <p className="font-medium text-gray-900">{post.profiles?.username}</p>
+                <p className="text-sm text-gray-500">{post.lists?.name}</p>
+              </div>
+            </button>
           </div>
 
           {/* Product Name */}
@@ -217,7 +288,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
               </button>
 
               <button
-                onClick={() => setShowComments(true)}
+                onClick={() => document.getElementById('comments-section')?.scrollIntoView({ behavior: 'smooth' })}
                 className="flex items-center gap-2 group"
               >
                 <MessageSquare className="w-6 h-6 text-gray-500 group-hover:text-blue-500" />
@@ -231,43 +302,62 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser }) => {
           </div>
         </div>
 
-        {/* Comments Preview */}
-        {comments.length > 0 && (
-          <div className="px-6 pb-6">
-            <button
-              onClick={() => setShowComments(true)}
-              className="text-left w-full"
-            >
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                <img
-                  src={comments[0].profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
-                  alt={comments[0].profiles?.username}
-                  className="w-8 h-8 rounded-full object-cover"
-                />
-                <div className="flex-1">
-                  <p className="text-sm">
-                    <span className="font-medium">@{comments[0].profiles?.username}</span>{' '}
-                    <span className="text-gray-700">{comments[0].content}</span>
-                  </p>
-                  {comments.length > 1 && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      View all {comments.length} comments
+        {/* Comments Section */}
+        <div id="comments-section" className="border-t border-gray-100 pt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 px-6">Comments ({comments.length})</h3>
+          
+          {/* Comments List */}
+          <div className="px-6 space-y-4 mb-6">
+            {comments.length > 0 ? (
+              comments.map(comment => (
+                <div key={comment.id} className="flex items-start gap-3">
+                  <img
+                    src={comment.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
+                    alt={comment.profiles?.username}
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm">
+                      <span className="font-medium text-gray-900">@{comment.profiles?.username}</span>{' '}
+                      <span className="text-gray-700">{comment.content}</span>
                     </p>
-                  )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(comment.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              ))
+            ) : (
+              <p className="text-gray-500 text-center py-4">No comments yet. Be the first to comment!</p>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Comments Modal */}
-      <CommentsModal
-        isOpen={showComments}
-        onClose={() => setShowComments(false)}
-        postId={postId}
-        onCommentAdded={handleCommentAdded}
-      />
+          {/* Add Comment */}
+          <div className="px-6 pb-24">
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Add a comment..."
+                className="flex-1 p-3 pr-12 border border-gray-200 rounded-full focus:outline-none focus:border-teal-500 bg-gray-50"
+                onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
+              />
+              {newComment.trim() && (
+                <button
+                  onClick={handleAddComment}
+                  disabled={isCommenting}
+                  className="absolute right-2 p-2 text-teal-500 hover:text-teal-600 disabled:opacity-50 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

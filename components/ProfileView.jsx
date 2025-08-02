@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Camera, LogOut, Shield, FileText, Settings, Search, Bell, List, Heart, Star, Share, User } from 'lucide-react';
 import { signOut, supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { useUserStats } from '../hooks/useUserStats';
+import useUserStats from '../hooks/useUserStats';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import PrivacyPolicy from './PrivacyPolicy';
 import TermsOfService from './TermsOfService';
@@ -41,7 +41,7 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
-  const { stats, loading: statsLoading, error: statsError } = useUserStats();
+  const { stats, loading: statsLoading, error: statsError } = useUserStats(user?.id);
   
   // Debug logging
   console.log('🔍 [ProfileView] Debug info:', JSON.stringify({

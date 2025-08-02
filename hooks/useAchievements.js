@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useUserStats } from './useUserStats';
+import useUserStats from './useUserStats';
 import { useGlobalAchievements } from './useGlobalAchievements.jsx';
 
 const useAchievements = () => {
   const { user } = useAuth();
-  const { stats } = useUserStats();
+  const { stats } = useUserStats(user?.id);
   const [isProcessing, setIsProcessing] = useState(false);
   const globalAchievements = useGlobalAchievements();
   const showAchievement = globalAchievements?.showAchievement || (() => {});
@@ -252,4 +252,4 @@ const extractCountryFromLocation = (location) => {
   return parts[parts.length - 1]; // Return the last part as country
 };
 
-export { useAchievements };
+export default useAchievements;

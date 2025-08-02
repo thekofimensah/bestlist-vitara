@@ -10,7 +10,7 @@ import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
 import UserProfile from './components/secondary/UserProfile';
 import PullToRefresh from './ui/PullToRefresh';
-import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser } from './lib/supabase';
+import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser, getSessionOptimized } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
 import { NotificationsDropdown } from './components/secondary/NotificationsDropdown';
@@ -353,23 +353,20 @@ const App = () => {
   };
 
   useEffect(() => {
-    const getSession = async () => {
+    const initializeApp = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
+        // Use optimized session restoration that doesn't block UI
+        const user = await getSessionOptimized();
+        setUser(user);
       } catch (error) {
-        console.error('Error getting session:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        });
+        console.error('Error initializing app:', error);
       } finally {
+        // Always stop loading quickly to prevent hanging
         setAppLoading(false);
       }
     };
-    getSession();
+    
+    initializeApp();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ?? null);

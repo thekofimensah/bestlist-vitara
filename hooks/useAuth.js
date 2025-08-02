@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, getSessionOptimized } from '../lib/supabase';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -7,31 +7,35 @@ export const useAuth = () => {
   const [userProfile, setUserProfile] = useState(null);
 
   useEffect(() => {
-    // Get initial session
-    const getSession = async () => {
+    // Optimized session restoration
+    const initializeAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
+        // Use fast session restoration
+        const user = await getSessionOptimized();
+        setUser(user);
         
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
+        // Load profile in background without blocking
+        if (user) {
+          fetchUserProfile(user.id); // Don't await - load in background
         }
       } catch (error) {
-        console.error('Error getting session:', error);
+        console.error('Error initializing auth:', error);
       } finally {
+        // Stop loading immediately to prevent UI blocking
         setLoading(false);
       }
     };
 
-    getSession();
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          await fetchUserProfile(session.user.id);
+          // Load profile in background without blocking auth state update
+          fetchUserProfile(session.user.id);
           
           // If profile doesn't exist and this is a sign-in event, try to create it
           if (event === 'SIGNED_IN' && !userProfile) {
@@ -43,7 +47,8 @@ export const useAuth = () => {
           setUserProfile(null);
         }
         
-        setLoading(false);
+        // Auth state changes should not affect loading state
+        // setLoading(false); // Removed to prevent interference
       }
     );
 

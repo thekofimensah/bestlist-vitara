@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, Star, Lock, Calendar } from 'lucide-react';
-import { useAchievements } from '../../hooks/useAchievements';
+import useAchievements from '../../hooks/useAchievements';
 import { useAuth } from '../../hooks/useAuth';
 
 const AchievementCard = ({ achievement, userAchievement, isLocked = false }) => {

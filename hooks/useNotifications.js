@@ -28,29 +28,44 @@ export const useNotifications = (userId) => {
     // Load initial notifications
     loadNotifications();
 
-    // Subscribe to new notifications
-    const subscription = supabase
-      .channel(`notifications:${userId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${userId}`
-      }, (payload) => {
-        logToAndroid('🔔 Received new notification:', payload.new);
-        setNotifications(prev => {
-          logToAndroid('🔔 Adding notification to existing:', prev.length, 'notifications');
-          return [payload.new, ...prev];
+    // Subscribe to new notifications (with error handling for Realtime)
+    let subscription;
+    try {
+      subscription = supabase
+        .channel(`notifications:${userId}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`
+        }, (payload) => {
+          logToAndroid('🔔 Received new notification:', payload.new);
+          setNotifications(prev => {
+            logToAndroid('🔔 Adding notification to existing:', prev.length, 'notifications');
+            return [payload.new, ...prev];
+          });
+          setUnreadCount(prev => prev + 1);
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            logToAndroid('🔔 Successfully subscribed to notifications channel');
+          } else if (status === 'CHANNEL_ERROR') {
+            logToAndroid('🔔 Failed to subscribe to notifications - Realtime may not be enabled');
+            logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+          }
         });
-        setUnreadCount(prev => prev + 1);
-      })
-      .subscribe();
 
-    logToAndroid('🔔 Subscribed to notifications channel');
+      logToAndroid('🔔 Attempted to subscribe to notifications channel');
+    } catch (error) {
+      logToAndroid('🔔 Error setting up notifications subscription:', error.message);
+      logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+    }
 
     return () => {
       logToAndroid('🔔 Unsubscribing from notifications');
-      subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
   }, [userId]);
 

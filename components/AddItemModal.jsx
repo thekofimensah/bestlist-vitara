@@ -21,6 +21,7 @@ import {
 } from '../lib/currencyUtils';
 import { createPost } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
+import FirstInWorldBanner from './gamification/FirstInWorldBanner';
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
   const [justClicked, setJustClicked] = useState(null);
@@ -207,6 +208,10 @@ const AddItemModal = ({
   // AI Summary section state
   const [showAISummary, setShowAISummary] = useState(false);
   const [createListError, setCreateListError] = useState(null);
+  
+  // First in World banner state
+  const [showFirstInWorldBanner, setShowFirstInWorldBanner] = useState(false);
+  const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
 
   const onCropComplete = useCallback((_ignored, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -705,7 +710,17 @@ const AddItemModal = ({
     }, null, 2));
     
     // Save the item first
-    const savedItem = await onSave(selectedLists, newItem, isStayAway);
+    const saveResult = await onSave(selectedLists, newItem, isStayAway);
+    const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
+    
+    // 🏆 Check for "First in World" achievements
+    if (saveResult?.achievements) {
+      const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
+      if (globalFirstAchievement) {
+        setFirstInWorldProduct(productName || newItem.name || 'this item');
+        setShowFirstInWorldBanner(true);
+      }
+    }
     
     // Create public post if item is public and not editing existing item
     if (isPublic && !item?.id && savedItem) {
@@ -2282,6 +2297,13 @@ const AddItemModal = ({
           />
         )}
       </AnimatePresence>
+
+      {/* First in World Banner */}
+      <FirstInWorldBanner
+        isVisible={showFirstInWorldBanner}
+        productName={firstInWorldProduct}
+        onComplete={() => setShowFirstInWorldBanner(false)}
+      />
     </div>
   );
 };

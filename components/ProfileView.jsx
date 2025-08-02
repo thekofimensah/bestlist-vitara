@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Camera, LogOut, Shield, FileText, Settings, Search, Bell, List, Heart, Star, Share, User } from 'lucide-react';
-import { signOut } from '../lib/supabase';
+import { signOut, supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useUserStats } from '../hooks/useUserStats';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import PrivacyPolicy from './PrivacyPolicy';
+import TermsOfService from './TermsOfService';
+import AchievementsGallery from './gamification/AchievementsGallery';
 
 const StatCard = ({ icon, value, label }) => {
   return (
@@ -25,8 +29,28 @@ const StatCard = ({ icon, value, label }) => {
 
 const ProfileView = ({ onBack, isRefreshing = false }) => {
   const { user, userProfile, updateProfile } = useAuth();
+  
+  // Debug user profile
+  console.log('🔍 [ProfileView] User profile debug:', JSON.stringify({
+    user: user ? { id: user.id, email: user.email } : null,
+    userProfile,
+    hasUsername: !!userProfile?.username,
+    hasDisplayName: !!userProfile?.display_name
+  }, null, 2));
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
+  const { stats, loading: statsLoading, error: statsError } = useUserStats();
+  
+  // Debug logging
+  console.log('🔍 [ProfileView] Debug info:', JSON.stringify({
+    userId: user?.id,
+    userProfile,
+    stats,
+    statsLoading,
+    statsError
+  }, null, 2));
 
   const handleSave = async () => {
     setLoading(true);
@@ -61,15 +85,23 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
     }
   };
 
-  // Mock stats - replace with real data from your app
+  // Use real stats from database with fallbacks
   const userStats = {
-    photosTaken: 47,
-    listsCreated: 8,
-    uniqueIngredients: 124,
-    likesReceived: 156,
-    totalItems: 89,
-    avgRating: 4.2
+    photosTaken: stats?.photosTaken || 0,
+    listsCreated: stats?.listsCreated || 0,
+    uniqueIngredients: stats?.uniqueIngredients || 0,
+    likesReceived: stats?.likesReceived || 0,
+    totalItems: stats?.totalItems || 0,
+    avgRating: stats?.avgRating || 0
   };
+
+  if (showPrivacyPolicy) {
+    return <PrivacyPolicy onBack={() => setShowPrivacyPolicy(false)} />;
+  }
+
+  if (showTermsOfService) {
+    return <TermsOfService onBack={() => setShowTermsOfService(false)} />;
+  }
 
   if (showSettings) {
     return (
@@ -86,7 +118,7 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
                   <div>
                     <label className="text-sm font-medium text-gray-700 block">Username</label>
                     <p className="text-base text-gray-900">
-                      {userProfile?.username ? `@${userProfile.username}` : 'Username not set'}
+                      {userProfile?.username ? `${userProfile.username}` : 'Username not set'}
                     </p>
                   </div>
                 </div>
@@ -134,7 +166,10 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">App Settings</h3>
             <div className="space-y-3">
-              <button className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between">
+              <button 
+                onClick={() => setShowPrivacyPolicy(true)}
+                className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
                 <div className="flex items-center gap-3">
                   <Shield className="w-5 h-5 text-gray-600" />
                   <span className="text-base font-medium text-gray-900">Privacy Policy</span>
@@ -142,7 +177,10 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
                 <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
               </button>
 
-              <button className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between">
+              <button 
+                onClick={() => setShowTermsOfService(true)}
+                className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
                 <div className="flex items-center gap-3">
                   <FileText className="w-5 h-5 text-gray-600" />
                   <span className="text-base font-medium text-gray-900">Terms of Service</span>
@@ -189,13 +227,170 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
           >
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
-          <h2 className="text-xl font-semibold text-gray-900">Your Profile</h2>
-          <button 
-            onClick={() => setShowSettings(true)}
-            className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
-          >
-            <Settings className="w-5 h-5 text-gray-700" />
-          </button>
+                        <h2 className="text-xl font-semibold text-gray-900">
+                {userProfile?.username ? `@${userProfile.username}` : 'Your Profile'}
+              </h2>
+          <div className="flex gap-2">
+            {/* Debug Force Refresh Button */}
+            <button
+              onClick={async () => {
+                console.log('🔍 [ProfileView] Debug: Force refresh - clearing all state');
+                await signOut();
+                // Force page reload to clear all React state
+                window.location.reload();
+              }}
+              className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center shadow-sm"
+              title="Debug: Force Refresh"
+            >
+              <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            
+            {/* Debug Sign Out Button */}
+            <button
+              onClick={async () => {
+                console.log('🔍 [ProfileView] Debug: Force sign out');
+                await signOut();
+              }}
+              className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shadow-sm"
+              title="Debug: Force Sign Out"
+            >
+              <LogOut className="w-5 h-5 text-red-600" />
+            </button>
+            
+            {/* Debug Test Query Button */}
+            <button
+              // Replace the onClick handler in ProfileView.jsx line 264-299 with this:
+
+              onClick={async () => {
+                console.log('🔍 [ProfileView] Debug: Testing MULTIPLE approaches');
+                
+                // Test 1: Basic fetch to Supabase (like before)
+                try {
+                  console.log('🔍 [ProfileView] Test 1: Basic fetch to Supabase...');
+                  const start1 = Date.now();
+                  const response = await fetch('https://jdadigamrbeenkxdkwer.supabase.co/rest/v1/lists?select=count&limit=1', {
+                    headers: {
+                      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI',
+                      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI'
+                    }
+                  });
+                  const data = await response.text();
+                  const duration1 = Date.now() - start1;
+                  console.log('🔍 [ProfileView] Test 1 result:', { 
+                    duration: duration1 + 'ms',
+                    status: response.status,
+                    data: data.substring(0, 100) + '...'
+                  });
+                } catch (err) {
+                  console.error('🔍 [ProfileView] Test 1 error:', err);
+                }
+                
+                // Test 2: Python-style approach (lists then items)
+                try {
+                  console.log('🔍 [ProfileView] Test 2: Python-style (lists then items)...');
+                  const start2 = Date.now();
+                  
+                  // Step 1: Get lists (like Python does)
+                  const listsResponse = await fetch('https://jdadigamrbeenkxdkwer.supabase.co/rest/v1/lists?select=*&user_id=eq.a71aeac4-f8bb-407d-ae58-02582d3b6221&order=created_at.desc', {
+                    headers: {
+                      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI',
+                      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI'
+                    }
+                  });
+                  const listsData = await listsResponse.json();
+                  console.log('🔍 [ProfileView] Lists found:', listsData?.length || 0);
+                  
+                  // Step 2: Get items (like Python does)  
+                  if (listsData && listsData.length > 0) {
+                    const listIds = listsData.map(l => l.id);
+                    const itemsResponse = await fetch(`https://jdadigamrbeenkxdkwer.supabase.co/rest/v1/items?select=*&list_id=in.(${listIds.join(',')})`, {
+                      headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI'
+                      }
+                    });
+                    const itemsData = await itemsResponse.json();
+                    console.log('🔍 [ProfileView] Items found:', itemsData?.length || 0);
+                  }
+                  
+                  const duration2 = Date.now() - start2;
+                  console.log('🔍 [ProfileView] Test 2 result:', { 
+                    duration: duration2 + 'ms',
+                    listsCount: listsData?.length || 0
+                  });
+                } catch (err) {
+                  console.error('🔍 [ProfileView] Test 2 error:', err);
+                }
+                
+                // Test 3: Supabase client simple query
+                try {
+                  console.log('🔍 [ProfileView] Test 3: Supabase client simple...');
+                  const start3 = Date.now();
+                  const { data, error } = await supabase
+                    .from('lists')
+                    .select('count')
+                    .limit(1);
+                  const duration3 = Date.now() - start3;
+                  console.log('🔍 [ProfileView] Test 3 result:', { 
+                    duration: duration3 + 'ms',
+                    data, 
+                    error 
+                  });
+                } catch (err) {
+                  console.error('🔍 [ProfileView] Test 3 error:', err);
+                }
+                
+                // Test 4: Supabase client JOIN query (the problematic one)
+                try {
+                  console.log('🔍 [ProfileView] Test 4: Supabase client JOIN query...');
+                  const start4 = Date.now();
+                  const { data, error } = await supabase
+                    .from('lists')
+                    .select(`
+                      id,
+                      name,
+                      color,
+                      created_at,
+                      items (
+                        id,
+                        name,
+                        image_url,
+                        rating,
+                        is_stay_away,
+                        created_at,
+                        notes
+                      )
+                    `)
+                    .eq('user_id', 'a71aeac4-f8bb-407d-ae58-02582d3b6221')
+                    .order('created_at', { ascending: false })
+                    .order('created_at', { referencedTable: 'items', ascending: false });
+                  const duration4 = Date.now() - start4;
+                  console.log('🔍 [ProfileView] Test 4 result:', { 
+                    duration: duration4 + 'ms',
+                    listsCount: data?.length || 0,
+                    error 
+                  });
+                } catch (err) {
+                  console.error('🔍 [ProfileView] Test 4 error:', err);
+                }
+              }}
+              className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shadow-sm"
+              title="Debug: Test Query"
+            >
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </button>
+            
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
+            >
+              <Settings className="w-5 h-5 text-gray-700" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -239,7 +434,7 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-semibold text-gray-900 mb-2" style={{ color: '#1E1F1E' }}>
-                {userProfile?.username ? `@${userProfile.username}` : 'missing'}
+                {userProfile?.username ? `@${userProfile.username}` : userProfile?.display_name || user?.email?.split('@')[0] || 'User'}
               </h2>
               <div className="flex items-center gap-2 mb-3">
                 <div 
@@ -251,7 +446,7 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
                 </div>
               </div>
               <div className="text-sm font-medium text-gray-500">
-                {userProfile?.bio || 'Food Explorer'}
+                {userProfile?.bio || ''}
               </div>
             </div>
           </div>
@@ -265,48 +460,53 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
         </div>
 
         {/* Stats Dashboard */}
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard 
-            icon={<Camera className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
-            value={userStats.photosTaken}
-            label="Photos Taken"
-          />
-          <StatCard 
-            icon={<List className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
-            value={userStats.listsCreated}
-            label="Lists Created"
-          />
-          <StatCard 
-            icon={<Star className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
-            value={userStats.avgRating}
-            label="Avg Rating"
-          />
-          <StatCard 
-            icon={<Heart className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
-            value={userStats.likesReceived}
-            label="Likes Received"
-          />
-        </div>
-
-        {/* Account Management */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Account</h3>
-          
-          <div className="space-y-3">
-            <button 
-              onClick={() => setShowSettings(true)}
-              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Settings className="w-5 h-5 text-gray-600" />
-                <span className="text-base font-medium text-gray-900">Settings</span>
+        {statsLoading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
+                </div>
+                <div className="h-6 bg-gray-200 rounded mb-1"></div>
+                <div className="h-3 bg-gray-200 rounded w-20"></div>
               </div>
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-            </button>
+            ))}
           </div>
-        </div>
+        ) : statsError ? (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+            <p className="text-sm text-red-600">Failed to load statistics</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard 
+              icon={<Camera className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
+              value={userStats.photosTaken}
+              label="Photos Taken"
+            />
+            <StatCard 
+              icon={<List className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
+              value={userStats.listsCreated}
+              label="Lists Created"
+            />
+            <StatCard 
+              icon={<Star className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
+              value={userStats.avgRating}
+              label="Avg Rating"
+            />
+            <StatCard 
+              icon={<Heart className="w-7 h-7 text-teal-700" style={{ color: '#1F6D5A' }} />}
+              value={userStats.likesReceived}
+              label="Likes Received"
+            />
+          </div>
+        )}
 
 
+
+
+
+        {/* Achievements Gallery */}
+        <AchievementsGallery userId={user?.id} />
 
         {/* Share CTA */}
         <button

@@ -16,6 +16,8 @@ import { motion as Sparkles } from 'framer-motion';
 import { NotificationsDropdown } from './components/secondary/NotificationsDropdown';
 import { useNotifications } from './hooks/useNotifications';
 import PostDetailView from './components/secondary/PostDetailView';
+import AchievementSystem from './components/gamification/AchievementSystem';
+import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
 
 // Helper function to format post data from database (moved from MainScreen)
 const formatPostForDisplay = (post) => {
@@ -103,7 +105,13 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
 
 const App = () => {
   const [user, setUser] = useState(null);
-  const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
+  // const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
+  const notifications = [];
+  const unreadCount = 0;
+  const isOpen = false;
+  const toggleOpen = () => {};
+  const markAsRead = () => {};
+  const markAllAsRead = () => {};
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -908,14 +916,15 @@ const App = () => {
   }
 
   return (
-    <div 
-      className="min-h-screen bg-stone-50 relative" 
-               style={{
-        backgroundColor: '#F6F6F4',
-        // Responsive design for keyboard handling
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        minHeight: '100dvh', // Dynamic viewport height for mobile (fallback to 100vh if not supported)
-      }}
+    <AchievementProvider>
+      <div 
+        className="min-h-screen bg-stone-50 relative" 
+                 style={{
+          backgroundColor: '#F6F6F4',
+          // Responsive design for keyboard handling
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          minHeight: '100dvh', // Dynamic viewport height for mobile (fallback to 100vh if not supported)
+        }}
     >
       {/* Connection Status Bar */}
       <ConnectionStatus />
@@ -1328,7 +1337,11 @@ const App = () => {
           </div>
       </div>
       )}
-    </div>
+
+      {/* Achievement System - Global notifications */}
+      <AchievementSystem />
+      </div>
+    </AchievementProvider>
   );
 };
 

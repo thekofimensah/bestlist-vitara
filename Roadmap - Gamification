@@ -14,12 +14,7 @@ The system must be able to be updated without pushing updates to app (i.e. via d
 - **Progressive Rewards**: Escalating achievements keep users engaged
 - **Social Proof**: Shareable moments that create FOMO
 
-### Rarity & Collection System
-- **Common Items** (Grey): Frequently photographed items
-- **Uncommon Items** (Silver): Moderately rare discoveries  
-- **Rare Items** (Gold): Seldom-found items
-- **Legendary Items** (Hologram): Ultra-rare, special items
-- **Mythical Items** (Rainbow): One-of-a-kind discoveries
+
 
 **However not sure how to rate them at the beginning with little data. So start with the normal view and give them the gold if it's the first time seen item.
 
@@ -38,27 +33,13 @@ const useUserStats = (userId) => {
   // - photosTaken: count of items with images
   // - listsCreated: count of lists
   // - avgRating: average rating across all items
-  // - rarityScore: weighted score based on item rarities
   // - discoveriesThisWeek: recent discoveries
   // - firstFinds: how many new products have you rated that haven't been before
 }
 ```
 
-**Additional Feature Ideas:**
-- [ ] **Discovery Streaks** - Days in a row with new items
-- [ ] **Weekly Discovery Goals** - Gamified weekly targets
-- [ ] **Rarity Score** - Overall user score based on rare finds
-- [ ] **Explorer Level** - User level based on total discoveries and rarity
-- [ ] **Monthly Stats Comparison** - "You discovered 40% more this month!"
-
 ### Task 1.2: Update ProfileView with Real Data
 **Goal:** Replace mock data with real calculated statistics
-
-**Additional Feature Ideas:**
-- [ ] **Achievement Showcase** - Top 3 achievements prominently displayed
-- [ ] **Progress Rings** - Circular progress indicators for goals
-- [ ] **Sparkle Animations** - Subtle animations on stat updates
-- [ ] **Comparison Badges** - "Top 10% of explorers this month"
 
 ### Task 1.3: Add Statistics Tracking to User Actions
 **Goal:** Track statistics as users interact with app
@@ -108,9 +89,6 @@ CREATE TABLE user_achievements (
 - [ ] **Adventurer** - Discover 50 items  
 - [ ] **Food Connoisseur** - Discover 100 items
 - [ ] **Legendary Explorer** - Discover 500 items
-- [ ] **Rare Hunter** - Find your first rare item
-- [ ] **Treasure Seeker** - Find 5 rare items
-- [ ] **Mythical Finder** - Discover a mythical item
 - [ ] **First in the World** - Be the first to discover an item globally
 
 #### 📱 Social Achievements (Future)
@@ -121,12 +99,11 @@ CREATE TABLE user_achievements (
 - [ ] **First comment**
 - [ ] **First like**
 - [ ] **Get 10 views**
-- [ ] **Get 10 views**
 - [ ] **First follower**
 - [ ] **10 followers**
+- [] Someone shared an item you saved
 
 #### ⭐ Quality Achievements
-- [ ] **Critic** - Rate 25 items
 - [ ] **Detailed Reviewer** - Write notes for 10 items
 - [ ] **Five Star Hunter** - Find 10 five-star items
 - [ ] **Honest Reviewer** - Use all rating levels (1-5 stars)
@@ -137,12 +114,6 @@ CREATE TABLE user_achievements (
 - [ ] **Monthly Maven** - Discover items 30 days in a row
 - [ ] **Weekend Warrior** - Discover items every weekend for a month
 
-**Additional Feature Ideas:**
-- [ ] **Hidden Achievements** - Secret achievements that surprise users
-- [ ] **Seasonal Achievements** - Time-limited holiday achievements
-- [ ] **Location Achievements** - City-specific or country-specific achievements
-- [ ] **Collaborative Achievements** - Achievements earned with friends
-- [ ] **Meta Achievements** - Achievements for earning other achievements
 
 ### Task 2.3: Create Achievement Engine
 **Goal:** System to automatically detect and award achievements
@@ -166,14 +137,13 @@ const useAchievements = (userId) => {
 
 #### Top Slide-Down Notifications
 - [ ] **Achievement Unlocked**: Slide from top with achievement icon
-- [ ] **Rarity Discovery**: "RARE ITEM DISCOVERED!" with sparkle effects
+- [ ] **Rarity Discovery**: "FIRST ITEM DISCOVERED!" with sparkle effects
 - [ ] **Streak Notifications**: "3 Day Streak!" with fire emoji
 - [ ] **Level Up**: "You're now a Food Explorer!" with level badge
 
 #### Modal Celebrations
 - [ ] **First-Time Achievements**: Full-screen celebration for major milestones
-- [ ] **Rare Discovery Modal**: Special modal for legendary/mythical items
-- [ ] **Achievement Details**: Show what they earned and why it matters
+- [ ] **Rare Discovery Modal**: Special modal effect on additemmodal for first finds
 
 **Additional Feature Ideas:**
 - [ ] **Haptic Feedback** - Phone vibration patterns for different achievements
@@ -184,10 +154,6 @@ const useAchievements = (userId) => {
 ### Task 3.2: Implement Smart Notification Timing
 **Goal:** Reward early users without being spammy
 
-#### Notification Strategy:
-- **First Week**: High frequency for onboarding and engagement
-- **Week 2-4**: Medium frequency focusing on meaningful milestones
-- **Month 2+**: Lower frequency for significant achievements only
 
 #### Anti-Spam Features:
 - [ ] **Notification Batching** - Group multiple achievements together
@@ -197,116 +163,7 @@ const useAchievements = (userId) => {
 
 ---
 
-## 📤 PHASE 4: SHAREABILITY FEATURES (Week 4)
-
-### Task 4.1: Achievement Sharing System
-**Goal:** Make achievements highly shareable to drive viral growth
 
 I think all of this isn't V1 material, the best would be when they share their profile, it should say what their "level" is if it's past a certain level. When people visit your profile, they can see the achievements
 
 ---
-
-## 🎮 PHASE 5: ADVANCED GAMIFICATION (Future)
-
-### 🏅 User Progression System
-- [ ] **Explorer Levels** - Bronze → Silver → Gold → Platinum → Diamond
-- [ ] **Specialization Paths** - Sweet Tooth, Spice Master, Healthy Hunter
-- [ ] **Prestige System** - Reset progress for exclusive rewards
-- [ ] **Seasonal Rankings** - Monthly leaderboards with rewards
-
-### 🤝 Social Gamification  
-- [ ] **Guild System** - Join food discovery groups
-- [ ] **Team Challenges** - Collaborative discovery goals
-- [ ] **Discovery Battles** - Friendly competition between users
-- [ ] **Mentor System** - Experienced users guide newcomers
-
-### 🎁 Reward Economy
-- [ ] **Discovery Points** - Currency earned through achievements
-- [ ] **Unlock System** - Use points to unlock special features
-- [ ] **Premium Rewards** - Exclusive achievements for premium users
-- [ ] **Real-World Rewards** - Partner with restaurants for discounts
-
-### 🔮 AI-Powered Features
-- [ ] **Smart Achievements** - AI suggests personalized achievements
-- [ ] **Rarity Prediction** - AI predicts item rarity before photo
-- [ ] **Discovery Recommendations** - "Try finding items like this one"
-- [ ] **Trend Analysis** - "Ramen is trending in your area"
-
----
-
-## 🛠️ TECHNICAL IMPLEMENTATION DETAILS
-
-Need to fix all security RLS for DB.
-
-### Database Schema Updates Needed
-```sql
--- Enhanced items table for rarity system
-ALTER TABLE items ADD COLUMN rarity_tier TEXT DEFAULT 'common';
-ALTER TABLE items ADD COLUMN discovery_count INTEGER DEFAULT 0;
-ALTER TABLE items ADD COLUMN rarity_effects JSON; -- Store visual effect data
-
--- Achievement system tables (from above)
--- Global discovery tracking tables
--- User progression tracking
-```
-
-### Performance Considerations
-- [ ] **Caching Strategy** - Cache rarity calculations and achievement progress
-- [ ] **Background Processing** - Process achievements async to avoid UI lag
-- [ ] **Batch Updates** - Update discovery counts in batches
-- [ ] **CDN Integration** - Fast delivery of achievement images/animations
-
-### Analytics & Optimization
-- [ ] **Achievement Analytics** - Track which achievements drive engagement
-- [ ] **Rarity Analytics** - Monitor rarity distribution and balance
-- [ ] **Sharing Analytics** - Measure viral coefficient of different features
-- [ ] **A/B Testing** - Test different notification frequencies and styles
-
----
-
-## 🎯 SUCCESS METRICS
-
-### Engagement Metrics
-- **Achievement Unlock Rate** - % of users earning achievements
-- **Notification Click-Through Rate** - % engaging with achievement notifications
-- **Rare Discovery Rate** - Frequency of rare item discoveries
-- **Sharing Rate** - % of achievements shared externally
-
-### Retention Metrics  
-- **7-Day Retention** - Impact of gamification on user retention
-- **Session Duration** - Time spent in app after achievements
-- **Return Rate** - Users returning after achievement notifications
-- **Streak Completion** - % of users completing discovery streaks
-
-### Viral Metrics
-- **Share Rate** - Achievement shares per user per week
-- **Referral Rate** - New users from achievement shares
-- **Social Engagement** - Likes/comments on shared achievements
-- **Deep Link Clicks** - Traffic from shared achievement links
-
----
-
-## 🚀 IMMEDIATE NEXT STEPS
-
-### Week 1: Foundation
-1. **Create useUserStats hook** with real statistics calculation
-2. **Update ProfileView** to use real data instead of mock stats
-
-### Week 2: Rarity System
-1. **Implement rarity detection** algorithm based on discovery frequency  
-2. **Create rarity visual effects** in AddItemModal (borders, particles, etc.)
-3. **Add achievement database schema** and initial achievement definitions
-
-### Week 3: Celebrations
-1. **Build achievement notification system** with top slide-down alerts
-2. **Create celebration components** for rare discoveries and achievements
-3. **Implement smart notification timing** to avoid spam
-
-### Week 4: Sharing
-1. **Build achievement sharing templates** for social platforms
-2. **Add viral discovery features** with global first discoveries
-3. **Test and optimize** notification frequency and achievement balance
-
----
-
-*This gamification system is designed to be addictive, shareable, and scalable. The rarity system creates Pokemon-card-like excitement, while the achievement system provides continuous dopamine hits that keep users engaged and coming back for more discoveries.*

@@ -5,8 +5,8 @@ import { signOut } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import useUserStats from '../hooks/useUserStats';
 import LoadingSpinner from '../ui/LoadingSpinner';
-import PrivacyPolicy from './PrivacyPolicy';
-import TermsOfService from './TermsOfService';
+import PrivacyPolicy from './secondary/PrivacyPolicy.jsx';
+import TermsOfService from './secondary/TermsOfService';
 import AchievementsGallery from './gamification/AchievementsGallery';
 
 const StatCard = ({ icon, value, label }) => {

@@ -26,6 +26,8 @@ export const AchievementProvider = ({ children }) => {
 
   // Add achievement notification to queue
   const showAchievement = (achievementData) => {
+    console.log('🏆 [Achievement] showAchievement called with:', achievementData);
+    
     const { achievement, isGlobalFirst = false } = achievementData;
     
     // Determine notification type based on rarity and context
@@ -38,6 +40,7 @@ export const AchievementProvider = ({ children }) => {
     if (now - lastNotificationTime < cooldownPeriod && !shouldShowModal) {
       // Queue for later or batch with existing
       setNotifications(prev => [...prev, { ...achievementData, id: Date.now() }]);
+      console.log('🏆 [Achievement] Queued notification due to cooldown');
       return;
     }
 
@@ -46,9 +49,11 @@ export const AchievementProvider = ({ children }) => {
     if (shouldShowModal) {
       // Show full-screen modal for legendary/global first achievements
       setCurrentModal({ ...achievementData, id: Date.now() });
+      console.log('🏆 [Achievement] Showing modal for:', achievement.name);
     } else {
       // Show toast notification for common achievements
       setNotifications(prev => [...prev, { ...achievementData, id: Date.now() }]);
+      console.log('🏆 [Achievement] Showing toast for:', achievement.name);
     }
   };
 

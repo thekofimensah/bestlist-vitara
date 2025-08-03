@@ -887,8 +887,36 @@ export const useLists = (userId) => {
     setLists(prev => prev.filter(list => list.id !== listId));
 
     try {
-      // In Supabase, you should have cascading deletes set up on the 'items' table
-      // for the 'list_id' foreign key. This will delete all items in the list.
+      // First, get all items in this list
+      const { data: items, error: itemsError } = await supabase
+        .from('items')
+        .select('id')
+        .eq('list_id', listId);
+
+      if (itemsError) {
+        setLists(originalLists);
+        throw itemsError;
+      }
+
+      const itemIds = items?.map(item => item.id) || [];
+
+      if (itemIds.length > 0) {
+        // Delete posts that reference these items
+        const { error: postsError } = await supabase
+          .from('posts')
+          .delete()
+          .in('item_id', itemIds);
+
+        if (postsError) {
+          console.error('❌ Error deleting posts:', postsError);
+          setLists(originalLists);
+          throw postsError;
+        }
+
+        console.log(`✅ Deleted ${itemIds.length} posts for list ${listId}`);
+      }
+
+      // Now delete the list (items should be deleted by CASCADE)
       const { error } = await supabase
         .from('lists')
         .delete()
@@ -900,9 +928,17 @@ export const useLists = (userId) => {
         throw error;
       }
       
+      console.log('✅ List deleted successfully with all related data');
       return true;
     } catch (error) {
-      console.error('❌ Error deleting list:', error);
+      console.error('❌ Error deleting list:', JSON.stringify({
+        message: error.message,
+        name: error.name,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
       setLists(originalLists); // Rollback
       throw error;
     }

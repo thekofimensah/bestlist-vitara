@@ -92,7 +92,7 @@ const useUserTracking = () => {
       if (error) {
         console.error('❌ Failed to log app version:', error);
       } else {
-        console.log('✅ App version logged successfully');
+        console.log('📊 App version logged');
       }
     } catch (error) {
       console.error('❌ Error logging app version:', error);
@@ -122,7 +122,7 @@ const useUserTracking = () => {
       if (error) {
         console.error('❌ Failed to update user metadata:', error);
       } else {
-        console.log('✅ User metadata updated successfully');
+        console.log('📊 User metadata updated');
       }
     } catch (error) {
       console.error('❌ Error updating user metadata:', error);
@@ -161,7 +161,7 @@ const useUserTracking = () => {
       if (error) {
         console.error('❌ Failed to increment sign in count:', error);
       } else {
-        console.log(`✅ Sign in count incremented to ${newCount}`);
+        console.log(`📊 Sign in count: ${newCount}`);
       }
     } catch (error) {
       console.error('❌ Error incrementing sign in count:', error);
@@ -186,11 +186,7 @@ const useUserTracking = () => {
       // Increment sign in count
       await incrementSignInCount();
       
-      console.log('📊 User tracking completed:', {
-        userId: user.id,
-        platform: deviceInfo.platform,
-        version: deviceInfo.appVersion
-      });
+      console.log('📊 User tracking completed');
       
     } catch (error) {
       console.error('❌ Error tracking user session:', error);
@@ -199,10 +195,21 @@ const useUserTracking = () => {
     }
   }, [user, isTracking, getDeviceInfo, logAppVersion, updateUserMetadata, incrementSignInCount]);
 
-  // Auto-track when user signs in
+  // Auto-track when user signs in (only once per session)
   useEffect(() => {
     if (user?.id && !isTracking) {
-      trackUserSession();
+      // Check if we've already tracked this session
+      const sessionKey = `tracked_session_${user.id}`;
+      const hasTracked = sessionStorage.getItem(sessionKey);
+      
+      if (!hasTracked) {
+        console.log('🔍 [Tracking] Starting new session tracking for user:', user.id);
+        trackUserSession();
+        // Mark this session as tracked
+        sessionStorage.setItem(sessionKey, 'true');
+      } else {
+        console.log('🔍 [Tracking] Session already tracked for user:', user.id);
+      }
     }
   }, [user?.id, trackUserSession, isTracking]);
 
@@ -228,6 +235,20 @@ const useUserTracking = () => {
       window.debugUserTracking = debugUserTracking;
     }
   }, [debugUserTracking]);
+
+  // Clear session tracking when user signs out
+  useEffect(() => {
+    if (!user?.id) {
+      // Clear all session tracking when user signs out
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.startsWith('tracked_session_')) {
+          sessionStorage.removeItem(key);
+          console.log('🔍 [Tracking] Cleared session tracking for:', key);
+        }
+      });
+    }
+  }, [user?.id]);
 
   return {
     trackUserSession,

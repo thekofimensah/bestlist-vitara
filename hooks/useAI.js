@@ -65,7 +65,7 @@ LOCATION CONTEXT: This photo was taken in ${location}. Use this location informa
 - Account for regional product variations, labeling, and naming conventions
 - Focus on products that would realistically be found in restaurants, grocery stores, markets, or shops in ${location}` : ''}
 
-Focus on food and beverage products, household items, and consumer goods.`;
+Focus on food and beverage products, household items, and consumer goods. Default to english.`;
 
         const requestBody = {
           contents: [{
@@ -107,7 +107,7 @@ Focus on food and beverage products, household items, and consumer goods.`;
                 },
                 product: {
                   type: "STRING", 
-                  description: "A string with three parts: Brand (if exists), Quantifiers (e.g., 'fat free', 'organic', 'chocolate'), What it is (e.g., 'milk', 'cheese', 'cookies'). Clean up to remove repetitions. Must be in clear language without excessive commas"
+                  description: "A string with three parts: Brand (if exists), Quantifiers (e.g., 'fat free', 'organic', 'chocolate'), What it is (e.g., 'milk', 'cheese', 'cookies'). Clean up to remove repetitions. Must be in clear language describing exactly what the product is."
                 },
                 tags: {
                   type: "ARRAY",

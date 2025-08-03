@@ -679,8 +679,7 @@ const MainScreen = React.forwardRef(({
   // Add a function to refresh feed data (for pull-to-refresh)
   const refreshFeedData = async () => {
     console.log('🔄 MainScreen: Starting feed refresh...');
-    // setIsLoadingFeed(true); // This state is now managed by the parent
-    setFeedError(null);
+    // Feed error state is now managed by the parent App component
     
     // Reload camera to fix any camera errors
     console.log('📷 MainScreen: Reloading camera...');

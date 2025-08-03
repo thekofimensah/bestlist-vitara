@@ -766,3 +766,22 @@ RETURNS TABLE(
   LIMIT limit_param OFFSET offset_param;
 $$;
 ```
+
+
+Supabase Table columns:
+
+table_name,columns
+achievements,"id, name, description, icon, rarity, category, criteria, reward_points, active, created_at"
+app_errors,"id, error_type, error_message, platform, os_version, timestamp, created_at"
+app_versions,"id, version, platform, os_version, timestamp, created_at"
+comments,"id, user_id, post_id, content, created_at, updated_at, parent_id"
+content_flags,"id, post_id, user_id, reason, status, created_at"
+follows,"id, follower_id, following_id, created_at"
+items,"id, list_id, name, category, species, certainty, tags, image_url, rating, notes, location, is_stay_away, created_at, updated_at, ai_product_name, ai_brand, ai_category, ai_confidence, ai_description, ai_tags, ai_allergens, ai_lookup_status, user_product_name, user_description, user_tags, user_allergens, detailed_breakdown, rarity, place_name, latitude, longitude, price, currency_code, photo_date_time, photo_location_source, is_public"
+likes,"id, user_id, post_id, created_at"
+lists,"id, user_id, name, color, created_at, updated_at"
+notifications,"id, user_id, actor_id, type, reference_id, read, created_at, updated_at"
+posts,"id, user_id, item_id, list_id, is_public, location, created_at, updated_at"
+profiles,"id, username, display_name, bio, avatar_url, is_private, created_at, updated_at"
+user_achievements,"id, user_id, achievement_id, earned_at, progress_data"
+users,"id, email, name, country, avatar_url, created_at, updated_at, last_sign_in_at, sign_in_count, user_agent, ip_address, sign_up_method, email_confirmed_at, phone_confirmed_at, last_sign_in_ip, raw_user_meta_data, raw_app_meta_data, location, device_info, preferences, timezone, language"

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Camera, LogOut, Shield, FileText, Settings, Search, Bell, List, Heart, Star, Share, User } from 'lucide-react';
-import { signOut, supabase } from '../lib/supabase';
+import { signOut } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import useUserStats from '../hooks/useUserStats';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -30,27 +30,13 @@ const StatCard = ({ icon, value, label }) => {
 const ProfileView = ({ onBack, isRefreshing = false }) => {
   const { user, userProfile, updateProfile } = useAuth();
   
-  // Debug user profile
-  console.log('🔍 [ProfileView] User profile debug:', JSON.stringify({
-    user: user ? { id: user.id, email: user.email } : null,
-    userProfile,
-    hasUsername: !!userProfile?.username,
-    hasDisplayName: !!userProfile?.display_name
-  }, null, 2));
+
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const { stats, loading: statsLoading, error: statsError } = useUserStats(user?.id);
   
-  // Debug logging
-  console.log('🔍 [ProfileView] Debug info:', JSON.stringify({
-    userId: user?.id,
-    userProfile,
-    stats,
-    statsLoading,
-    statsError
-  }, null, 2));
 
   const handleSave = async () => {
     setLoading(true);
@@ -230,167 +216,12 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
                         <h2 className="text-xl font-semibold text-gray-900">
                 {userProfile?.username ? `@${userProfile.username}` : 'Your Profile'}
               </h2>
-          <div className="flex gap-2">
-            {/* Debug Force Refresh Button */}
-            <button
-              onClick={async () => {
-                console.log('🔍 [ProfileView] Debug: Force refresh - clearing all state');
-                await signOut();
-                // Force page reload to clear all React state
-                window.location.reload();
-              }}
-              className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center shadow-sm"
-              title="Debug: Force Refresh"
-            >
-              <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-            
-            {/* Debug Sign Out Button */}
-            <button
-              onClick={async () => {
-                console.log('🔍 [ProfileView] Debug: Force sign out');
-                await signOut();
-              }}
-              className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shadow-sm"
-              title="Debug: Force Sign Out"
-            >
-              <LogOut className="w-5 h-5 text-red-600" />
-            </button>
-            
-            {/* Debug Test Query Button */}
-            <button
-              // Replace the onClick handler in ProfileView.jsx line 264-299 with this:
-
-              onClick={async () => {
-                console.log('🔍 [ProfileView] Debug: Testing MULTIPLE approaches');
-                
-                // Test 1: Basic fetch to Supabase (like before)
-                try {
-                  console.log('🔍 [ProfileView] Test 1: Basic fetch to Supabase...');
-                  const start1 = Date.now();
-                  const response = await fetch('https://jdadigamrbeenkxdkwer.supabase.co/rest/v1/lists?select=count&limit=1', {
-                    headers: {
-                      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI',
-                      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI'
-                    }
-                  });
-                  const data = await response.text();
-                  const duration1 = Date.now() - start1;
-                  console.log('🔍 [ProfileView] Test 1 result:', { 
-                    duration: duration1 + 'ms',
-                    status: response.status,
-                    data: data.substring(0, 100) + '...'
-                  });
-                } catch (err) {
-                  console.error('🔍 [ProfileView] Test 1 error:', err);
-                }
-                
-                // Test 2: Python-style approach (lists then items)
-                try {
-                  console.log('🔍 [ProfileView] Test 2: Python-style (lists then items)...');
-                  const start2 = Date.now();
-                  
-                  // Step 1: Get lists (like Python does)
-                  const listsResponse = await fetch('https://jdadigamrbeenkxdkwer.supabase.co/rest/v1/lists?select=*&user_id=eq.a71aeac4-f8bb-407d-ae58-02582d3b6221&order=created_at.desc', {
-                    headers: {
-                      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI',
-                      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI'
-                    }
-                  });
-                  const listsData = await listsResponse.json();
-                  console.log('🔍 [ProfileView] Lists found:', listsData?.length || 0);
-                  
-                  // Step 2: Get items (like Python does)  
-                  if (listsData && listsData.length > 0) {
-                    const listIds = listsData.map(l => l.id);
-                    const itemsResponse = await fetch(`https://jdadigamrbeenkxdkwer.supabase.co/rest/v1/items?select=*&list_id=in.(${listIds.join(',')})`, {
-                      headers: {
-                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI',
-                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkYWRpZ2FtcmJlZW5reGRrd2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTYxNjIsImV4cCI6MjA2NDM3MjE2Mn0.PTTe16qs1Pamu6SSWjLBfMtlWDkgCeBxCZzhMGgv5mI'
-                      }
-                    });
-                    const itemsData = await itemsResponse.json();
-                    console.log('🔍 [ProfileView] Items found:', itemsData?.length || 0);
-                  }
-                  
-                  const duration2 = Date.now() - start2;
-                  console.log('🔍 [ProfileView] Test 2 result:', { 
-                    duration: duration2 + 'ms',
-                    listsCount: listsData?.length || 0
-                  });
-                } catch (err) {
-                  console.error('🔍 [ProfileView] Test 2 error:', err);
-                }
-                
-                // Test 3: Supabase client simple query
-                try {
-                  console.log('🔍 [ProfileView] Test 3: Supabase client simple...');
-                  const start3 = Date.now();
-                  const { data, error } = await supabase
-                    .from('lists')
-                    .select('count')
-                    .limit(1);
-                  const duration3 = Date.now() - start3;
-                  console.log('🔍 [ProfileView] Test 3 result:', { 
-                    duration: duration3 + 'ms',
-                    data, 
-                    error 
-                  });
-                } catch (err) {
-                  console.error('🔍 [ProfileView] Test 3 error:', err);
-                }
-                
-                // Test 4: Supabase client JOIN query (the problematic one)
-                try {
-                  console.log('🔍 [ProfileView] Test 4: Supabase client JOIN query...');
-                  const start4 = Date.now();
-                  const { data, error } = await supabase
-                    .from('lists')
-                    .select(`
-                      id,
-                      name,
-                      color,
-                      created_at,
-                      items (
-                        id,
-                        name,
-                        image_url,
-                        rating,
-                        is_stay_away,
-                        created_at,
-                        notes
-                      )
-                    `)
-                    .eq('user_id', 'a71aeac4-f8bb-407d-ae58-02582d3b6221')
-                    .order('created_at', { ascending: false })
-                    .order('created_at', { referencedTable: 'items', ascending: false });
-                  const duration4 = Date.now() - start4;
-                  console.log('🔍 [ProfileView] Test 4 result:', { 
-                    duration: duration4 + 'ms',
-                    listsCount: data?.length || 0,
-                    error 
-                  });
-                } catch (err) {
-                  console.error('🔍 [ProfileView] Test 4 error:', err);
-                }
-              }}
-              className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shadow-sm"
-              title="Debug: Test Query"
-            >
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </button>
-            
-            <button 
-              onClick={() => setShowSettings(true)}
-              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
-            >
-              <Settings className="w-5 h-5 text-gray-700" />
-            </button>
-          </div>
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm"
+          >
+            <Settings className="w-5 h-5 text-gray-700" />
+          </button>
         </div>
       </div>
 

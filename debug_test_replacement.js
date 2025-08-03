@@ -21,7 +21,14 @@ onClick={async () => {
       data: data.substring(0, 100) + '...'
     });
   } catch (err) {
-    console.error('🔍 [ProfileView] Test 1 error:', err);
+    console.error('🔍 [ProfileView] Test 1 error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
   }
   
   // Test 2: Python-style approach (lists then items)
@@ -58,7 +65,14 @@ onClick={async () => {
       listsCount: listsData?.length || 0
     });
   } catch (err) {
-    console.error('🔍 [ProfileView] Test 2 error:', err);
+    console.error('🔍 [ProfileView] Test 2 error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
   }
   
   // Test 3: Supabase client simple query
@@ -76,7 +90,14 @@ onClick={async () => {
       error 
     });
   } catch (err) {
-    console.error('🔍 [ProfileView] Test 3 error:', err);
+    console.error('🔍 [ProfileView] Test 3 error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
   }
   
   // Test 4: Supabase client JOIN query (the problematic one)
@@ -110,6 +131,13 @@ onClick={async () => {
       error 
     });
   } catch (err) {
-    console.error('🔍 [ProfileView] Test 4 error:', err);
+    console.error('🔍 [ProfileView] Test 4 error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
   }
 }}

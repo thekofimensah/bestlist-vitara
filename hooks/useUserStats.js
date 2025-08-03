@@ -31,26 +31,37 @@ const useUserStats = (userId) => {
         const timeoutId = setTimeout(() => {
           console.log('🚨 [useUserStats] TIMEOUT: Aborting stats queries after 10 seconds');
           controller.abort();
-        }, 10000);
+        }, 30000);
         
-        // Get items first
+        // Get items first - only select what we need for stats
         const itemsResult = await supabase
           .from('items')
-          .select('id, image_url, rating')
-          .eq('user_id', userId)
+          .select('id, rating, list_id')
           .abortSignal(controller.signal);
 
         if (itemsResult.error) throw itemsResult.error;
 
-        const items = itemsResult.data || [];
+        const allItems = itemsResult.data || [];
+        
+        // Filter items to only include those from user's lists
+        const userListsResult = await supabase
+          .from('lists')
+          .select('id')
+          .eq('user_id', userId)
+          .abortSignal(controller.signal);
+          
+        if (userListsResult.error) throw userListsResult.error;
+        
+        const userListIds = userListsResult.data.map(list => list.id);
+        const items = allItems.filter(item => userListIds.includes(item.list_id));
         const itemIds = items.map(item => item.id);
         
-        console.log('🔍 [useUserStats] Found items:', items.length);
+        console.log('🔍 [useUserStats] Found items:', items.length, 'out of', allItems.length, 'total items');
 
         // Fetch remaining stats in parallel
         const [
           listsResult,
-          likesResult,
+          postsResult,
           ratingsResult
         ] = await Promise.all([
           // Get lists created
@@ -60,37 +71,43 @@ const useUserStats = (userId) => {
             .eq('user_id', userId)
             .abortSignal(controller.signal),
           
-          // Get likes received (from likes table)
+          // Get posts for user's items (to get likes)
           itemIds.length > 0 
             ? supabase
-                .from('likes')
-                .select('id')
+                .from('posts')
+                .select('id, item_id')
                 .in('item_id', itemIds)
-                .abortSignal(controller.signal)
+                .abortSignal(controller.signal)git 
             : Promise.resolve({ data: [], error: null }),
           
-          // Get average rating
-          supabase
-            .from('items')
-            .select('rating')
-            .eq('user_id', userId)
-            .not('rating', 'is', null)
-            .abortSignal(controller.signal)
+          // Get average rating - use the filtered items we already have
+          Promise.resolve({ data: items.filter(item => item.rating !== null && item.rating > 0), error: null })
         ]);
 
         clearTimeout(timeoutId);
         
         // Handle errors
         if (listsResult.error) throw listsResult.error;
-        if (likesResult.error) throw likesResult.error;
+        if (postsResult.error) throw postsResult.error;
         if (ratingsResult.error) throw ratingsResult.error;
 
         const lists = listsResult.data || [];
-        const likes = likesResult.data || [];
+        const posts = postsResult.data || [];
         const ratings = ratingsResult.data || [];
 
         // Calculate stats
-        const photosTaken = items.filter(item => item.image_url).length;
+        // For photos taken, we'll need to check if image_url exists
+        // Since we're not loading image_url, we'll use a separate query for this
+        const photosResult = await supabase
+          .from('items')
+          .select('id')
+          .in('id', itemIds)
+          .not('image_url', 'is', null)
+          .abortSignal(controller.signal);
+          
+        if (photosResult.error) throw photosResult.error;
+        
+        const photosTaken = photosResult.data.length;
         const listsCreated = lists.length;
         const totalItems = items.length;
         
@@ -100,9 +117,15 @@ const useUserStats = (userId) => {
           ? (validRatings.reduce((sum, r) => sum + r.rating, 0) / validRatings.length).toFixed(1)
           : 0;
 
-        // For likes received, we need to get likes on user's items
-        // This is a simplified version - you might need to adjust based on your likes table structure
-        const likesReceived = likes.length;
+        // For likes received, we need to get likes on user's posts
+        const postIds = posts.map(post => post.id);
+        const likesReceived = postIds.length > 0 
+          ? (await supabase
+              .from('likes')
+              .select('id')
+              .in('post_id', postIds)
+              .abortSignal(controller.signal)).data?.length || 0
+          : 0;
 
         // For unique ingredients, we'll use total items for now
         // You might want to add a separate ingredients table or tags system
@@ -122,7 +145,14 @@ const useUserStats = (userId) => {
         setStats(calculatedStats);
 
       } catch (err) {
-        console.error('🚨 [useUserStats] Error fetching user stats:', err);
+        console.error('🚨 [useUserStats] Error fetching user stats:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
         if (err.name === 'AbortError') {
           console.error('🚨 [useUserStats] Stats fetch timed out after 10 seconds');
           setError('Stats loading timed out. Please check your connection.');

@@ -671,22 +671,54 @@ const MainScreen = React.forwardRef(({
       canvas.getContext('2d').drawImage(video, 0, 0);
       const imageData = canvas.toDataURL('image/png');
 
-      // Freeze frame effect - set captured image and open modal immediately
+      // Convert to File and compress BEFORE opening modal
       const tempFilename = `photo_${Date.now()}.jpeg`;
-      const capturedImageData = { url: imageData, filename: tempFilename, uploading: true, aiProcessing: true };
-      console.log('Setting capturedImage data:', capturedImageData);
+      const file = dataURLtoFile(imageData, tempFilename);
+      
+      console.log('📸 [Camera] Original image size:', file.size, 'bytes');
+      
+      // Compress image first - more aggressive compression
+      const compressed = await imageCompression(file, {
+        maxSizeMB: 0.8,        // Reduced from 0.8 to 0.5MB
+        maxWidthOrHeight: 1024, // Reduced from 1024 to 800px
+        useWebWorker: true,    // Use web worker for better performance
+        fileType: 'image/jpeg' // Force JPEG for better compression
+      });
+      
+      console.log('📸 [Camera] Compressed image size:', compressed.size, 'bytes');
+      
+      // Convert compressed file back to base64
+      const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
+      
+      // Log compression results
+      console.log('📸 [Camera] Compression results:');
+      console.log('  - Original size:', file.size, 'bytes');
+      console.log('  - Compressed size:', compressed.size, 'bytes');
+      console.log('  - Compression ratio:', Math.round((1 - compressed.size / file.size) * 100) + '%');
+      console.log('  - Base64 length:', compressedBase64.length, 'characters');
+      
+      // Warn if still too large
+      if (compressedBase64.length > 500000) { // 500K characters = ~375KB
+        console.warn('⚠️ [Camera] Image still large after compression:', compressedBase64.length, 'characters');
+      }
+      
+      // Set captured image with COMPRESSED data
+      const capturedImageData = { 
+        url: compressedBase64, 
+        filename: tempFilename, 
+        uploading: false, 
+        aiProcessing: true 
+      };
+      console.log('Setting capturedImage data with compressed image');
       setCapturedImage(capturedImageData);
-      setShowModal(true); // Open modal immediately
+      setShowModal(true); // Open modal with compressed image
       setIsCapturing(false);
 
-      // Start AI processing in background
+      // Start AI processing in background with compressed image
       setTimeout(async () => {
         try {
-          // Convert to File
-          const file = dataURLtoFile(imageData, tempFilename);
-
-          // Extract EXIF data before compression
-          console.log('📸 [Camera] Extracting EXIF data from captured image...');
+          // Extract EXIF data from original file (before compression)
+          console.log('📸 [Camera] Extracting EXIF data from original image...');
           const exifData = await extractEXIFData(file);
           console.log('📸 [Camera] EXIF data extracted:', JSON.stringify(exifData, null, 2));
 
@@ -695,13 +727,7 @@ const MainScreen = React.forwardRef(({
             console.log('🌍 [GPS] Device location during capture:', deviceLocation);
           }
 
-          // Compress
-          const compressed = await imageCompression(file, {
-            maxSizeMB: 0.8,
-            maxWidthOrHeight: 1024,
-          });
-
-          // Start AI processing with location context
+          // Start AI processing with compressed image (already compressed above)
           console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
           const aiResult = await analyzeImage(compressed, deviceLocation);
           

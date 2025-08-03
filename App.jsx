@@ -105,13 +105,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
 
 const App = () => {
   const [user, setUser] = useState(null);
-  // const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
-  const notifications = [];
-  const unreadCount = 0;
-  const isOpen = false;
-  const toggleOpen = () => {};
-  const markAsRead = () => {};
-  const markAllAsRead = () => {};
+  const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);

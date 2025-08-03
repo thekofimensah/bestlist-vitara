@@ -212,6 +212,7 @@ const AddItemModal = ({
   // First in World banner state
   const [showFirstInWorldBanner, setShowFirstInWorldBanner] = useState(false);
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const onCropComplete = useCallback((_ignored, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -597,6 +598,12 @@ const AddItemModal = ({
   const handleSave = async () => {
     console.log('🔍 Save button clicked');
     
+    // Prevent multiple saves
+    if (isSaving) {
+      console.log('🔍 Save already in progress, ignoring click');
+      return;
+    }
+    
     // Validate required fields
     const errors = {};
     
@@ -646,6 +653,10 @@ const AddItemModal = ({
     // Clear any existing validation errors
     setValidationErrors({});
     setShowValidationErrors(false);
+    
+    // Start saving
+    setIsSaving(true);
+    console.log('🔍 Starting save operation...');
     
     console.log('🔍 Validation passed, proceeding with save');
     console.log('🔍 selectedLists:', selectedLists);
@@ -709,33 +720,45 @@ const AddItemModal = ({
       isStayAway
     }, null, 2));
     
-    // Save the item first
-    const saveResult = await onSave(selectedLists, newItem, isStayAway);
-    const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
-    
-    // 🏆 Check for "First in World" achievements
-    if (saveResult?.achievements) {
-      const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
-      if (globalFirstAchievement) {
-        setFirstInWorldProduct(productName || newItem.name || 'this item');
-        setShowFirstInWorldBanner(true);
+    try {
+      // Save the item first
+      const saveResult = await onSave(selectedLists, newItem, isStayAway);
+      const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
+      
+      // 🏆 Check for "First in World" achievements
+      if (saveResult?.achievements) {
+        const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
+        if (globalFirstAchievement) {
+          setFirstInWorldProduct(productName || newItem.name || 'this item');
+          setShowFirstInWorldBanner(true);
+        }
       }
-    }
-    
-    // Create public post if item is public and not editing existing item
-    if (isPublic && !item?.id && savedItem) {
-      try {
-        console.log('🔍 Creating public post for item:', savedItem.id);
-        await createPost(savedItem.id, selectedLists[0], true, location);
-        console.log('✅ Public post created successfully');
-      } catch (error) {
-        console.error('❌ Failed to create public post:', error);
-        // Don't block the flow if post creation fails
+      
+      // Create public post if item is public and not editing existing item
+      if (isPublic && !item?.id && savedItem) {
+        try {
+          console.log('🔍 Creating public post for item:', savedItem.id);
+          await createPost(savedItem.id, selectedLists[0], true, location);
+          console.log('✅ Public post created successfully');
+        } catch (error) {
+          console.error('❌ Failed to create public post:', error);
+          // Don't block the flow if post creation fails
+        }
       }
+      
+      console.log('✅ Save operation completed successfully');
+      
+      if (isBulk && onNext) onNext();
+      else onClose();
+      
+    } catch (error) {
+      console.error('❌ Save operation failed:', error);
+      // Show error to user (you might want to add a toast notification here)
+      alert('Failed to save item. Please try again.');
+    } finally {
+      // Always reset saving state
+      setIsSaving(false);
     }
-    
-    if (isBulk && onNext) onNext();
-    else onClose();
   };
 
   const handleCreateList = async () => {
@@ -1953,19 +1976,28 @@ const AddItemModal = ({
             <div className="flex items-center justify-between">
               <button
                 onClick={handleSave}
-                disabled={isAIProcessing}
+                disabled={isAIProcessing || isSaving}
                 className={`flex-1 h-13 rounded-full font-semibold text-base flex items-center justify-center gap-2 mr-4 transition-all duration-200 ${
-                  !isAIProcessing
+                  !isAIProcessing && !isSaving
                     ? 'bg-teal-700 text-white hover:bg-teal-800 active:scale-95'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
                 style={{ 
-                  backgroundColor: !isAIProcessing ? '#1F6D5A' : undefined,
+                  backgroundColor: !isAIProcessing && !isSaving ? '#1F6D5A' : undefined,
                   height: '52px' 
                 }}
               >
-                <Plus className="w-5 h-5" />
-                Add to Lists
+                {isSaving ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" />
+                    <span>Add to Lists</span>
+                  </>
+                )}
               </button>
               
               <div className="text-right relative">

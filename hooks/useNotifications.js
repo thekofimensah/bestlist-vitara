@@ -130,7 +130,14 @@ export const useNotifications = (userId) => {
         setUnreadCount(0);
       }
     } catch (err) {
-      logToAndroid('🔔 Exception loading notifications:', err);
+      logToAndroid('🔔 Exception loading notifications:', JSON.stringify({
+        message: err.message,
+        name: err.name,
+        details: err.details,
+        hint: err.hint,
+        code: err.code,
+        fullError: err
+      }, null, 2));
     }
   };
 

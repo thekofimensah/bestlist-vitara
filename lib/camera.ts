@@ -96,7 +96,14 @@ export const takeAndUploadPhoto = async () => {
       return image.webPath;
     }
   } catch (err) {
-    console.error('Camera error:', err);
+    console.error('Camera error:', JSON.stringify({
+      message: err.message,
+      name: err.name,
+      details: err.details,
+      hint: err.hint,
+      code: err.code,
+      fullError: err
+    }, null, 2));
     throw err; // Re-throw the error to handle it in the UI
   }
 };
@@ -151,7 +158,14 @@ export const importMultiplePhotos = async () => {
 
     return processedPhotos;
   } catch (err) {
-    console.error('Photo import error:', err);
+    console.error('Photo import error:', JSON.stringify({
+      message: err.message,
+      name: err.name,
+      details: err.details,
+      hint: err.hint,
+      code: err.code,
+      fullError: err
+    }, null, 2));
     return [];
   }
 };

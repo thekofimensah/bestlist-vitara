@@ -74,7 +74,14 @@ export const useAuth = () => {
         setUserProfile(null);
       }
     } catch (err) {
-      console.error('Error fetching user profile:', err);
+      console.error('Error fetching user profile:', JSON.stringify({
+        message: err.message,
+        name: err.name,
+        details: err.details,
+        hint: err.hint,
+        code: err.code,
+        fullError: err
+      }, null, 2));
     }
   };
 

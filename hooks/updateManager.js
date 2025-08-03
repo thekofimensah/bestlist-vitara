@@ -67,7 +67,14 @@ export async function checkForUpdate() {
       await logVersionToSupabase(version);
     }
   } catch (err) {
-    console.error('[Update] Failed to check or apply update:', err);
+    console.error('[Update] Failed to check or apply update:', JSON.stringify({
+      message: err.message,
+      name: err.name,
+      details: err.details,
+      hint: err.hint,
+      code: err.code,
+      fullError: err
+    }, null, 2));
     await logErrorToSupabase('check_update', err.message);
   }
 }

@@ -107,7 +107,7 @@ async function testOptimizedFeedLoading() {
         lists (
           name
         ),
-        profiles (
+        profiles!user_id (
           username,
           display_name,
           avatar_url

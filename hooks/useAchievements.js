@@ -8,8 +8,16 @@ const useAchievements = () => {
   const { user } = useAuth();
   const { stats } = useUserStats(user?.id);
   const [isProcessing, setIsProcessing] = useState(false);
-  const globalAchievements = useGlobalAchievements();
-  const showAchievement = globalAchievements?.showAchievement || (() => {});
+  
+  // Safely get global achievements with error handling
+  let globalAchievements = null;
+  let showAchievement = () => {};
+  try {
+    globalAchievements = useGlobalAchievements();
+    showAchievement = globalAchievements?.showAchievement || (() => {});
+  } catch (error) {
+    console.log('🏆 [Achievements] Global achievements not available:', error.message);
+  }
 
   // Get all available achievements
   const getAchievements = useCallback(async () => {

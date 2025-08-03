@@ -1,43 +1,77 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, getSessionOptimized } from '../lib/supabase';
-import useAchievements from './useAchievements';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
   const [pendingSignInAchievement, setPendingSignInAchievement] = useState(null);
+  const isMountedRef = useRef(true);
   
-  // Safely get achievements hook - will work even if provider isn't available
-  let checkAchievements = () => Promise.resolve([]);
-  try {
-    const achievementsHook = useAchievements();
-    checkAchievements = achievementsHook.checkAchievements || (() => Promise.resolve([]));
-  } catch (error) {
-    // Silently fail if achievements aren't available
-    console.log('🏆 [Auth] Achievement system not available:', error.message);
-  }
+  // Achievement checking function - lazy loaded to avoid circular dependencies
+  const getAchievementChecker = () => {
+    try {
+      // Only import when needed to avoid circular dependencies
+      const { useAchievements } = require('./useAchievements');
+      const achievementsHook = useAchievements();
+      return achievementsHook.checkAchievements || (() => Promise.resolve([]));
+    } catch (error) {
+      // Silently fail if achievements aren't available
+      console.log('🏆 [Auth] Achievement system not available:', error.message);
+      return () => Promise.resolve([]);
+    }
+  };
   
-  // Global function to trigger pending sign-in achievements (called by App.jsx when loading completes)
-  window.triggerPendingSignInAchievements = () => {
-    if (pendingSignInAchievement) {
-      console.log('🏆 [Auth] App fully loaded - triggering pending sign-in achievements');
-      
-      setTimeout(async () => {
+  // Cleanup function to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      // Clean up global function when component unmounts
+      if (window.triggerPendingSignInAchievements) {
+        delete window.triggerPendingSignInAchievements;
+      }
+    };
+  }, []);
+  
+  // Function to trigger pending sign-in achievements (called by App.jsx when loading completes)
+  const triggerPendingSignInAchievements = () => {
+    if (!pendingSignInAchievement) return;
+    
+    console.log('🏆 [Auth] App fully loaded - triggering pending sign-in achievements');
+    
+          setTimeout(async () => {
         try {
+          // Check if component is still mounted
+          if (!isMountedRef.current || !user) return;
+          
+          const checkAchievements = getAchievementChecker();
           const achievements = await checkAchievements('sign_in', pendingSignInAchievement);
           
           if (achievements && achievements.length > 0) {
             console.log('🏆 [Auth] Sign-in achievements earned:', achievements);
           }
           
-          setPendingSignInAchievement(null); // Clear the pending achievement
+          // Only update state if still mounted
+          if (isMountedRef.current) {
+            setPendingSignInAchievement(null); // Clear the pending achievement
+          }
         } catch (error) {
           console.error('🏆 [Auth] Error in delayed achievement check:', error.message);
         }
       }, 1000); // 1 second after app is fully loaded
-    }
   };
+  
+  // Expose the function for App.jsx to call
+  useEffect(() => {
+    window.triggerPendingSignInAchievements = triggerPendingSignInAchievements;
+    
+    return () => {
+      // Clean up global function when component unmounts
+      if (window.triggerPendingSignInAchievements === triggerPendingSignInAchievements) {
+        delete window.triggerPendingSignInAchievements;
+      }
+    };
+  }, [pendingSignInAchievement]);
   
   // Function to schedule sign-in achievements (will be triggered when app loads)
   const triggerSignInAchievements = async (user) => {

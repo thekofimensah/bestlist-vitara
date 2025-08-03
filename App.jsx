@@ -18,6 +18,7 @@ import { useNotifications } from './hooks/useNotifications';
 import PostDetailView from './components/secondary/PostDetailView';
 import AchievementSystem from './components/gamification/AchievementSystem';
 import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
+import useUserTracking from './hooks/useUserTracking';
 
 // Helper function to format post data from database (moved from MainScreen)
 const formatPostForDisplay = (post) => {
@@ -106,6 +107,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
 const App = () => {
   const [user, setUser] = useState(null);
   const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
+  const { trackUserSession, isTracking } = useUserTracking();
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);

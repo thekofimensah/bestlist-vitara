@@ -8,6 +8,8 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
 
 import { useAI } from '../hooks/useAI';
+import useAchievements from '../hooks/useAchievements';
+import { useGlobalAchievements } from '../hooks/useGlobalAchievements';
 import imageCompression from 'browser-image-compression';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import { uploadImageToStorage, dataURLtoFile, generateImageSizes } from '../lib/imageStorage';
@@ -441,6 +443,10 @@ const MainScreen = React.forwardRef(({
   const feedRef = useRef(null);
   const streamRef = useRef(null);
   
+  // Achievement hooks
+  const { checkAchievements } = useAchievements();
+  const { showAchievement } = useGlobalAchievements();
+  
   // Camera states
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
@@ -467,6 +473,61 @@ const MainScreen = React.forwardRef(({
   const [deviceLocation, setDeviceLocation] = useState(null);
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
+
+  // Check for "First in World" achievement immediately after AI completion
+  const checkFirstInWorldAchievement = async (aiResult) => {
+    try {
+      if (!aiResult?.productName) return;
+
+      console.log('🏆 [First in World] Checking achievement for product:', aiResult.productName);
+      
+      const context = {
+        ai_product_name: aiResult.productName,
+        user_product_name: null, // This is AI-generated, not user-entered
+        hasPhoto: true,
+        location: aiResult.location || 'Unknown'
+      };
+
+      // Check for "First in World" achievements 
+      const achievements = await checkAchievements('photo_taken', context);
+      
+      if (achievements && achievements.length > 0) {
+        console.log('🏆 [First in World] Achievement unlocked!', achievements);
+        
+        // Show achievement immediately with special effects
+        achievements.forEach(achievement => {
+          if (achievement.isGlobalFirst) {
+            // Special legendary effects for global first achievements
+            console.log('🎉 [Legendary] Global first achievement unlocked!');
+            
+            // Haptic feedback
+            if (navigator.vibrate) {
+              navigator.vibrate([100, 50, 100, 50, 200]); // Special pattern for legendary
+            }
+            
+            // Show achievement with special effects
+            showAchievement({
+              ...achievement,
+              specialEffects: true, // This will trigger special UI effects
+              triggeredOnAI: true   // Mark that this was triggered by AI completion
+            });
+          } else {
+            // Regular achievement
+            showAchievement(achievement);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('❌ [First in World] Error checking achievement:', JSON.stringify({
+        message: error.message,
+        name: error.name,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
+    }
+  };
 
   // Calculate camera and feed heights based on scroll
   const cameraHeight = Math.max(0, 60 - (scrollY * 0.15)); // Increased camera height to push feed lower
@@ -827,6 +888,14 @@ const MainScreen = React.forwardRef(({
             aiMetadata: aiResult,
             photoMetadata
           }));
+
+          // 🏆 Check for "First in World" achievement immediately after AI completion
+          if (aiResult?.productName) {
+            console.log('🏆 [AI Complete] Checking for First in World achievement...');
+            // Import and use the achievement checking hook
+            // This will trigger immediately, even if user doesn't save the item
+            checkFirstInWorldAchievement(aiResult);
+          }
         } catch (error) {
           console.error('Background processing error:', JSON.stringify({
           message: err.message,
@@ -1035,6 +1104,12 @@ const MainScreen = React.forwardRef(({
                 aiMetadata: aiResult,
                 photoMetadata
               }));
+
+              // 🏆 Check for "First in World" achievement immediately after AI completion
+              if (aiResult?.productName) {
+                console.log('🏆 [AI Complete] Checking for First in World achievement...');
+                checkFirstInWorldAchievement(aiResult);
+              }
             } catch (error) {
               console.error('Background processing error:', JSON.stringify({
           message: err.message,

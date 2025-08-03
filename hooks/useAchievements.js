@@ -98,21 +98,54 @@ const useAchievements = () => {
     }
   }, [user?.id]);
 
-  // Award achievement to user
-  const awardAchievement = useCallback(async (achievementId, progressData = null) => {
+  // Award achievement to user (supports repeatable achievements)
+  const awardAchievement = useCallback(async (achievementId, progressData = null, isRepeatable = false) => {
     if (!user?.id) return false;
 
     try {
-      // Check if user already has this achievement
-      const alreadyHas = await hasAchievement(achievementId);
-      if (alreadyHas) return false;
+      // For repeatable achievements, increment count instead of checking if already has
+      if (isRepeatable) {
+        const { data: existing, error: fetchError } = await supabase
+          .from('user_achievements')
+          .select('count')
+          .eq('user_id', user.id)
+          .eq('achievement_id', achievementId)
+          .single();
 
+        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = not found
+          throw fetchError;
+        }
+
+        if (existing) {
+          // Increment existing count and add new pending notification
+          const { error: updateError } = await supabase
+            .from('user_achievements')
+            .insert({
+              user_id: user.id,
+              achievement_id: achievementId,
+              progress_data: progressData,
+              count: existing.count + 1,
+              // notified_at is NULL by default, making this a pending achievement
+            });
+
+          if (updateError) throw updateError;
+          return true;
+        }
+      } else {
+        // Check if user already has this achievement (non-repeatable)
+        const alreadyHas = await hasAchievement(achievementId);
+        if (alreadyHas) return false;
+      }
+
+      // Insert new achievement
       const { error } = await supabase
         .from('user_achievements')
         .insert({
           user_id: user.id,
           achievement_id: achievementId,
-          progress_data: progressData
+          progress_data: progressData,
+          count: 1,
+          // notified_at is NULL by default, making this a pending achievement
         });
 
       if (error) throw error;
@@ -187,7 +220,8 @@ const useAchievements = () => {
         
         if (!otherUserLists || otherUserLists.length === 0) {
           // No other users exist, so this is definitely a first
-          const awarded = await awardAchievement(achievement.id, { context });
+          const isRepeatable = achievement.name === 'First in the World';
+          const awarded = await awardAchievement(achievement.id, { context }, isRepeatable);
           if (awarded) {
             return { achievement, awarded: true, isGlobalFirst: true };
           }
@@ -218,7 +252,8 @@ const useAchievements = () => {
         
         if (!otherUserLists || otherUserLists.length === 0) {
           // No other users exist, so this is definitely a first
-          const awarded = await awardAchievement(achievement.id, { context });
+          const isRepeatable = achievement.name === 'Globetrotter';
+          const awarded = await awardAchievement(achievement.id, { context }, isRepeatable);
           if (awarded) {
             return { achievement, awarded: true, isGlobalFirst: true };
           }
@@ -243,7 +278,8 @@ const useAchievements = () => {
 
       // If no one else has done this action, award the achievement
       if (!data || data.length === 0) {
-        const awarded = await awardAchievement(achievement.id, { context });
+        const isRepeatable = achievement.name === 'First in the World';
+        const awarded = await awardAchievement(achievement.id, { context }, isRepeatable);
         if (awarded) {
           return { achievement, awarded: true, isGlobalFirst: true };
         }

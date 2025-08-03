@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
 // Global context for achievement notifications
 const AchievementContext = createContext();
@@ -72,6 +72,24 @@ export const AchievementProvider = ({ children }) => {
     setNotifications([]);
     setCurrentModal(null);
   };
+
+  // Expose test function globally for debugging
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.testAchievement = () => {
+        showAchievement({
+          achievement: {
+            id: 'test-achievement',
+            name: 'Test Achievement',
+            description: 'This is a test achievement',
+            icon: '🏆',
+            rarity: 'common'
+          },
+          isGlobalFirst: false
+        });
+      };
+    }
+  }, [showAchievement]);
 
   const value = {
     notifications,

@@ -353,6 +353,21 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
         {/* Achievements Gallery */}
         <AchievementsGallery userId={user?.id} />
 
+        {/* Test Achievement Button */}
+        <button
+          onClick={() => {
+            if (window.testAchievement) {
+              window.testAchievement();
+            } else {
+              console.log('🏆 Test achievement function not available');
+            }
+          }}
+          className="w-full h-13 bg-orange-600 text-white rounded-full font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 hover:bg-orange-700 active:scale-95"
+          style={{ height: '52px' }}
+        >
+          🏆 Test Achievement Dropdown
+        </button>
+
         {/* Share CTA */}
         <button
           onClick={handleShare}

@@ -747,12 +747,15 @@ const AddItemModal = ({
       const saveResult = await onSave(selectedLists, newItem, isStayAway);
       const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
       
-      // 🏆 Check for "First in World" achievements
+      // 🏆 Check for "First in World" achievements (non-blocking)
       if (saveResult?.achievements) {
         const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
         if (globalFirstAchievement) {
-          setFirstInWorldProduct(productName || newItem.name || 'this item');
-          setShowFirstInWorldBanner(true);
+          // Use setTimeout to avoid blocking the UI
+          setTimeout(() => {
+            setFirstInWorldProduct(productName || newItem.name || 'this item');
+            setShowFirstInWorldBanner(true);
+          }, 100);
         }
       }
       
@@ -1788,7 +1791,7 @@ const AddItemModal = ({
                               placeholder="Search location..."
                               className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
                               autoFocus
-                              autoComplete="off"
+                              autoComplete="on"
                               autoCorrect="on"
                               autoCapitalize="words"
                               spellCheck="true"

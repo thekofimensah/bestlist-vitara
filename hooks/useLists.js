@@ -522,18 +522,40 @@ export const useLists = (userId) => {
           user_product_name: item.user_product_name
         };
         
-        const newAchievements = await checkAchievements('item_saved', context);
-        
-        // If there's a photo, also check photo achievements
-        if (item.image_url) {
-          const photoAchievements = await checkAchievements('photo_taken', context);
-          newAchievements.push(...photoAchievements);
-        }
+        // Run achievement checking in background to avoid blocking the UI
+        setTimeout(async () => {
+          try {
+            const newAchievements = await checkAchievements('item_saved', context);
+            
+            // If there's a photo, also check photo achievements
+            if (item.image_url) {
+              const photoAchievements = await checkAchievements('photo_taken', context);
+              newAchievements.push(...photoAchievements);
+            }
 
-        achievements = newAchievements;
-        if (newAchievements.length > 0) {
-          console.log('🏆 New achievements unlocked:', newAchievements);
-        }
+            if (newAchievements.length > 0) {
+              console.log('🏆 New achievements unlocked:', newAchievements.map(a => ({
+                id: a.achievement.id,
+                name: a.achievement.name,
+                rarity: a.achievement.rarity,
+                awarded: a.awarded,
+                isGlobalFirst: a.isGlobalFirst
+              })));
+              
+              // Update achievements state
+              achievements = newAchievements;
+            }
+          } catch (achievementError) {
+            console.error('❌ Achievement check error:', JSON.stringify({
+              message: achievementError.message,
+              name: achievementError.name,
+              details: achievementError.details,
+              hint: achievementError.hint,
+              code: achievementError.code,
+              fullError: achievementError
+            }, null, 2));
+          }
+        }, 100);
       } catch (achievementError) {
         console.error('❌ Achievement check error:', JSON.stringify({
           message: achievementError.message,

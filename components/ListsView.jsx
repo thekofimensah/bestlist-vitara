@@ -174,11 +174,6 @@ const ListRow = ({
             isAddTile
             onTap={() => onAddItem(list.id)}
           />
-          {sortedItems.length > 4 && (
-            <div className="flex-shrink-0 w-26 h-26 bg-gradient-to-r from-transparent to-white flex items-center justify-center">
-              <span className="text-sm text-gray-500 font-medium">+{sortedItems.length - 4}</span>
-            </div>
-          )}
         </div>
       </div>
     </motion.div>

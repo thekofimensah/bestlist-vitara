@@ -19,6 +19,8 @@ import PostDetailView from './components/secondary/PostDetailView';
 import AchievementSystem from './components/gamification/AchievementSystem';
 import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
 import useUserTracking from './hooks/useUserTracking';
+import usePendingAchievements from './hooks/usePendingAchievements';
+import useUserStats from './hooks/useUserStats';
 
 // Helper function to format post data from database (moved from MainScreen)
 const formatPostForDisplay = (post) => {
@@ -111,6 +113,30 @@ const App = () => {
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  
+  // Comprehensive loading state for all data
+  const [loadingProgress, setLoadingProgress] = useState({
+    auth: false,
+    lists: false,
+    feed: false,
+    stats: false,
+    achievements: false,
+    userTracking: false
+  });
+  
+  // Force re-render for progress updates
+  const [, forceUpdate] = useState({});
+  
+  // Pending achievements hook
+  const { 
+    pendingAchievements, 
+    loading: achievementsLoading, 
+    showPendingAchievements, 
+    loadPendingAchievements 
+  } = usePendingAchievements(user?.id);
+  
+  // User stats hook 
+  const { stats: userStats, loading: statsLoading, refreshStats } = useUserStats(user?.id);
   const [currentScreen, setCurrentScreen] = useState('home');
   const [previousScreen, setPreviousScreen] = useState('home');
   const [selectedList, setSelectedList] = useState(null);
@@ -144,6 +170,7 @@ const App = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [deepLinkData, setDeepLinkData] = useState(null);
   const mainScreenRef = useRef(null);
+  const hasInitialized = useRef(false);
 
   // Feed-related state, now living in the main App component
   const [feedPosts, setFeedPosts] = useState([]);
@@ -384,31 +411,203 @@ const App = () => {
   };
 
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    
     const initializeApp = async () => {
+      console.log('🚀 [App] Starting comprehensive app initialization...');
+      
       try {
-        // Use optimized session restoration that doesn't block UI
+        // Step 1: Authentication
+        console.log('🔐 [App] Loading authentication...');
+        setLoadingProgress(prev => ({ ...prev, auth: false }));
         const user = await getSessionOptimized();
         setUser(user);
+        setLoadingProgress(prev => ({ ...prev, auth: true }));
+        console.log('✅ [App] Authentication loaded');
+
+        if (user) {
+          // Step 2: User tracking (can run in parallel)
+          console.log('📊 [App] Starting user tracking...');
+          setLoadingProgress(prev => ({ ...prev, userTracking: false }));
+          trackUserSession().finally(() => {
+            setLoadingProgress(prev => ({ ...prev, userTracking: true }));
+            console.log('✅ [App] User tracking completed');
+          });
+
+          // Step 3: Load all data in parallel with proper progress tracking
+          console.log('📊 [App] Loading all app data in parallel...');
+          
+          // Start all loading operations
+          const promises = [];
+          
+          // Lists loading - wait for lists to be available
+          promises.push(
+            new Promise((resolve) => {
+              const checkListsAvailable = () => {
+                console.log('🔍 [App] Checking if lists are available:', lists?.length || 0);
+                if (lists && lists.length >= 0) { // Lists are available when array exists
+                  setLoadingProgress(prev => {
+                    console.log('✅ [App] Setting lists to loaded');
+                    const newProgress = { ...prev, lists: true };
+                    console.log('📊 [App] New loading progress:', newProgress);
+                    return newProgress;
+                  });
+                  forceUpdate({});
+                  console.log('✅ [App] Lists loaded');
+                  resolve();
+                } else {
+                  setTimeout(checkListsAvailable, 100);
+                }
+              };
+              checkListsAvailable();
+            })
+          );
+
+          // Feed data
+          promises.push(
+            (async () => {
+              try {
+                console.log('🍽️ [App] Loading feed...');
+                setLoadingProgress(prev => ({ ...prev, feed: false }));
+                await loadFeedData('following');
+                setLoadingProgress(prev => {
+                  const newProgress = { ...prev, feed: true };
+                  console.log('📊 [App] New loading progress:', newProgress);
+                  return newProgress;
+                });
+                forceUpdate({});
+                console.log('✅ [App] Feed loaded');
+              } catch (error) {
+                console.error('❌ [App] Feed loading failed:', error);
+                setLoadingProgress(prev => {
+                  const newProgress = { ...prev, feed: true };
+                  console.log('📊 [App] New loading progress:', newProgress);
+                  return newProgress;
+                });
+                forceUpdate({});
+              }
+            })()
+          );
+
+          // User stats - wait for stats to be available
+          promises.push(
+            new Promise((resolve) => {
+              const checkStatsAvailable = () => {
+                console.log('🔍 [App] Checking if stats are available:', userStats ? 'yes' : 'no');
+                if (userStats) { // Stats are available when object exists
+                  setLoadingProgress(prev => {
+                    const newProgress = { ...prev, stats: true };
+                    console.log('✅ [App] Setting stats to loaded');
+                    console.log('📊 [App] New loading progress:', newProgress);
+                    return newProgress;
+                  });
+                  forceUpdate({});
+                  console.log('✅ [App] Stats loaded');
+                  resolve();
+                } else {
+                  setTimeout(checkStatsAvailable, 100);
+                }
+              };
+              checkStatsAvailable();
+            })
+          );
+
+          // Pending achievements
+          promises.push(
+            (async () => {
+              try {
+                console.log('🏆 [App] Loading pending achievements...');
+                setLoadingProgress(prev => ({ ...prev, achievements: false }));
+                const achievements = await loadPendingAchievements(user.id);
+                setLoadingProgress(prev => {
+                  const newProgress = { ...prev, achievements: true };
+                  console.log('📊 [App] New loading progress:', newProgress);
+                  return newProgress;
+                });
+                forceUpdate({});
+                console.log('✅ [App] Pending achievements loaded:', achievements?.length || 0);
+                
+                // Store achievements for showing after app loads
+                if (achievements && achievements.length > 0) {
+                  setTimeout(() => {
+                    console.log('🎉 [App] Showing pending achievements...');
+                    showPendingAchievements(achievements);
+                  }, 1000);
+                }
+              } catch (error) {
+                console.error('❌ [App] Achievements loading failed:', error);
+                setLoadingProgress(prev => {
+                  const newProgress = { ...prev, achievements: true };
+                  console.log('📊 [App] New loading progress:', newProgress);
+                  return newProgress;
+                });
+                forceUpdate({});
+              }
+            })()
+          );
+
+          // Wait for all data to load with timeout
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Loading timeout')), 30000); // 30 second timeout
+          });
+          
+          await Promise.race([
+            Promise.all(promises),
+            timeoutPromise
+          ]);
+          console.log('🎉 [App] All data loaded successfully!');
+        } else {
+          // No user, mark everything as loaded
+          setLoadingProgress({
+            auth: true,
+            lists: true,
+            feed: true,
+            stats: true,
+            achievements: true,
+            userTracking: true
+          });
+        }
+
       } catch (error) {
-        console.error('Error initializing app:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+        console.error('❌ [App] Error during app initialization:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
+        
+        // If it's a timeout error, mark all remaining steps as complete
+        if (error.message === 'Loading timeout') {
+          console.log('⏰ [App] Loading timeout - marking remaining steps as complete');
+          setLoadingProgress(prev => ({
+            ...prev,
+            lists: true,
+            feed: true,
+            stats: true,
+            achievements: true,
+            userTracking: true
+          }));
+        }
       } finally {
-        // Always stop loading quickly to prevent hanging
+        // Only stop app loading when everything is done
         setAppLoading(false);
+        console.log('🎉 [App] App initialization complete - showing app!');
       }
     };
     
     initializeApp();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('🔐 [Auth] Auth state changed:', event);
         setUser(session?.user ?? null);
-        setAppLoading(false);
+        
+        // If user signs out, stop loading immediately
+        if (!session?.user) {
+          setAppLoading(false);
+        }
       }
     );
     return () => subscription?.unsubscribe();
@@ -504,13 +703,8 @@ const App = () => {
     setRefreshing(wasRefreshing);
   };
 
-  // Load initial data once when the app starts
-  useEffect(() => {
-    if (user) {
-      // loadFeedData(); // Commented out - using following by default for now
-      loadFeedData('following'); // Default to following feed
-    }
-  }, [user]);
+  // Feed loading is now handled in the main initialization useEffect
+  // This useEffect is no longer needed since we preload everything during app startup
 
   // Handle deep links
   useEffect(() => {
@@ -634,6 +828,10 @@ const App = () => {
         throw result.error;
       }
       
+      // Refresh stats after adding item
+      console.log('🔄 [App] Refreshing stats after adding item');
+      await refreshStats();
+      
       return result.data; // Return the saved item
     } catch (error) {
       console.error('❌ Error in handleAddItem:', JSON.stringify({
@@ -670,6 +868,10 @@ const App = () => {
       // The item should contain its current list_id already
       await updateItemInList([], item); // Empty array for listIds since we're updating existing item
       console.log('✅ Item update completed successfully');
+      
+      // Refresh stats after updating item
+      console.log('🔄 [App] Refreshing stats after updating item');
+      await refreshStats();
     } catch (error) {
       console.error('❌ Item update failed:', JSON.stringify({
           message: err.message,
@@ -719,6 +921,11 @@ const App = () => {
       console.log('🔧 App: handleCreateList called with:', { name, color });
       const newList = await createList(name, color);
       console.log('🔧 App: createList returned:', newList);
+      
+      // Refresh stats after creating list
+      console.log('🔄 [App] Refreshing stats after creating list');
+      await refreshStats();
+      
       return newList;
     } catch (error) {
       console.error('❌ App: Error in handleCreateList:', JSON.stringify({
@@ -1022,7 +1229,107 @@ const App = () => {
     );
   };
 
-  // Show auth view if no user
+  // Calculate loading progress
+  const loadingComplete = Object.values(loadingProgress).every(Boolean);
+  const completedSteps = Object.values(loadingProgress).filter(Boolean).length;
+  const totalSteps = Object.keys(loadingProgress).length;
+  const progressPercentage = Math.round((completedSteps / totalSteps) * 100);
+  
+  // Debug loading progress
+  console.log('📊 [App] Loading progress:', {
+    completedSteps,
+    totalSteps,
+    progressPercentage,
+    loadingProgress
+  });
+
+  // Show loading screen during comprehensive data loading
+  if (appLoading || (!user && appLoading)) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center px-6" style={{ backgroundColor: '#F6F6F4' }}>
+        <div className="w-full max-w-sm">
+          {/* App Logo/Branding */}
+          <div className="text-center mb-12">
+            <div className="w-20 h-20 bg-teal-700 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg" style={{ backgroundColor: '#1F6D5A' }}>
+              <span className="text-2xl">🍽️</span>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">BestList</h1>
+            <p className="text-sm text-gray-600">Discover your perfect taste</p>
+          </div>
+
+          {/* Loading Progress */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">Loading your experience</span>
+              <span className="text-sm text-gray-500">{progressPercentage}%</span>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="w-full bg-gray-200 rounded-full h-2 mb-6 overflow-hidden">
+              <motion.div
+                className="h-2 bg-teal-700 rounded-full"
+                style={{ backgroundColor: '#1F6D5A' }}
+                initial={{ width: 0 }}
+                animate={{ width: `${progressPercentage}%` }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              />
+            </div>
+
+            {/* Loading Steps */}
+            <div className="space-y-3">
+              {[
+                { key: 'auth', label: 'Authentication', icon: '🔐' },
+                { key: 'lists', label: 'Your lists', icon: '📝' },
+                { key: 'feed', label: 'Feed posts', icon: '🍽️' },
+                { key: 'stats', label: 'Statistics', icon: '📊' },
+                { key: 'achievements', label: 'Achievements', icon: '🏆' },
+                { key: 'userTracking', label: 'Session setup', icon: '📱' }
+              ].map(({ key, label, icon }) => (
+                <motion.div
+                  key={key}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
+                    loadingProgress[key] 
+                      ? 'bg-teal-50 border border-teal-200' 
+                      : 'bg-white border border-gray-200'
+                  }`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Object.keys(loadingProgress).indexOf(key) * 0.1 }}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    loadingProgress[key] 
+                      ? 'bg-teal-700 text-white' 
+                      : 'bg-gray-100 text-gray-400'
+                  }`} style={{ backgroundColor: loadingProgress[key] ? '#1F6D5A' : undefined }}>
+                    {loadingProgress[key] ? '✓' : icon}
+                  </div>
+                  <span className={`text-sm font-medium ${
+                    loadingProgress[key] ? 'text-teal-700' : 'text-gray-600'
+                  }`} style={{ color: loadingProgress[key] ? '#1F6D5A' : undefined }}>
+                    {label}
+                  </span>
+                  {!loadingProgress[key] && (
+                    <div className="ml-auto">
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-teal-700 rounded-full animate-spin"></div>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
+          {/* Subtle loading message */}
+          <div className="text-center">
+            <p className="text-xs text-gray-500">
+              Preparing everything for the best experience...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth view if no user (after loading is complete)
   if (!user) {
     return <AuthView />;
   }

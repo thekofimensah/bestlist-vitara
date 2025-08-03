@@ -49,13 +49,27 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
       console.log('🚪 Signing out...');
       const { error } = await signOut();
       if (error) {
-        console.error('❌ Sign out error:', error);
+        console.error('❌ Sign out error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       } else {
         console.log('✅ Signed out successfully');
         // The auth listener in the parent app should handle the redirect
       }
     } catch (error) {
-      console.error('❌ Sign out exception:', error);
+      console.error('❌ Sign out exception:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 

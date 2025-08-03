@@ -5,11 +5,13 @@ import AddItemModal from './AddItemModal';
 import CommentsModal from './secondary/CommentsModal';
 import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import SmartImage from './secondary/SmartImage';
 
 import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
-import { dataURLtoFile, getInstagramClassicFilter } from '../lib/imageUtils';
-import { uploadPhotoWithOwner, supabase, likePost, unlikePost, getPostCommentCount, isUserFollowingAnyone } from '../lib/supabase';
+import { getInstagramClassicFilter } from '../lib/imageUtils';
+import { uploadImageToStorage, dataURLtoFile, generateImageSizes } from '../lib/imageStorage';
+import { supabase, likePost, unlikePost, getPostCommentCount, isUserFollowingAnyone } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -94,7 +96,14 @@ const extractEXIFData = async (file) => {
       
       reader.readAsArrayBuffer(file);
     } catch (error) {
-      console.error('EXIF extraction error:', error);
+      console.error('EXIF extraction error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       resolve({
         hasEXIF: false,
         latitude: null,
@@ -218,7 +227,14 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
       }
       
     } catch (error) {
-      console.error('Like/unlike error:', error);
+      console.error('Like/unlike error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       // Revert optimistic update on error
       setLiked(!liked);
       setLikeCount(prev => liked ? prev + 1 : prev - 1);
@@ -274,11 +290,14 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
           onImageTap && onImageTap(post.id);
         }}
       >
-        <img
-          src={post.image}
+        <SmartImage
+          src={post.items?.image_url}
           alt="Food item"
           className="w-full aspect-square object-cover"
           style={{ filter: getInstagramClassicFilter() }}
+          useThumbnail={true}
+          size="medium"
+          lazyLoad={true}
         />
       </div>
 
@@ -474,11 +493,25 @@ const MainScreen = React.forwardRef(({
                 setDeviceLocation(location);
               }
             } catch (error) {
-              console.error('Error getting location:', error);
+              console.error('Error getting location:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
             }
           },
           (error) => {
-            console.error('Error getting location:', error);
+            console.error('Error getting location:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           }
         );
       }
@@ -496,7 +529,14 @@ const MainScreen = React.forwardRef(({
         setDeviceLocation(location);
       }
     } catch (error) {
-      console.error('Error getting location:', error);
+      console.error('Error getting location:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 
@@ -614,7 +654,14 @@ const MainScreen = React.forwardRef(({
           const { isFollowing } = await isUserFollowingAnyone();
           setUserFollowingAnyone(isFollowing);
         } catch (error) {
-          console.error('Error checking following status:', error);
+          console.error('Error checking following status:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           setUserFollowingAnyone(false);
         }
       }
@@ -671,48 +718,75 @@ const MainScreen = React.forwardRef(({
       canvas.getContext('2d').drawImage(video, 0, 0);
       const imageData = canvas.toDataURL('image/png');
 
-      // Convert to File and compress BEFORE opening modal
-      const tempFilename = `photo_${Date.now()}.jpeg`;
+      // Convert to File for upload
+      const tempFilename = `photo_${Date.now()}.webp`;
       const file = dataURLtoFile(imageData, tempFilename);
       
       console.log('📸 [Camera] Original image size:', file.size, 'bytes');
       
-      // Compress image first - more aggressive compression
+      // Compress image immediately for modal display
       const compressed = await imageCompression(file, {
-        maxSizeMB: 0.8,        // Reduced from 0.8 to 0.5MB
-        maxWidthOrHeight: 1024, // Reduced from 1024 to 800px
-        useWebWorker: true,    // Use web worker for better performance
-        fileType: 'image/jpeg' // Force JPEG for better compression
+        maxSizeMB: 0.4,
+        maxWidthOrHeight: 1280,
+        useWebWorker: true,
+        fileType: 'image/webp',
+        initialQuality: 0.8
       });
+      
+      // Convert compressed file to base64 for immediate display
+      const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
       
       console.log('📸 [Camera] Compressed image size:', compressed.size, 'bytes');
       
-      // Convert compressed file back to base64
-      const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
-      
-      // Log compression results
-      console.log('📸 [Camera] Compression results:');
-      console.log('  - Original size:', file.size, 'bytes');
-      console.log('  - Compressed size:', compressed.size, 'bytes');
-      console.log('  - Compression ratio:', Math.round((1 - compressed.size / file.size) * 100) + '%');
-      console.log('  - Base64 length:', compressedBase64.length, 'characters');
-      
-      // Warn if still too large
-      if (compressedBase64.length > 500000) { // 500K characters = ~375KB
-        console.warn('⚠️ [Camera] Image still large after compression:', compressedBase64.length, 'characters');
-      }
-      
-      // Set captured image with COMPRESSED data
+      // Set captured image with COMPRESSED base64 for immediate display
       const capturedImageData = { 
-        url: compressedBase64, 
+        url: compressedBase64,           // Base64 for immediate display
         filename: tempFilename, 
-        uploading: false, 
+        uploading: true, 
         aiProcessing: true 
       };
       console.log('Setting capturedImage data with compressed image');
       setCapturedImage(capturedImageData);
-      setShowModal(true); // Open modal with compressed image
+      setShowModal(true); // Open modal immediately
       setIsCapturing(false);
+      
+      // Upload to Supabase Storage in background
+      setTimeout(async () => {
+        try {
+          // Get current user for storage organization
+          const user = (await supabase.auth.getUser()).data.user;
+          if (!user) {
+            throw new Error('User not authenticated');
+          }
+          
+          // Upload to Supabase Storage
+          const uploadResult = await uploadImageToStorage(file, user.id);
+          
+          if (uploadResult.error) {
+            throw new Error(`Image upload failed: ${uploadResult.error.message}`);
+          }
+          
+          console.log('✅ [Camera] Image uploaded successfully');
+          console.log('📸 [Camera] Image URL:', uploadResult.url);
+          console.log('📸 [Camera] Thumbnail URL:', uploadResult.thumbnailUrl);
+          
+          // Update captured image with storage URLs
+          setCapturedImage(prev => ({
+            ...prev,
+            url: uploadResult.url,
+            thumbnailUrl: uploadResult.thumbnailUrl,
+            uploading: false,
+            storagePath: uploadResult.storagePath // Track the actual storage path
+          }));
+        } catch (error) {
+          console.error('❌ [Camera] Background upload failed:', error);
+          // Keep the base64 version if upload fails
+          setCapturedImage(prev => ({
+            ...prev,
+            uploading: false
+          }));
+        }
+      }, 100);
 
       // Start AI processing in background with compressed image
       setTimeout(async () => {
@@ -727,9 +801,13 @@ const MainScreen = React.forwardRef(({
             console.log('🌍 [GPS] Device location during capture:', deviceLocation);
           }
 
-          // Start AI processing with compressed image (already compressed above)
+          // Start AI processing with uploaded image
           console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-          const aiResult = await analyzeImage(compressed, deviceLocation);
+          // For AI analysis, we need to download the image and convert to file
+          const response = await fetch(uploadResult.url);
+          const blob = await response.blob();
+          const uploadedFile = new File([blob], tempFilename, { type: 'image/webp' });
+          const aiResult = await analyzeImage(uploadedFile, deviceLocation);
           
           // Create photo metadata
           const photoMetadata = {
@@ -751,7 +829,14 @@ const MainScreen = React.forwardRef(({
             photoMetadata
           }));
         } catch (error) {
-          console.error('Background processing error:', error);
+          console.error('Background processing error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           
           // Check if this is an invalid image error (not a product)
           const errorMessage = error.message || '';
@@ -787,7 +872,14 @@ const MainScreen = React.forwardRef(({
       }, 100);
 
     } catch (error) {
-      console.error('Capture error:', error);
+      console.error('Capture error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       setError(error.message);
       setIsCapturing(false);
     }
@@ -804,8 +896,11 @@ const MainScreen = React.forwardRef(({
 
   // Handle closing modals
   const handleModalClose = async (reason) => {
-    if (capturedImage?.filename && !wasSaved) {
-      await deletePhotoEverywhere(capturedImage.filename);
+    if (capturedImage && !wasSaved) {
+      // Clean up uploaded file if it exists
+      if (capturedImage.storagePath) {
+        await deletePhotoEverywhere(capturedImage.storagePath);
+      }
     }
     setShowModal(false);
     setCapturedImage(null);
@@ -839,110 +934,164 @@ const MainScreen = React.forwardRef(({
     input.type = 'file';
     input.accept = 'image/*';
     input.multiple = false;
+    
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
       if (file) {
         try {
-          // Convert file to data URL
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            const imageData = event.target.result;
-            
-            // Set captured image and open modal immediately
-            const tempFilename = `upload_${Date.now()}.jpeg`;
-            const uploadImageData = { 
-              url: imageData, 
-              filename: tempFilename, 
-              uploading: true, 
-              aiProcessing: true
-            };
-            setCapturedImage(uploadImageData);
-            setShowModal(true); // Open modal immediately
+          console.log('📸 [Gallery] Original file size:', file.size, 'bytes');
+          
+          // Compress image immediately for modal display
+          const compressed = await imageCompression(file, {
+            maxSizeMB: 0.4,
+            maxWidthOrHeight: 1280,
+            useWebWorker: true,
+            fileType: 'image/webp',
+            initialQuality: 0.8
+          });
+          
+          // Convert compressed file to base64 for immediate display
+          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
+          
+          console.log('📸 [Gallery] Compressed image size:', compressed.size, 'bytes');
+          
+          const tempFilename = `upload_${Date.now()}.webp`;
+          const uploadImageData = { 
+            url: compressedBase64,           // Base64 for immediate display
+            filename: tempFilename, 
+            uploading: true, 
+            aiProcessing: true
+          };
+          setCapturedImage(uploadImageData);
+          setShowModal(true); // Open modal immediately
+          
+          // Upload to Supabase Storage in background
+          setTimeout(async () => {
+            try {
+              // Get current user for storage organization
+              const user = (await supabase.auth.getUser()).data.user;
+              if (!user) {
+                throw new Error('User not authenticated');
+              }
+              
+              // Upload to Supabase Storage
+              const uploadResult = await uploadImageToStorage(file, user.id);
+              
+              if (uploadResult.error) {
+                throw new Error(`Image upload failed: ${uploadResult.error.message}`);
+              }
+              
+              console.log('✅ [Gallery] Image uploaded successfully');
+              
+              // Update captured image with storage URLs
+              setCapturedImage(prev => ({
+                ...prev,
+                url: uploadResult.url,
+                thumbnailUrl: uploadResult.thumbnailUrl,
+                uploading: false,
+                storagePath: uploadResult.storagePath // Track the actual storage path
+              }));
+            } catch (error) {
+              console.error('❌ [Gallery] Background upload failed:', error);
+              // Keep the base64 version if upload fails
+              setCapturedImage(prev => ({
+                ...prev,
+                uploading: false
+              }));
+            }
+          }, 100);
 
-            // Start AI processing in background
-            setTimeout(async () => {
-              try {
-                // Extract EXIF data from gallery image
-                console.log('📸 [Gallery] Extracting EXIF data from gallery image...');
-                const exifData = await extractEXIFData(file);
-                console.log('📸 [Gallery] EXIF data extracted:', JSON.stringify(exifData, null, 2));
+          // Start AI processing in background
+          setTimeout(async () => {
+            try {
+              // Extract EXIF data from gallery image
+              console.log('📸 [Gallery] Extracting EXIF data from gallery image...');
+              const exifData = await extractEXIFData(file);
+              console.log('📸 [Gallery] EXIF data extracted:', JSON.stringify(exifData, null, 2));
 
-                // Log GPS coordinates if available
-                if (deviceLocation) {
-                  console.log('🌍 [GPS] Device location during gallery selection:', deviceLocation);
-                }
+              // Log GPS coordinates if available
+              if (deviceLocation) {
+                console.log('🌍 [GPS] Device location during gallery selection:', deviceLocation);
+              }
 
-                // Compress and process
-                const compressed = await imageCompression(file, {
-                  maxSizeMB: 0.8,
-                  maxWidthOrHeight: 1024
+              console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
+              const aiResult = await analyzeImage(file, deviceLocation);
+              
+              // Create photo metadata for gallery image
+              const photoMetadata = {
+                source: 'gallery',
+                hasEXIF: exifData?.hasEXIF || false,
+                latitude: exifData?.latitude || null,
+                longitude: exifData?.longitude || null,
+                dateTime: exifData?.dateTime || new Date().toISOString(),
+                location: deviceLocation || null
+              };
+              
+              console.log('📷 [Photo] Gallery photo metadata created:', JSON.stringify(photoMetadata, null, 2));
+
+              setCapturedImage(prev => ({ 
+                ...prev, 
+                uploading: false,
+                aiProcessing: false,
+                aiMetadata: aiResult,
+                photoMetadata
+              }));
+            } catch (error) {
+              console.error('Background processing error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
+              
+              // Check if this is an invalid image error (not a product)
+              const errorMessage = error.message || '';
+              const isInvalidImage = errorMessage.includes('No product detected') || 
+                                    errorMessage.includes('not a product') ||
+                                    errorMessage.includes('hotel listing') ||
+                                    errorMessage.includes('not food') ||
+                                    errorMessage.includes('invalid');
+              
+              if (isInvalidImage) {
+                // Close modal and show notification
+                setShowModal(false);
+                setCapturedImage(null);
+                setInvalidImageNotification({
+                  message: 'Photo doesn\'t show a product',
+                  subMessage: 'Please select a photo of food, drinks, or consumer products'
                 });
-
-                console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-                const aiResult = await analyzeImage(compressed, deviceLocation);
                 
-                // Create photo metadata for gallery image
-                const photoMetadata = {
-                  source: 'gallery',
-                  hasEXIF: exifData?.hasEXIF || false,
-                  latitude: exifData?.latitude || null,
-                  longitude: exifData?.longitude || null,
-                  dateTime: exifData?.dateTime || new Date().toISOString(),
-                  location: deviceLocation || null
-                };
-                
-                console.log('📷 [Photo] Gallery photo metadata created:', JSON.stringify(photoMetadata, null, 2));
-
+                // Auto-hide notification after 4 seconds
+                setTimeout(() => {
+                  setInvalidImageNotification(null);
+                }, 4000);
+              } else {
+                // Regular error handling for other issues (network, API failures, etc.)
                 setCapturedImage(prev => ({ 
                   ...prev, 
-                  uploading: false,
+                  uploading: false, 
                   aiProcessing: false,
-                  aiMetadata: aiResult,
-                  photoMetadata
+                  aiError: error.message 
                 }));
-              } catch (error) {
-                console.error('Background processing error:', error);
-                
-                // Check if this is an invalid image error (not a product)
-                const errorMessage = error.message || '';
-                const isInvalidImage = errorMessage.includes('No product detected') || 
-                                      errorMessage.includes('not a product') ||
-                                      errorMessage.includes('hotel listing') ||
-                                      errorMessage.includes('not food') ||
-                                      errorMessage.includes('invalid');
-                
-                if (isInvalidImage) {
-                  // Close modal and show notification
-                  setShowModal(false);
-                  setCapturedImage(null);
-                  setInvalidImageNotification({
-                    message: 'Photo doesn\'t show a product',
-                    subMessage: 'Please select a photo of food, drinks, or consumer products'
-                  });
-                  
-                  // Auto-hide notification after 4 seconds
-                  setTimeout(() => {
-                    setInvalidImageNotification(null);
-                  }, 4000);
-                } else {
-                  // Regular error handling for other issues (network, API failures, etc.)
-                  setCapturedImage(prev => ({ 
-                    ...prev, 
-                    uploading: false, 
-                    aiProcessing: false,
-                    aiError: error.message 
-                  }));
-                }
               }
-            }, 100);
-          };
-          reader.readAsDataURL(file);
+            }
+          }, 100);
         } catch (error) {
-          console.error('Gallery upload error:', error);
+          console.error('Gallery upload error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           setError('Failed to process selected image.');
         }
       }
     };
+    
     input.click();
   };
 
@@ -955,16 +1104,25 @@ const MainScreen = React.forwardRef(({
     setScrollY(scrollTop);
   };
 
-  const deletePhotoEverywhere = async (filename) => {
+  const deletePhotoEverywhere = async (storagePath) => {
     try {
-      await supabase.storage.from('photos').remove([filename]);
-    } catch (e) {}
+      // Delete from Supabase Storage using the correct path
+      await supabase.storage.from('photos').remove([storagePath]);
+      console.log('🗑️ [Cleanup] Deleted from Supabase Storage:', storagePath);
+    } catch (e) {
+      console.log('🗑️ [Cleanup] Error deleting from Supabase Storage:', e);
+    }
+    
+    // Also try to delete local file if it exists (legacy cleanup)
     try {
       await Filesystem.deleteFile({
-        path: filename,
+        path: storagePath,
         directory: Directory.Data,
       });
-    } catch (e) {}
+      console.log('🗑️ [Cleanup] Deleted local file:', storagePath);
+    } catch (e) {
+      // Local file might not exist, which is fine
+    }
   };
 
   const handlePostTap = () => {
@@ -984,7 +1142,14 @@ const MainScreen = React.forwardRef(({
         p.id === postId ? { ...p, comments: count } : p
       ));
     } catch (error) {
-      console.error('❌ Error updating comment count:', error);
+      console.error('❌ Error updating comment count:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 

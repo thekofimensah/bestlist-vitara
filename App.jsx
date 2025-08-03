@@ -187,7 +187,14 @@ const App = () => {
         const { data, error } = await searchUserContent(user.id, query);
         
         if (error) {
-          console.error('Search error:', error);
+          console.error('Search error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           setSearchResults([]);
         } else {
           setSearchResults(data || []);
@@ -196,14 +203,28 @@ const App = () => {
         const { data, error } = await searchUsers(query);
         
         if (error) {
-          console.error('User search error:', error);
+          console.error('User search error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           setUserResults([]);
         } else {
           setUserResults(data || []);
         }
       }
     } catch (error) {
-      console.error('Search failed:', error);
+      console.error('Search failed:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       if (searchTab === 'content') {
         setSearchResults([]);
       } else {
@@ -240,7 +261,14 @@ const App = () => {
       setFollowingUsers(prev => new Set([...prev, userId]));
       console.log(`Started following ${username}`);
     } catch (error) {
-      console.error('Follow error:', error);
+      console.error('Follow error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 
@@ -254,7 +282,14 @@ const App = () => {
       });
       console.log(`Unfollowed ${username}`);
     } catch (error) {
-      console.error('Unfollow error:', error);
+      console.error('Unfollow error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 
@@ -353,7 +388,14 @@ const App = () => {
         const user = await getSessionOptimized();
         setUser(user);
       } catch (error) {
-        console.error('Error initializing app:', error);
+        console.error('Error initializing app:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       } finally {
         // Always stop loading quickly to prevent hanging
         setAppLoading(false);
@@ -430,7 +472,14 @@ const App = () => {
         }
       }
     } catch (error) {
-      console.error('❌ Feed loading exception:', error);
+      console.error('❌ Feed loading exception:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       setFeedError(error.message || 'Failed to load feed');
       // On refresh, do not clear posts on error. Keep stale data.
       if (!refreshing) {
@@ -487,7 +536,14 @@ const App = () => {
               setCurrentScreen('lists');
             }
           } catch (error) {
-            console.error('❌ Error parsing deep link:', error);
+            console.error('❌ Error parsing deep link:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           }
         });
 
@@ -523,7 +579,14 @@ const App = () => {
               }
               
             } catch (error) {
-              console.error('❌ Error refreshing app data on resume:', error);
+              console.error('❌ Error refreshing app data on resume:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
             }
           }
         });
@@ -533,7 +596,14 @@ const App = () => {
           CapacitorApp.removeAllListeners();
         };
       } catch (error) {
-        console.error('❌ Error setting up deep link listeners:', error);
+        console.error('❌ Error setting up deep link listeners:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       }
     };
 
@@ -564,7 +634,14 @@ const App = () => {
       
       return result.data; // Return the saved item
     } catch (error) {
-      console.error('❌ Error in handleAddItem:', error);
+      console.error('❌ Error in handleAddItem:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       throw error;
     } finally {
       setImagesLoading(false);
@@ -592,7 +669,14 @@ const App = () => {
       await updateItemInList([], item); // Empty array for listIds since we're updating existing item
       console.log('✅ Item update completed successfully');
     } catch (error) {
-      console.error('❌ Item update failed:', error);
+      console.error('❌ Item update failed:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       // Could show a toast notification here for failed updates
     }
     
@@ -635,7 +719,14 @@ const App = () => {
       console.log('🔧 App: createList returned:', newList);
       return newList;
     } catch (error) {
-      console.error('❌ App: Error in handleCreateList:', error);
+      console.error('❌ App: Error in handleCreateList:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       throw error; // Re-throw so AddItemModal can handle it
     }
   };
@@ -653,7 +744,14 @@ const App = () => {
       ]);
       
     } catch (error) {
-      console.error('❌ Home refresh error:', error);
+      console.error('❌ Home refresh error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     } finally {
       // This ensures the spinner disappears only after all data is loaded
       setRefreshing(false);
@@ -680,7 +778,14 @@ const App = () => {
       await new Promise(resolve => setTimeout(resolve, 600));
       
     } catch (error) {
-      console.error('❌ Lists refresh error:', error);
+      console.error('❌ Lists refresh error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     } finally {
       setRefreshing(false);
     }
@@ -695,7 +800,14 @@ const App = () => {
       await new Promise(resolve => setTimeout(resolve, 500));
       
     } catch (error) {
-      console.error('❌ Profile refresh error:', error);
+      console.error('❌ Profile refresh error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     } finally {
       setRefreshing(false);
     }
@@ -711,7 +823,14 @@ const App = () => {
       await new Promise(resolve => setTimeout(resolve, 600));
       
     } catch (error) {
-      console.error('❌ List detail refresh error:', error);
+      console.error('❌ List detail refresh error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     } finally {
       setRefreshing(false);
     }

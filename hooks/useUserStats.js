@@ -77,7 +77,7 @@ const useUserStats = (userId) => {
                 .from('posts')
                 .select('id, item_id')
                 .in('item_id', itemIds)
-                .abortSignal(controller.signal)git 
+                .abortSignal(controller.signal)
             : Promise.resolve({ data: [], error: null }),
           
           // Get average rating - use the filtered items we already have

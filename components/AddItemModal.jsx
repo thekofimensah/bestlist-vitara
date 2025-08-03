@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
 import { RatingOverlay } from './Elements';
+import SmartImage from './secondary/SmartImage';
 import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { Geolocation } from '@capacitor/geolocation';
@@ -345,7 +346,14 @@ const AddItemModal = ({
           };
         }));
       } catch (error) {
-        console.error('Location search error:', error);
+        console.error('Location search error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
         setLocationResults([]);
       } finally {
         setIsSearchingLocation(false);
@@ -410,7 +418,14 @@ const AddItemModal = ({
         return JSON.parse(saved);
       }
     } catch (error) {
-      console.error('Error loading list attributes:', error);
+      console.error('Error loading list attributes:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
     
     // Default attributes (removed "balance")
@@ -422,7 +437,14 @@ const AddItemModal = ({
     try {
       localStorage.setItem(`listAttributes_${listId}`, JSON.stringify(attributes));
     } catch (error) {
-      console.error('Error saving list attributes:', error);
+      console.error('Error saving list attributes:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   }, []);
 
@@ -741,7 +763,14 @@ const AddItemModal = ({
           await createPost(savedItem.id, selectedLists[0], true, location);
           console.log('✅ Public post created successfully');
         } catch (error) {
-          console.error('❌ Failed to create public post:', error);
+          console.error('❌ Failed to create public post:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           // Don't block the flow if post creation fails
         }
       }
@@ -752,7 +781,14 @@ const AddItemModal = ({
       else onClose();
       
     } catch (error) {
-      console.error('❌ Save operation failed:', error);
+      console.error('❌ Save operation failed:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       // Show error to user (you might want to add a toast notification here)
       alert('Failed to save item. Please try again.');
     } finally {
@@ -779,7 +815,14 @@ const AddItemModal = ({
           setCreateListError('Could not create list. Please try again.');
         }
       } catch (error) {
-        console.error('❌ AddItemModal: Error creating list:', error);
+        console.error('❌ AddItemModal: Error creating list:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
         setCreateListError(error.message || 'An unexpected error occurred.');
       }
     }
@@ -901,7 +944,14 @@ const AddItemModal = ({
         
         setCurrency(detectedCurrency);
       } catch (error) {
-        console.error('🌍 Currency detection failed:', error);
+        console.error('🌍 Currency detection failed:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
         setCurrency('USD'); // Fallback
       }
     };
@@ -967,7 +1017,14 @@ const AddItemModal = ({
             maximumAge: 300000 // Accept 5-minute old position
           });
         } catch (nativeError) {
-          console.log('Native geolocation failed, trying web fallback:', nativeError);
+          console.log('Native geolocation failed, trying web fallback:', nativeJSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           // Fall back to web geolocation even on native
           if (navigator.geolocation) {
             position = await new Promise((resolve, reject) => {
@@ -1014,7 +1071,14 @@ const AddItemModal = ({
             setLocation(coordsText);
           }
         } catch (geocodeError) {
-          console.log('Reverse geocoding failed, using coordinates:', geocodeError);
+          console.log('Reverse geocoding failed, using coordinates:', geocodeJSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
           setLocation(coordsText);
         }
       } else {
@@ -1022,7 +1086,14 @@ const AddItemModal = ({
       }
       
     } catch (error) {
-      console.log('All location methods failed:', error);
+      console.log('All location methods failed:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
       // Don't change location if it's already set from EXIF or other source
       if (location === 'Current Location') {
         setLocation('Location not available');
@@ -1259,7 +1330,7 @@ const AddItemModal = ({
           </AnimatePresence>
         )}
 
-        <img
+        <SmartImage
           src={currentImage}
           alt="Food item"
           className={`w-full h-full object-cover transition-all duration-500 cursor-pointer ${
@@ -1267,6 +1338,9 @@ const AddItemModal = ({
           }`}
           style={{ filter: getInstagramClassicFilter() }}
           onClick={handlePhotoClick}
+          useThumbnail={false}
+          size="large"
+          lazyLoad={false}
         />
 
 
@@ -2219,7 +2293,7 @@ const AddItemModal = ({
                 }
               }}
             >
-              <img
+              <SmartImage
                 src={currentImage}
                 alt="Food item"
                 className="max-w-full max-h-full object-contain"
@@ -2227,6 +2301,9 @@ const AddItemModal = ({
                   maxHeight: 'calc(100vh - 120px)',
                   filter: getInstagramClassicFilter()
                 }}
+                useThumbnail={false}
+                size="original"
+                lazyLoad={false}
               />
             </div>
 
@@ -2273,7 +2350,14 @@ const AddItemModal = ({
                     setCrop({ x: 0, y: 0 });
                     setIsCropping(false);
                   } catch (error) {
-                    console.error('Crop error:', error);
+                    console.error('Crop error:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
                   }
                 }}
                 className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium"

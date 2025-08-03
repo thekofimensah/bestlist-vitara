@@ -23,7 +23,14 @@ const useAchievements = () => {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching achievements:', error);
+      console.error('Error fetching achievements:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
       return [];
     }
   }, []);
@@ -52,7 +59,14 @@ const useAchievements = () => {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching user achievements:', error);
+      console.error('Error fetching user achievements:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
       return [];
     }
   }, [user?.id]);
@@ -72,7 +86,14 @@ const useAchievements = () => {
       if (error && error.code !== 'PGRST116') throw error;
       return !!data;
     } catch (error) {
-      console.error('Error checking achievement:', error);
+      console.error('Error checking achievement:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
       return false;
     }
   }, [user?.id]);
@@ -97,7 +118,14 @@ const useAchievements = () => {
       if (error) throw error;
       return true;
     } catch (error) {
-      console.error('Error awarding achievement:', error);
+      console.error('Error awarding achievement:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
       return false;
     }
   }, [user?.id, hasAchievement]);
@@ -141,25 +169,71 @@ const useAchievements = () => {
     try {
       let query;
       
-      if (criteria.scope === 'product' && context.barcode) {
-        // Check if anyone else has photographed this specific product
+      if (criteria.scope === 'product' && context.ai_product_name) {
+        // Check if anyone else has the same AI-generated product name
+        // Only check AI-generated names, not user-entered names
+        if (!context.ai_product_name || context.user_product_name) {
+          // Skip if no AI product name or if user entered their own name
+          return null;
+        }
+        
+        // First get all lists that belong to other users
+        const { data: otherUserLists, error: listsError } = await supabase
+          .from('lists')
+          .select('id')
+          .neq('user_id', user.id);
+          
+        if (listsError) throw listsError;
+        
+        if (!otherUserLists || otherUserLists.length === 0) {
+          // No other users exist, so this is definitely a first
+          const awarded = await awardAchievement(achievement.id, { context });
+          if (awarded) {
+            return { achievement, awarded: true, isGlobalFirst: true };
+          }
+          return null;
+        }
+        
+        const otherUserListIds = otherUserLists.map(list => list.id);
+        
+        // Check if any other user has the same AI-generated product name
         query = supabase
           .from('items')
           .select('id')
-          .eq('barcode', context.barcode)
+          .eq('ai_product_name', context.ai_product_name)
           .not('image_url', 'is', null)
-          .neq('user_id', user.id);
+          .in('list_id', otherUserListIds);
       } else if (criteria.scope === 'country' && context.location) {
         // Check if anyone else has photographed from this country
         const country = extractCountryFromLocation(context.location);
         if (!country) return null;
         
+        // First get all lists that belong to other users
+        const { data: otherUserLists, error: listsError } = await supabase
+          .from('lists')
+          .select('id')
+          .neq('user_id', user.id);
+          
+        if (listsError) throw listsError;
+        
+        if (!otherUserLists || otherUserLists.length === 0) {
+          // No other users exist, so this is definitely a first
+          const awarded = await awardAchievement(achievement.id, { context });
+          if (awarded) {
+            return { achievement, awarded: true, isGlobalFirst: true };
+          }
+          return null;
+        }
+        
+        const otherUserListIds = otherUserLists.map(list => list.id);
+        
+        // Check if any other user has items from this country
         query = supabase
           .from('items')
           .select('id')
           .ilike('location', `%${country}%`)
           .not('image_url', 'is', null)
-          .neq('user_id', user.id);
+          .in('list_id', otherUserListIds);
       }
 
       if (!query) return null;
@@ -175,7 +249,14 @@ const useAchievements = () => {
         }
       }
     } catch (error) {
-      console.error('Error checking global first achievement:', error);
+      console.error('Error checking global first achievement:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
     }
     
     return null;
@@ -226,7 +307,14 @@ const useAchievements = () => {
 
       return newAchievements;
     } catch (error) {
-      console.error('Error checking achievements:', error);
+      console.error('Error checking achievements:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
       return [];
     } finally {
       setIsProcessing(false);

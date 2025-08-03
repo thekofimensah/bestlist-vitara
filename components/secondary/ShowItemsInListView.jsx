@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Edit3, Share } from 'lucide-react';
 import AddItemModal from '../AddItemModal';
 import ShareModal from './ShareModal';
+import SmartImage from './SmartImage';
 import { deleteItemFromList } from '../../lib/supabase';
 
 const VerdictBadge = ({ verdict }) => {
@@ -56,10 +57,13 @@ const ItemTile = ({
       }`}
     >
       <div className="relative">
-        <img
+        <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
           className="w-full aspect-square object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
+          useThumbnail={true}
+          size="medium"
+          lazyLoad={true}
         />
         <VerdictBadge verdict={verdict} />
         <StarRating rating={item.rating} />
@@ -197,7 +201,14 @@ const ShowItemsInListView = ({
         refreshList();
       }
     } catch (error) {
-      console.error('Error deleting items:', error);
+      console.error('Error deleting items:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 
@@ -216,7 +227,14 @@ const ShowItemsInListView = ({
         refreshList();
       }
     } catch (error) {
-      console.error('Error removing item:', error);
+      console.error('Error removing item:', JSON.stringify({
+          message: err.message,
+          name: err.name,
+          details: err.details,
+          hint: err.hint,
+          code: err.code,
+          fullError: err
+        }, null, 2));
     }
   };
 

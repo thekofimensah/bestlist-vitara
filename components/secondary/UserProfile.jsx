@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Calendar, Users, Heart, MessageCircle, UserPlus, UserMinus } from 'lucide-react';
 import { getUserProfile, getUserPosts, followUser, unfollowUser, getUserFollowers, getUserFollowing, supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import SmartImage from './SmartImage';
 
 const UserProfile = ({ username, onBack, onNavigateToUser }) => {
   const { user: currentUser } = useAuth();
@@ -338,10 +339,13 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
                 const formattedPost = formatPostForDisplay(post);
                 return (
                   <div key={post.id} className="flex gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                    <img 
+                    <SmartImage 
                       src={formattedPost.image} 
                       alt={formattedPost.title}
                       className="w-16 h-16 object-cover rounded-lg"
+                      useThumbnail={true}
+                      size="small"
+                      lazyLoad={true}
                     />
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-gray-900 truncate">

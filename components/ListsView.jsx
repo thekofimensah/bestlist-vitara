@@ -3,6 +3,7 @@ import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical, Share } from 'lucide-react';
 import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import SmartImage from './secondary/SmartImage';
 
 
 const StarRating = ({ rating }) => {
@@ -21,7 +22,6 @@ const ItemTile = ({
   onImageTap,
   onLongPress 
 }) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
   if (isAddTile) {
     return (
       <div
@@ -44,21 +44,14 @@ const ItemTile = ({
       style={{ width: '104px' }}
     >
       <div className="relative">
-        {!imageLoaded && (
-          <div 
-            className="w-26 h-26 bg-gray-200 rounded-2xl animate-pulse"
-            style={{ width: '104px', height: '104px' }}
-          />
-        )}
-        <img
+        <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
-          loading="lazy"
-          className={`w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all ${
-            imageLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'
-          }`}
+          className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
           style={{ width: '104px', height: '104px' }}
-          onLoad={() => setImageLoaded(true)}
+          useThumbnail={true}
+          size="small"
+          lazyLoad={true}
           onClick={(e) => {
             e.stopPropagation();
             onImageTap?.(item);

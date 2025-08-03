@@ -517,7 +517,9 @@ export const useLists = (userId) => {
           location: item.location,
           hasPhoto: !!item.image_url,
           rating: item.rating,
-          notes: item.notes
+          notes: item.notes,
+          ai_product_name: item.ai_product_name,
+          user_product_name: item.user_product_name
         };
         
         const newAchievements = await checkAchievements('item_saved', context);
@@ -533,7 +535,14 @@ export const useLists = (userId) => {
           console.log('🏆 New achievements unlocked:', newAchievements);
         }
       } catch (achievementError) {
-        console.error('❌ Achievement check error:', achievementError);
+        console.error('❌ Achievement check error:', JSON.stringify({
+          message: achievementError.message,
+          name: achievementError.name,
+          details: achievementError.details,
+          hint: achievementError.hint,
+          code: achievementError.code,
+          fullError: achievementError
+        }, null, 2));
         // Don't fail the main flow if achievements fail
       }
       

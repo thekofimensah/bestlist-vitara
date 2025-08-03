@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User } from 'lucide-react';
 import { supabase, likePost, unlikePost, getPostComments, commentOnPost } from '../../lib/supabase';
 import { getInstagramClassicFilter } from '../../lib/imageUtils';
+import SmartImage from './SmartImage';
 
 const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser }) => {
   const [post, setPost] = useState(null);
@@ -199,11 +200,14 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
 
       {/* Main Image */}
       <div className="relative h-[60vh] bg-black flex items-center justify-center">
-        <img
+        <SmartImage
           src={post.items?.image_url}
           alt={post.items?.name}
           className="max-w-full max-h-full object-contain"
           style={{ filter: getInstagramClassicFilter() }}
+          useThumbnail={false}
+          size="large"
+          lazyLoad={false}
         />
       </div>
 

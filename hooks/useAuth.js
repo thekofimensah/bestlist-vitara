@@ -1,10 +1,63 @@
 import { useState, useEffect } from 'react';
 import { supabase, getSessionOptimized } from '../lib/supabase';
+import useAchievements from './useAchievements';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
+  const [pendingSignInAchievement, setPendingSignInAchievement] = useState(null);
+  
+  // Safely get achievements hook - will work even if provider isn't available
+  let checkAchievements = () => Promise.resolve([]);
+  try {
+    const achievementsHook = useAchievements();
+    checkAchievements = achievementsHook.checkAchievements || (() => Promise.resolve([]));
+  } catch (error) {
+    // Silently fail if achievements aren't available
+    console.log('🏆 [Auth] Achievement system not available:', error.message);
+  }
+  
+  // Global function to trigger pending sign-in achievements (called by App.jsx when loading completes)
+  window.triggerPendingSignInAchievements = () => {
+    if (pendingSignInAchievement) {
+      console.log('🏆 [Auth] App fully loaded - triggering pending sign-in achievements');
+      
+      setTimeout(async () => {
+        try {
+          const achievements = await checkAchievements('sign_in', pendingSignInAchievement);
+          
+          if (achievements && achievements.length > 0) {
+            console.log('🏆 [Auth] Sign-in achievements earned:', achievements);
+          }
+          
+          setPendingSignInAchievement(null); // Clear the pending achievement
+        } catch (error) {
+          console.error('🏆 [Auth] Error in delayed achievement check:', error.message);
+        }
+      }, 1000); // 1 second after app is fully loaded
+    }
+  };
+  
+  // Function to schedule sign-in achievements (will be triggered when app loads)
+  const triggerSignInAchievements = async (user) => {
+    try {
+      console.log('🏆 [Auth] Scheduling sign-in achievements for user:', user.email);
+      
+      const context = {
+        user_id: user.id,
+        sign_in_time: new Date().toISOString(),
+        email: user.email
+      };
+      
+      // Store the context for later triggering when app is fully loaded
+      setPendingSignInAchievement(context);
+      console.log('🏆 [Auth] Sign-in achievements queued - will trigger after app loads');
+      
+    } catch (error) {
+      console.error('🏆 [Auth] Error scheduling sign-in achievements:', error.message);
+    }
+  };
 
   useEffect(() => {
     // Optimized session restoration
@@ -42,6 +95,11 @@ export const useAuth = () => {
             console.log('User signed in but no profile found, checking if we can create one...');
             // This handles cases where users confirmed email later
             // We don't have their original username here, so we'll just wait for them to complete setup
+          }
+          
+          // 🏆 Check for sign-in achievements when user signs in
+          if (event === 'SIGNED_IN') {
+            triggerSignInAchievements(session.user);
           }
         } else {
           setUserProfile(null);

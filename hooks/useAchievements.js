@@ -98,13 +98,25 @@ const useAchievements = () => {
     }
   }, [user?.id]);
 
-  // Award achievement to user (supports repeatable achievements)
-  const awardAchievement = useCallback(async (achievementId, progressData = null, isRepeatable = false) => {
+  // Award achievement to user (supports repeatable achievements based on database setting)
+  const awardAchievement = useCallback(async (achievementId, progressData = null) => {
     if (!user?.id) return false;
 
     try {
+      // First, get the achievement details to check if it's repeatable
+      const { data: achievement, error: achievementError } = await supabase
+        .from('achievements')
+        .select('is_repeatable')
+        .eq('id', achievementId)
+        .single();
+
+      if (achievementError) {
+        console.error('Error fetching achievement details:', achievementError);
+        return false;
+      }
+
       // For repeatable achievements, increment count instead of checking if already has
-      if (isRepeatable) {
+      if (achievement.is_repeatable) {
         const { data: existing, error: fetchError } = await supabase
           .from('user_achievements')
           .select('count')
@@ -193,6 +205,42 @@ const useAchievements = () => {
     return null;
   }, [awardAchievement]);
 
+  // Check sign-in specific achievements 
+  const checkSignInAchievement = useCallback(async (achievement, context) => {
+    const { criteria } = achievement;
+    
+    if (criteria.type === 'sign_in') {
+      // Handle different sign-in achievement types
+      switch (criteria.trigger) {
+        case 'first_sign_in':
+          // Award on first sign-in
+          const awarded = await awardAchievement(achievement.id, context);
+          if (awarded) {
+            return { achievement, awarded: true };
+          }
+          break;
+        
+        case 'daily_sign_in':
+          // Check for consecutive day sign-ins (streak logic could be added here)
+          // For now, just award for any sign-in
+          const dailyAwarded = await awardAchievement(achievement.id, context);
+          if (dailyAwarded) {
+            return { achievement, awarded: true };
+          }
+          break;
+        
+        default:
+          // Generic sign-in achievement
+          const genericAwarded = await awardAchievement(achievement.id, context);
+          if (genericAwarded) {
+            return { achievement, awarded: true };
+          }
+          break;
+      }
+    }
+    return null;
+  }, [awardAchievement]);
+
   // Check global first achievements (e.g., first to photo a product)
   const checkGlobalFirstAchievement = useCallback(async (achievement, context) => {
     const { criteria } = achievement;
@@ -220,8 +268,7 @@ const useAchievements = () => {
         
         if (!otherUserLists || otherUserLists.length === 0) {
           // No other users exist, so this is definitely a first
-          const isRepeatable = achievement.name === 'First in the World';
-          const awarded = await awardAchievement(achievement.id, { context }, isRepeatable);
+          const awarded = await awardAchievement(achievement.id, { context });
           if (awarded) {
             return { achievement, awarded: true, isGlobalFirst: true };
           }
@@ -252,8 +299,7 @@ const useAchievements = () => {
         
         if (!otherUserLists || otherUserLists.length === 0) {
           // No other users exist, so this is definitely a first
-          const isRepeatable = achievement.name === 'Globetrotter';
-          const awarded = await awardAchievement(achievement.id, { context }, isRepeatable);
+          const awarded = await awardAchievement(achievement.id, { context });
           if (awarded) {
             return { achievement, awarded: true, isGlobalFirst: true };
           }
@@ -278,8 +324,7 @@ const useAchievements = () => {
 
       // If no one else has done this action, award the achievement
       if (!data || data.length === 0) {
-        const isRepeatable = achievement.name === 'First in the World';
-        const awarded = await awardAchievement(achievement.id, { context }, isRepeatable);
+        const awarded = await awardAchievement(achievement.id, { context });
         if (awarded) {
           return { achievement, awarded: true, isGlobalFirst: true };
         }
@@ -323,6 +368,10 @@ const useAchievements = () => {
           
           case 'global_first':
             result = await checkGlobalFirstAchievement(achievement, context);
+            break;
+          
+          case 'sign_in':
+            result = await checkSignInAchievement(achievement, context);
             break;
           
           // Add more types as needed (streak, rating_diversity, etc.)

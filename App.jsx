@@ -124,8 +124,8 @@ const App = () => {
     userTracking: false
   });
   
-  // Force re-render for progress updates
-  const [, forceUpdate] = useState({});
+  // Cache loading keys to avoid repeated Object.keys calls
+  const loadingKeys = ['auth', 'lists', 'feed', 'stats', 'achievements', 'userTracking'];
   
   // Pending achievements hook
   const { 
@@ -136,7 +136,7 @@ const App = () => {
   } = usePendingAchievements(user?.id);
   
   // User stats hook 
-  const { stats: userStats, loading: statsLoading, refreshStats } = useUserStats(user?.id);
+  const { stats: userStats, loading: statsLoading } = useUserStats(user?.id);
   const [currentScreen, setCurrentScreen] = useState('home');
   const [previousScreen, setPreviousScreen] = useState('home');
   const [selectedList, setSelectedList] = useState(null);
@@ -448,12 +448,11 @@ const App = () => {
                 console.log('🔍 [App] Checking if lists are available:', lists?.length || 0);
                 if (lists && lists.length >= 0) { // Lists are available when array exists
                   setLoadingProgress(prev => {
-                    console.log('✅ [App] Setting lists to loaded');
                     const newProgress = { ...prev, lists: true };
+                    console.log('✅ [App] Setting lists to loaded');
                     console.log('📊 [App] New loading progress:', newProgress);
                     return newProgress;
                   });
-                  forceUpdate({});
                   console.log('✅ [App] Lists loaded');
                   resolve();
                 } else {
@@ -476,7 +475,6 @@ const App = () => {
                   console.log('📊 [App] New loading progress:', newProgress);
                   return newProgress;
                 });
-                forceUpdate({});
                 console.log('✅ [App] Feed loaded');
               } catch (error) {
                 console.error('❌ [App] Feed loading failed:', error);
@@ -485,7 +483,6 @@ const App = () => {
                   console.log('📊 [App] New loading progress:', newProgress);
                   return newProgress;
                 });
-                forceUpdate({});
               }
             })()
           );
@@ -502,7 +499,6 @@ const App = () => {
                     console.log('📊 [App] New loading progress:', newProgress);
                     return newProgress;
                   });
-                  forceUpdate({});
                   console.log('✅ [App] Stats loaded');
                   resolve();
                 } else {
@@ -525,7 +521,6 @@ const App = () => {
                   console.log('📊 [App] New loading progress:', newProgress);
                   return newProgress;
                 });
-                forceUpdate({});
                 console.log('✅ [App] Pending achievements loaded:', achievements?.length || 0);
                 
                 // Store achievements for showing after app loads
@@ -542,7 +537,6 @@ const App = () => {
                   console.log('📊 [App] New loading progress:', newProgress);
                   return newProgress;
                 });
-                forceUpdate({});
               }
             })()
           );
@@ -595,6 +589,11 @@ const App = () => {
         // Only stop app loading when everything is done
         setAppLoading(false);
         console.log('🎉 [App] App initialization complete - showing app!');
+        
+        // 🏆 Trigger any pending sign-in achievements now that app is fully loaded
+        if (typeof window.triggerPendingSignInAchievements === 'function') {
+          window.triggerPendingSignInAchievements();
+        }
       }
     };
     
@@ -828,9 +827,7 @@ const App = () => {
         throw result.error;
       }
       
-      // Refresh stats after adding item
-      console.log('🔄 [App] Refreshing stats after adding item');
-      await refreshStats();
+      // Stats will update automatically via database triggers
       
       return result.data; // Return the saved item
     } catch (error) {
@@ -869,9 +866,7 @@ const App = () => {
       await updateItemInList([], item); // Empty array for listIds since we're updating existing item
       console.log('✅ Item update completed successfully');
       
-      // Refresh stats after updating item
-      console.log('🔄 [App] Refreshing stats after updating item');
-      await refreshStats();
+      // Stats will update automatically via database triggers
     } catch (error) {
       console.error('❌ Item update failed:', JSON.stringify({
           message: err.message,
@@ -922,9 +917,7 @@ const App = () => {
       const newList = await createList(name, color);
       console.log('🔧 App: createList returned:', newList);
       
-      // Refresh stats after creating list
-      console.log('🔄 [App] Refreshing stats after creating list');
-      await refreshStats();
+      // Stats will update automatically via database triggers
       
       return newList;
     } catch (error) {
@@ -1178,17 +1171,6 @@ const App = () => {
     }
   };
 
-  // Show loading screen
-  if (appLoading) {
-    return (
-      <MultiStepLoadingScreen
-        step={1}
-        totalSteps={3}
-        messages={['Connecting to ChefKiss...', 'Loading your profile...', 'Setting up your kitchen...']}
-        currentMessage="Connecting to ChefKiss..."
-      />
-    );
-  }
 
   // Connection Status Component
   const ConnectionStatus = () => {
@@ -1232,7 +1214,7 @@ const App = () => {
   // Calculate loading progress
   const loadingComplete = Object.values(loadingProgress).every(Boolean);
   const completedSteps = Object.values(loadingProgress).filter(Boolean).length;
-  const totalSteps = Object.keys(loadingProgress).length;
+  const totalSteps = loadingKeys.length;
   const progressPercentage = Math.round((completedSteps / totalSteps) * 100);
   
   // Debug loading progress
@@ -1284,7 +1266,7 @@ const App = () => {
                 { key: 'stats', label: 'Statistics', icon: '📊' },
                 { key: 'achievements', label: 'Achievements', icon: '🏆' },
                 { key: 'userTracking', label: 'Session setup', icon: '📱' }
-              ].map(({ key, label, icon }) => (
+              ].map(({ key, label, icon }, index) => (
                 <motion.div
                   key={key}
                   className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
@@ -1294,7 +1276,7 @@ const App = () => {
                   }`}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: Object.keys(loadingProgress).indexOf(key) * 0.1 }}
+                  transition={{ delay: index * 0.1 }}
                 >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                     loadingProgress[key] 
@@ -1509,8 +1491,8 @@ const App = () => {
                   Users
                 </button>
               </div>
-           
-                <div className="relative">
+              
+              <div className="relative">
                   <input
                     type="text"
                     value={searchQuery}
@@ -1754,13 +1736,14 @@ const App = () => {
               </div>
             )}
           </div>
-      </div>
+        </div>
+     
       )}
 
       {/* Achievement System - Global notifications */}
       <AchievementSystem />
-      </div>
-    </AchievementProvider>
+    </div>
+  </AchievementProvider>
   );
 };
 

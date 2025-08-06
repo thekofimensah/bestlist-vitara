@@ -8,7 +8,7 @@ import ProfileView from './components/ProfileView';
 import ShowItemsInListView from './components/secondary/ShowItemsInListView';
 import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
-import UserProfile from './components/secondary/UserProfile';
+import UserProfile from './components/secondary/PublicUserProfile.jsx';
 import PullToRefresh from './ui/PullToRefresh';
 import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser, getSessionOptimized } from './lib/supabase';
 import { useLists } from './hooks/useLists';
@@ -44,8 +44,8 @@ const formatPostForDisplay = (post) => {
   return {
     id: post.id,
     user: {
-      name: post.profiles?.username || 'User',
-      avatar: post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
+      name: post.creator?.profiles?.display_name || post.creator?.profiles?.username || 'User',
+      avatar: post.creator?.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
     },
     image: post.items?.image_url || '',
     rating: post.items?.rating || 3,

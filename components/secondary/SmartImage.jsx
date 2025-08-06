@@ -87,7 +87,7 @@ const SmartImage = ({
 
   const imageUrl = getImageUrl();
 
-  if (!imageUrl) {
+  if (!imageUrl || imageUrl === '') {
     return (
       <div 
         className={`bg-gray-200 flex items-center justify-center ${className}`}

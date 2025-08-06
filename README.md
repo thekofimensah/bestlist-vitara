@@ -84,7 +84,24 @@ To do:
 ///////////////////////////
 
 
-      
+┌─────────────────────────────────────┐
+│              App.jsx                │ ← Root container
+├─────────────────────────────────────┤
+│           MainScreen.jsx            │ ← Primary interface
+│  ┌─────────────────────────────┐    │
+│  │        Camera Section       │    │
+│  └─────────────────────────────┘    │
+│  ┌─────────────────────────────┐    │
+│  │         Feed Section        │    │
+│  └─────────────────────────────┘    │
+│  ┌─────────────────────────────┐    │
+│  │      AddItemModal.jsx       │    │ ← Modal overlay
+│  │     (when showModal=true)   │    │
+│  └─────────────────────────────┘    │
+├─────────────────────────────────────┤
+│        AchievementSystem            │ ← Global overlay
+│      (always on top)                │
+└─────────────────────────────────────┘
 
 
 Add a prompt when they try and create an entry without any notes. It should say "Even a few words helps you remember why you loved this" and then they should have the option to contiune without notes, or go back and add a few words. There shuld also be a box to "Don't show again". There should also be a way to visually make the notes section look more important and not optional. 
@@ -206,3 +223,7 @@ Remove feed for you, and only following for now. Push it lower on the page and m
 AI analysis stopped popup is so ugly
 
 Can't get the keyboard to act native, only when a popup with a native look comes, but that's no bueno
+
+
+Expected behaviors:
+So when the drag to refresh functionality appears, every element on the page should be refreshed.

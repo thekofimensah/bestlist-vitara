@@ -117,44 +117,7 @@ const extractEXIFData = async (file) => {
   });
 };
 
-// Helper function to format post data from database
-const formatPostForDisplay = (post) => {
-  const getTimeAgo = (dateString) => {
-    const now = new Date();
-    const postDate = new Date(dateString);
-    const diffInHours = Math.floor((now - postDate) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return 'Just now';
-    if (diffInHours < 24) return `${diffInHours}h`;
-    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`;
-    return `${Math.floor(diffInHours / 168)}w`;
-  };
-
-  const getVerdictFromRating = (rating, isStayAway) => {
-    if (isStayAway) return 'AVOID';
-    return rating >= 4 ? 'KEEP' : 'MEH';
-  };
-
-  return {
-    id: post.id,
-    user: {
-      name: post.profiles?.username || 'User',
-      avatar: post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
-    },
-    image: post.items?.image_url || '',
-    rating: post.items?.rating || 3,
-    verdict: getVerdictFromRating(post.items?.rating, post.items?.is_stay_away),
-    // tags: post.items?.tags || [],
-    snippet: post.items?.notes || '',
-    timestamp: getTimeAgo(post.created_at),
-    likes: post.like_count || 0,
-    comments: post.comment_count || 0,
-    user_liked: post.user_liked || false,
-    item_name: post.items?.name || 'Unknown Item',
-    list_name: post.lists?.name || 'Unknown List',
-    location: post.location || null
-  };
-};
+// Note: formatPostForDisplay is now handled in App.jsx
 
 const StarRating = ({ rating, size = 'sm' }) => {
   const starSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
@@ -263,8 +226,8 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
       <div className="flex items-center gap-3 mb-3 px-4 pt-4">
         <button onClick={handleUserTap} className="flex-shrink-0">
           <img
-            src={post.user.avatar}
-            alt={post.user.name}
+            src={post.user?.avatar}
+            alt={post.user?.name}
             className="w-8 h-8 rounded-full object-cover"
           />
         </button>
@@ -273,7 +236,7 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
             onClick={handleUserTap}
             className="text-sm font-medium text-gray-900 hover:text-teal-700 transition-colors text-left"
           >
-            {post.user.name}
+            {post.user?.name}
           </button>
           <div className="text-xs text-gray-500">{post.timestamp}</div>
         </div>
@@ -293,7 +256,7 @@ const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareT
         }}
       >
         <SmartImage
-          src={post.items?.image_url}
+          src={post.image}
           alt="Food item"
           className="w-full aspect-square object-cover"
           style={{ filter: getInstagramClassicFilter() }}
@@ -1326,7 +1289,7 @@ const MainScreen = React.forwardRef(({
           {/* Flip Camera Button - with proper padding */}
           <button
             onClick={handleFlipCamera}
-            className="absolute top-2 right-6 w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all border border-white border-opacity-20"
+            className="absolute top-4 right-8 w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all border border-white border-opacity-20"
           >
             <RefreshCw className="w-5 h-5" />
           </button>

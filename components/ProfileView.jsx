@@ -228,7 +228,7 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
                         <h2 className="text-xl font-semibold text-gray-900">
-                {userProfile?.username ? `@${userProfile.username}` : 'Your Profile'}
+                {userProfile?.username ? `${userProfile.username}` : 'Your Profile'}
               </h2>
           <button 
             onClick={() => setShowSettings(true)}

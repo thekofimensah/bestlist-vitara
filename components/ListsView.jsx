@@ -27,7 +27,7 @@ const ItemTile = ({
       <div
         onClick={onTap}
         className="flex-shrink-0 w-26 h-26 bg-stone-100 border-2 border-dashed border-gray-300 rounded-2xl flex items-center justify-center cursor-pointer hover:bg-stone-200 transition-colors"
-        style={{ width: '104px', height: '104px', backgroundColor: '#F1F1EF' }}
+        style={{ width: '200px', height: '200px', backgroundColor: '#F1F1EF' }}
       >
         <Plus className="w-6 h-6 text-gray-500" />
       </div>
@@ -41,14 +41,14 @@ const ItemTile = ({
   return (
     <div
       className="flex-shrink-0 relative cursor-pointer group"
-      style={{ width: '104px' }}
+      style={{ width: '200px' }}
     >
       <div className="relative">
         <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
           className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
-          style={{ width: '104px', height: '104px' }}
+          style={{ width: '200px', height: '200px' }}
           useThumbnail={true}
           size="small"
           lazyLoad={true}

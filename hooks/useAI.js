@@ -52,8 +52,14 @@ export const useAI = () => {
     setError(null);
     
     const makeRequest = async (attempt = 1, maxAttempts = 3) => {
+      const startTime = Date.now();
+      console.log(`🤖 [AI] Starting analysis attempt ${attempt}/${maxAttempts}`);
+      
+      // Progressive timeout: 20s for first attempt, 30s for retries
+      const timeoutMs = attempt === 1 ? 20000 : 30000;
       try {
         const base64Image = await encodeImageToBase64(imageFile);
+        console.log(`🤖 [AI] Image encoded (${base64Image.length} chars), location: ${location || 'none'}`);
         
         // Simplified prompt - no JSON format instructions needed
         const prompt = `
@@ -134,34 +140,71 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
               'Content-Type': 'application/json',
             },
             body: JSON.stringify(requestBody),
-            signal: AbortSignal.timeout(15000) // 15s timeout for retries
+            signal: AbortSignal.timeout(timeoutMs) // Progressive timeout
           }
         );
 
         if (!response.ok) {
           const errorText = await response.text();
+          const elapsed = Date.now() - startTime;
           
-          // Handle 503 overload errors with retry
+          console.error(`🤖 [AI] API Error (${elapsed}ms):`, {
+            status: response.status,
+            statusText: response.statusText,
+            attempt,
+            timeout: timeoutMs,
+            errorText: errorText.substring(0, 500) // Truncate long errors
+          });
+          
+          // Handle different error types with specific retry logic
           if (response.status === 503 && attempt < maxAttempts) {
-            const delay = attempt === 1 ? 2000 : 3000; // Tight backoff: 2s, then 3s
-            console.log(`AI overloaded, retrying in ${delay/1000}s... (attempt ${attempt}/${maxAttempts})`);
+            // Server overload - exponential backoff
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+            console.log(`🤖 [AI] Server overload (503), retrying in ${delay/1000}s... (attempt ${attempt}/${maxAttempts})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return makeRequest(attempt + 1, maxAttempts);
           }
           
-          console.error('AI API Error:', response.status, errorText);
-          throw new Error(`AI analysis failed: ${response.status} - ${errorText}`);
+          if (response.status === 429 && attempt < maxAttempts) {
+            // Rate limit - longer backoff
+            const delay = Math.min(2000 * Math.pow(2, attempt - 1), 15000);
+            console.log(`🤖 [AI] Rate limited (429), retrying in ${delay/1000}s... (attempt ${attempt}/${maxAttempts})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return makeRequest(attempt + 1, maxAttempts);
+          }
+          
+          if (response.status >= 500 && attempt < maxAttempts) {
+            // Server errors - moderate backoff
+            const delay = Math.min(1500 * Math.pow(2, attempt - 1), 10000);
+            console.log(`🤖 [AI] Server error (${response.status}), retrying in ${delay/1000}s... (attempt ${attempt}/${maxAttempts})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return makeRequest(attempt + 1, maxAttempts);
+          }
+          
+          // Non-retryable error
+          throw new Error(`AI analysis failed: ${response.status} - ${errorText.substring(0, 200)}`);
         }
 
         const result = await response.json();
         const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const elapsed = Date.now() - startTime;
+        
+        console.log(`🤖 [AI] Response received in ${elapsed}ms`);
         
         if (!responseText) {
-          throw new Error('No response from AI');
+          console.error('🤖 [AI] Empty response from Gemini:', result);
+          throw new Error('No response text from AI');
         }
 
         // Parse the guaranteed valid JSON response (no cleanup needed!)
-        const aiData = JSON.parse(responseText);
+        let aiData;
+        try {
+          aiData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('🤖 [AI] JSON parse error:', parseError);
+          console.error('🤖 [AI] Raw response text:', responseText.substring(0, 500));
+          throw new Error('Invalid JSON response from AI');
+        }
 
         // Return data in the format expected by the app
         const aiResult = {
@@ -175,16 +218,51 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
           allergens: aiData.allergens || []
         };
 
-        console.log('🤖 [AI] Structured response from server:', JSON.stringify(aiData, null, 2));
-        console.log('🤖 [AI] Formatted result for app:', JSON.stringify(aiResult, null, 2));
+        console.log(`🤖 [AI] Analysis completed in ${elapsed}ms`);
+        console.log('🤖 [AI] Structured response:', JSON.stringify(aiData, null, 2));
+        console.log('🤖 [AI] Formatted result:', JSON.stringify(aiResult, null, 2));
 
         return aiResult;
       } catch (err) {
-        // If it's a retry attempt and still failing, bubble up the error
-        if (attempt >= maxAttempts || !err.message.includes('503')) {
-          throw err;
+        const elapsed = Date.now() - startTime;
+        
+        // Handle timeout errors specifically
+        if (err.name === 'AbortError' || err.message.includes('timeout')) {
+          console.error(`🤖 [AI] Timeout after ${elapsed}ms (attempt ${attempt}/${maxAttempts})`);
+          
+          if (attempt < maxAttempts) {
+            const delay = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+            console.log(`🤖 [AI] Retrying after timeout in ${delay/1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return makeRequest(attempt + 1, maxAttempts);
+          } else {
+            throw new Error(`AI analysis timed out after ${maxAttempts} attempts (${elapsed}ms total)`);
+          }
         }
-        // This shouldn't happen as 503 is handled above, but just in case
+        
+        // Handle other errors
+        console.error(`🤖 [AI] Error on attempt ${attempt}:`, {
+          name: err.name,
+          message: err.message,
+          elapsed: elapsed + 'ms'
+        });
+        
+        // Retry on network errors or server issues
+        const isRetryableError = (
+          err.name === 'TypeError' && err.message.includes('fetch') ||
+          err.message.includes('network') ||
+          err.message.includes('connection') ||
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('ENOTFOUND')
+        );
+        
+        if (isRetryableError && attempt < maxAttempts) {
+          const delay = Math.min(1500 * Math.pow(2, attempt - 1), 8000);
+          console.log(`🤖 [AI] Network error, retrying in ${delay/1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return makeRequest(attempt + 1, maxAttempts);
+        }
+        
         throw err;
       }
     };
@@ -192,8 +270,26 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
     try {
       return await makeRequest();
     } catch (err) {
-      console.error('AI Analysis failed:', err.message);
-      setError(err.message);
+      console.error('🤖 [AI] Analysis failed:', {
+        message: err.message,
+        name: err.name,
+        attempts: '3 attempts made'
+      });
+      
+      // Provide more specific error messages
+      let userFriendlyError = err.message;
+      if (err.message.includes('timeout')) {
+        userFriendlyError = 'Analysis timed out - please try again';
+      } else if (err.message.includes('network') || err.message.includes('connection')) {
+        userFriendlyError = 'Network error - check your connection and try again';
+      } else if (err.message.includes('API key')) {
+        userFriendlyError = 'AI service not configured';
+      } else if (err.message.includes('Invalid JSON')) {
+        userFriendlyError = 'AI response error - please try again';
+      }
+      
+      setError(userFriendlyError);
+      
       // Return fallback data on error
       const fallbackResult = {
         productName: '',

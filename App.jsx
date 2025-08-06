@@ -1081,6 +1081,7 @@ const App = () => {
             refreshList={refreshLists}
             onDeleteList={deleteList}
             onUpdateList={updateList}
+            onNavigateToCamera={() => navigateToScreen('home')}
           />
         </PullToRefresh>
       );

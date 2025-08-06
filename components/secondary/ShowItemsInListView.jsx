@@ -92,7 +92,8 @@ const ShowItemsInListView = ({
   onEditItem, 
   refreshList,
   onDeleteList,
-  onUpdateList
+  onUpdateList,
+  onNavigateToCamera
 }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -367,21 +368,9 @@ const ShowItemsInListView = ({
       <div className="px-4 pb-28">
         {filteredAndSortedItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center mb-4 shadow-sm">
-              <Search className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {searchQuery.trim() ? 'No matching items' : 'No items yet'}
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {searchQuery.trim() 
-                ? 'Try adjusting your search or filters'
-                : 'Start adding items to build your collection'
-              }
-            </p>
             {!searchQuery.trim() && (
               <button
-                onClick={() => setShowAddModal(true)}
+                onClick={() => onNavigateToCamera ? onNavigateToCamera() : setShowAddModal(true)}
                 className="px-6 py-3 bg-teal-700 text-white rounded-full font-medium"
                 style={{ backgroundColor: '#1F6D5A' }}
               >

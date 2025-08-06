@@ -137,19 +137,25 @@ const useAchievements = () => {
         }
 
         if (existing) {
-          // Increment existing count and add new pending notification
+          // Update existing count for repeatable achievement
+          console.log(`🏆 [Achievements] Updating repeatable achievement count from ${existing.count} to ${existing.count + 1}`);
+          
           const { error: updateError } = await supabase
             .from('user_achievements')
-            .insert({
-              user_id: user.id,
-              achievement_id: achievementId,
-              progress_data: progressData,
+            .update({
               count: existing.count + 1,
-              // notified_at is NULL by default, making this a pending achievement
-            });
+              progress_data: progressData,
+              earned_at: new Date().toISOString(), // Update the earned time
+              notified_at: null // Reset notification status so it shows again
+            })
+            .eq('user_id', user.id)
+            .eq('achievement_id', achievementId);
 
           if (updateError) throw updateError;
-          return true;
+          console.log(`🏆 [Achievements] Successfully updated repeatable achievement count to ${existing.count + 1}`);
+          
+          // Return the updated count so the notification system can show it
+          return { success: true, count: existing.count + 1 };
         }
       } else {
         // Check if user already has this achievement (non-repeatable)
@@ -158,6 +164,8 @@ const useAchievements = () => {
       }
 
       // Insert new achievement
+      console.log(`🏆 [Achievements] Creating new achievement record with count 1`);
+      
       const { error } = await supabase
         .from('user_achievements')
         .insert({
@@ -169,7 +177,8 @@ const useAchievements = () => {
         });
 
       if (error) throw error;
-      return true;
+      console.log(`🏆 [Achievements] Successfully created new achievement record`);
+      return { success: true, count: 1 };
     } catch (error) {
       console.error('Error awarding achievement:', JSON.stringify({
           message: error.message,
@@ -192,9 +201,14 @@ const useAchievements = () => {
     const currentValue = stats[field] || 0;
     
     if (currentValue >= target) {
-      const awarded = await awardAchievement(achievement.id);
-      if (awarded) {
-        return { achievement, awarded: true };
+      const result = await awardAchievement(achievement.id);
+      if (result?.success) {
+        return { 
+          achievement, 
+          awarded: true, 
+          count: result.count,
+          isRepeatable: true
+        };
       }
     }
     return null;
@@ -205,9 +219,14 @@ const useAchievements = () => {
     const { criteria } = achievement;
     
     if (criteria.action === actionType) {
-      const awarded = await awardAchievement(achievement.id);
-      if (awarded) {
-        return { achievement, awarded: true };
+      const result = await awardAchievement(achievement.id);
+      if (result?.success) {
+        return { 
+          achievement, 
+          awarded: true, 
+          count: result.count,
+          isRepeatable: true
+        };
       }
     }
     return null;
@@ -222,26 +241,41 @@ const useAchievements = () => {
       switch (criteria.trigger) {
         case 'first_sign_in':
           // Award on first sign-in
-          const awarded = await awardAchievement(achievement.id, context);
-          if (awarded) {
-            return { achievement, awarded: true };
+          const result = await awardAchievement(achievement.id, context);
+          if (result?.success) {
+            return { 
+              achievement, 
+              awarded: true, 
+              count: result.count,
+              isRepeatable: true
+            };
           }
           break;
         
         case 'daily_sign_in':
           // Check for consecutive day sign-ins (streak logic could be added here)
           // For now, just award for any sign-in
-          const dailyAwarded = await awardAchievement(achievement.id, context);
-          if (dailyAwarded) {
-            return { achievement, awarded: true };
+          const dailyResult = await awardAchievement(achievement.id, context);
+          if (dailyResult?.success) {
+            return { 
+              achievement, 
+              awarded: true, 
+              count: dailyResult.count,
+              isRepeatable: true
+            };
           }
           break;
         
         default:
           // Generic sign-in achievement
-          const genericAwarded = await awardAchievement(achievement.id, context);
-          if (genericAwarded) {
-            return { achievement, awarded: true };
+          const genericResult = await awardAchievement(achievement.id, context);
+          if (genericResult?.success) {
+            return { 
+              achievement, 
+              awarded: true, 
+              count: genericResult.count,
+              isRepeatable: true
+            };
           }
           break;
       }
@@ -276,9 +310,15 @@ const useAchievements = () => {
         
         if (!otherUserLists || otherUserLists.length === 0) {
           // No other users exist, so this is definitely a first
-          const awarded = await awardAchievement(achievement.id, { context });
-          if (awarded) {
-            return { achievement, awarded: true, isGlobalFirst: true };
+          const result = await awardAchievement(achievement.id, { context });
+          if (result?.success) {
+            return { 
+              achievement, 
+              awarded: true, 
+              isGlobalFirst: true,
+              count: result.count,
+              isRepeatable: true
+            };
           }
           return null;
         }
@@ -307,9 +347,15 @@ const useAchievements = () => {
         
         if (!otherUserLists || otherUserLists.length === 0) {
           // No other users exist, so this is definitely a first
-          const awarded = await awardAchievement(achievement.id, { context });
-          if (awarded) {
-            return { achievement, awarded: true, isGlobalFirst: true };
+          const result = await awardAchievement(achievement.id, { context });
+          if (result?.success) {
+            return { 
+              achievement, 
+              awarded: true, 
+              isGlobalFirst: true,
+              count: result.count,
+              isRepeatable: true
+            };
           }
           return null;
         }
@@ -332,9 +378,15 @@ const useAchievements = () => {
 
       // If no one else has done this action, award the achievement
       if (!data || data.length === 0) {
-        const awarded = await awardAchievement(achievement.id, { context });
-        if (awarded) {
-          return { achievement, awarded: true, isGlobalFirst: true };
+        const result = await awardAchievement(achievement.id, { context });
+        if (result?.success) {
+          return { 
+            achievement, 
+            awarded: true, 
+            isGlobalFirst: true,
+            count: result.count,
+            isRepeatable: true
+          };
         }
       }
     } catch (error) {
@@ -393,7 +445,9 @@ const useAchievements = () => {
           // 🎉 Trigger notification for new achievement
           showAchievement({
             achievement: result.achievement,
-            isGlobalFirst: result.isGlobalFirst || false
+            isGlobalFirst: result.isGlobalFirst || false,
+            count: result.count || 1,
+            isRepeatable: result.isRepeatable || false
           });
         }
       }

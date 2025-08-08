@@ -97,14 +97,14 @@ const extractEXIFData = async (file) => {
       };
       
       reader.readAsArrayBuffer(file);
-    } catch (error) {
+      } catch (error) {
       console.error('EXIF extraction error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
       resolve({
         hasEXIF: false,
@@ -531,23 +531,23 @@ const MainScreen = React.forwardRef(({
               }
             } catch (error) {
               console.error('Error getting location:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
             }
           },
           (error) => {
             console.error('Error getting location:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
           }
         );
@@ -567,12 +567,12 @@ const MainScreen = React.forwardRef(({
       }
     } catch (error) {
       console.error('Error getting location:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
     }
   };
@@ -837,13 +837,9 @@ const MainScreen = React.forwardRef(({
             console.log('🌍 [GPS] Device location during capture:', deviceLocation);
           }
 
-          // Start AI processing with uploaded image
+          // Start AI processing using the original captured file
           console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-          // For AI analysis, we need to download the image and convert to file
-          const response = await fetch(uploadResult.url);
-          const blob = await response.blob();
-          const uploadedFile = new File([blob], tempFilename, { type: 'image/webp' });
-          const aiResult = await analyzeImage(uploadedFile, deviceLocation);
+          const aiResult = await analyzeImage(file, deviceLocation);
           
           // Create photo metadata
           const photoMetadata = {
@@ -874,12 +870,12 @@ const MainScreen = React.forwardRef(({
           }
         } catch (error) {
           console.error('Background processing error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
           
           // Check if this is an invalid image error (not a product)
@@ -917,12 +913,12 @@ const MainScreen = React.forwardRef(({
 
     } catch (error) {
       console.error('Capture error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
       setError(error.message);
       setIsCapturing(false);
@@ -1110,12 +1106,12 @@ const MainScreen = React.forwardRef(({
               }
             } catch (error) {
               console.error('Background processing error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
               
               // Check if this is an invalid image error (not a product)
@@ -1152,12 +1148,12 @@ const MainScreen = React.forwardRef(({
           }, 100);
         } catch (error) {
           console.error('Gallery upload error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
           setError('Failed to process selected image.');
         }
@@ -1400,7 +1396,7 @@ const MainScreen = React.forwardRef(({
               <div className="text-center py-8 px-6">
                 <div className="text-gray-500 mb-4">Failed to load feed</div>
                 <button
-                  onClick={refreshFeedData}
+                  onClick={handleFeedRefresh}
                   className="px-4 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium"
                   style={{ backgroundColor: '#1F6D5A' }}
                 >

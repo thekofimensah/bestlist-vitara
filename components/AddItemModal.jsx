@@ -214,6 +214,10 @@ const AddItemModal = ({
   const [showFirstInWorldBanner, setShowFirstInWorldBanner] = useState(false);
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  
+  // AI status toast
+  const [showAIToast, setShowAIToast] = useState(false);
+  const [aiToastMessage, setAiToastMessage] = useState('');
 
   const onCropComplete = useCallback((_ignored, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -284,6 +288,7 @@ const AddItemModal = ({
     if (aiMetadata?.productName) return aiMetadata.productName;
     return initialState?.productName ?? item?.name ?? '';
   });
+  const [productNameManuallyEdited, setProductNameManuallyEdited] = useState(false);
   const [category, setCategory] = useState(() => {
     if (aiMetadata?.category) return aiMetadata.category;
     return initialState?.category ?? item?.category ?? '';
@@ -347,12 +352,12 @@ const AddItemModal = ({
         }));
       } catch (error) {
         console.error('Location search error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
         setLocationResults([]);
       } finally {
@@ -419,12 +424,12 @@ const AddItemModal = ({
       }
     } catch (error) {
       console.error('Error loading list attributes:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
     }
     
@@ -438,12 +443,12 @@ const AddItemModal = ({
       localStorage.setItem(`listAttributes_${listId}`, JSON.stringify(attributes));
     } catch (error) {
       console.error('Error saving list attributes:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
     }
   }, []);
@@ -570,7 +575,9 @@ const AddItemModal = ({
   // Update state when AI metadata becomes available
   useEffect(() => {
     if (aiMetadata) {
-      setProductName(aiMetadata.productName);
+      if (!productNameManuallyEdited && aiMetadata.productName) {
+        setProductName((prev) => prev || aiMetadata.productName);
+      }
       setCategory(aiMetadata.category);
       setTags(aiMetadata.tags);
       setCertainty(aiMetadata.certainty);
@@ -586,7 +593,16 @@ const AddItemModal = ({
         onUpdateAI(aiMetadata);
       }
     }
-  }, [aiMetadata]);
+  }, [aiMetadata, productNameManuallyEdited]);
+
+  // Show toast when AI fails
+  useEffect(() => {
+    if (aiError && !isAIProcessing) {
+      setAiToastMessage('Analysis failed');
+      setShowAIToast(true);
+      setTimeout(() => setShowAIToast(false), 4000);
+    }
+  }, [aiError, isAIProcessing]);
 
   // Sync attributes with overall rating when user changes rating
   useEffect(() => {
@@ -767,12 +783,12 @@ const AddItemModal = ({
           console.log('✅ Public post created successfully');
         } catch (error) {
           console.error('❌ Failed to create public post:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
           // Don't block the flow if post creation fails
         }
@@ -785,12 +801,12 @@ const AddItemModal = ({
       
     } catch (error) {
       console.error('❌ Save operation failed:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
       // Show error to user (you might want to add a toast notification here)
       alert('Failed to save item. Please try again.');
@@ -819,12 +835,12 @@ const AddItemModal = ({
         }
       } catch (error) {
         console.error('❌ AddItemModal: Error creating list:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
         setCreateListError(error.message || 'An unexpected error occurred.');
       }
@@ -948,12 +964,12 @@ const AddItemModal = ({
         setCurrency(detectedCurrency);
       } catch (error) {
         console.error('🌍 Currency detection failed:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
         setCurrency('USD'); // Fallback
       }
@@ -1021,12 +1037,12 @@ const AddItemModal = ({
           });
         } catch (nativeError) {
           console.log('Native geolocation failed, trying web fallback:', nativeJSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
           // Fall back to web geolocation even on native
           if (navigator.geolocation) {
@@ -1204,133 +1220,44 @@ const AddItemModal = ({
         className={`relative overflow-hidden ${showRatingOverlay ? 'hidden' : ''}`}
         style={{ height: '350px' }}
       >
-        {/* AI Error State */}
-        {aiError && !isAIProcessing && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl p-6 mx-6 text-center shadow-xl max-w-sm">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <X className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Analysis Failed</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                {typeof aiError === 'string' ? aiError : 'Unable to analyze this image.'}
-              </p>
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={onRetryAI}
-                  className="w-full px-4 py-2 bg-teal-700 text-white rounded-xl font-medium"
-                  style={{ backgroundColor: '#1F6D5A' }}
-                >
-                  Retry Analysis
-                </button>
-                <button
-                  onClick={() => onClose()}
-                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium"
-                >
-                  Add Manually
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Cinematic AI Loading Effect (from original) */}
+        {/* Seamless AI Loading Effects */}
         {(isAIProcessing && !aiCancelled && !aiError) && (
-          <div className="absolute inset-0 z-10 pointer-events-none">
-            {/* Scanning line animation */}
-            <div className="absolute inset-0">
-              <div className="absolute h-full w-1 left-1/2 -translate-x-1/2 bg-gradient-to-b from-transparent via-blue-400 to-transparent animate-pulse opacity-70" style={{animationDuration:'1.2s'}}></div>
+          <>
+            {/* Enhanced shimmer overlay on photo */}
+            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 5 }}>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-shimmer" 
+                   style={{ animationDuration: '1.5s' }} />
+              <div className="absolute inset-0 bg-gradient-to-br from-transparent via-blue-400/10 to-transparent animate-pulse" />
             </div>
-            {/* Shimmer overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
-            {/* AI icon in center */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="bg-white/95 rounded-full p-3 shadow-xl animate-pulse border-2 border-blue-200 relative">
-                <Sparkles className="w-6 h-6 text-blue-500" />
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
-              </div>
+            
+            {/* Progress line at bottom */}
+            <div className="absolute bottom-0 left-0 right-0 z-10">
+              <div className="h-1 bg-gradient-to-r from-teal-500 to-blue-500 animate-pulse" />
             </div>
-            {/* Cancel AI Button - centered */}
+            
+            {/* Cancel button - top right only */}
             <button
               onClick={() => {
                 setAiCancelled(true);
-                if (onUpdateAI) {
-                  onUpdateAI(null); // Stop AI processing
-                }
+                if (onUpdateAI) onUpdateAI(null);
+                // Show toast
+                setAiToastMessage('Continuing without AI');
+                setShowAIToast(true);
+                setTimeout(() => setShowAIToast(false), 3000);
               }}
-              className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg pointer-events-auto z-30 mt-16"
+              className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg border border-gray-200 hover:bg-white transition-colors"
             >
-              <X className="w-5 h-5 text-gray-700" />
+              <span className="text-xs font-medium text-gray-700">Cancel</span>
             </button>
-          </div>
-        )}
-
-        {/* AI Failed/Cancelled State */}
-        {aiCancelled && aiRetryCount < 3 && (
-          <AnimatePresence>
-            <motion.div
-              className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <motion.div
-                role="dialog"
-                aria-modal="true"
-                className="w-full max-w-sm rounded-3xl bg-white p-5 text-center shadow-md"
-                initial={{ scale: 0.96, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.96, opacity: 0 }}
-                transition={{ duration: 0.18 }}
-              >
-                {/* Subtle icon */}
-                <div
-                  className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full"
-                  style={{ backgroundColor: '#FDEAEA' }}
-                >
-                  <X className="h-4 w-4" style={{ color: '#B0443C' }} />
-                </div>
-
-                {/* Title + helper copy (smaller, calmer) */}
-                <h3 className="mb-1 text-base font-semibold text-gray-900">
-                  Analysis paused
-                </h3>
-                <p className="mb-4 text-xs text-gray-600">
-                  Retry AI now, or continue without it.
-                </p>
-
-                {/* Actions */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setAiCancelled(false);
-                      setAiRetryCount((prev) => prev + 1);
-                      // trigger retry logic
-                    }}
-                    className="flex-1 rounded-full px-4 py-2.5 text-sm font-medium text-white"
-                    style={{ backgroundColor: '#1F6D5A' }}
-                  >
-                    Retry
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setAiCancelled(false);
-                      // continue without AI
-                    }}
-                    className="flex-1 rounded-full px-4 py-2.5 text-sm font-medium bg-gray-50 text-gray-800 hover:bg-gray-100"
-                  >
-                    Continue
-                  </button>
-                </div>
-
-                {/* Quiet meta line */}
-                <p className="mt-2 text-[11px] text-gray-500">
-                  Retries left: {3 - aiRetryCount}
-                </p>
-              </motion.div>
-            </motion.div>
-          </AnimatePresence>
+            
+            {/* Status overlay - positioned just above card */}
+            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
+              <div className="bg-white/95 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200 flex items-center gap-2">
+                <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse" />
+                <span className="text-sm font-medium text-gray-800">Analyzing…</span>
+              </div>
+            </div>
+          </>
         )}
 
         <SmartImage
@@ -1486,32 +1413,40 @@ const AddItemModal = ({
             {/* Item Header */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
-                {isAIProcessing ? (
-                  <div className="h-7 bg-gray-200 rounded-lg flex-1 skeleton-shimmer"></div>
-                ) : (
-                  <input
-                    ref={productNameRef}
-                    type="text"
-                    value={productName}
-                    onChange={(e) => {
-                      setProductName(e.target.value);
-                      // Clear validation error when user starts typing
-                      if (showValidationErrors && validationErrors.productName) {
-                        setValidationErrors(prev => ({ ...prev, productName: null }));
-                      }
-                    }}
-                    className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none flex-1 placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
-                      showValidationErrors && validationErrors.productName 
-                        ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
-                        : ''
-                    }`}
-                    placeholder="Product name..."
-                    autoComplete="off"
-                    autoCorrect="on"
-                    autoCapitalize="words"
-                    spellCheck="true"
-                  />
-                )}
+                <div className="flex-1 relative min-h-[32px]">
+                  {isAIProcessing && !aiCancelled && !aiError ? (
+                    // Match tags overlay style with shimmer pills
+                    <div className="flex items-center gap-2">
+                      <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-28 h-7 loading-tag"></div>
+                      <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-7 loading-tag"></div>
+                      <div className="hidden sm:block px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-7 loading-tag"></div>
+                    </div>
+                  ) : (
+                    <input
+                      ref={productNameRef}
+                      type="text"
+                      value={productName}
+                      onChange={(e) => {
+                        setProductName(e.target.value);
+                        setProductNameManuallyEdited(true);
+                        if (showValidationErrors && validationErrors.productName) {
+                          setValidationErrors(prev => ({ ...prev, productName: null }));
+                        }
+                      }}
+                      onFocus={() => setProductNameManuallyEdited(true)}
+                      className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
+                        showValidationErrors && validationErrors.productName 
+                          ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
+                          : ''
+                      }`}
+                      placeholder="Product name..."
+                      autoComplete="off"
+                      autoCorrect="on"
+                      autoCapitalize="words"
+                      spellCheck="true"
+                    />
+                  )}
+                </div>
                 {!isAIProcessing && aiMetadata && (
                   <div className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-0.5" style={{ backgroundColor: '#FAFAF9' }}>
                     <Sparkles className="w-2.5 h-2.5 text-gray-400" />
@@ -1531,7 +1466,7 @@ const AddItemModal = ({
               {/* Overall Rating Section - moved here */}
               <div className="mb-4">
                 <div className="flex items-center gap-3 mb-2">
-                  <StarRating rating={rating} onChange={setRating} editable={!isAIProcessing} showNumber={false} />
+                  <StarRating rating={rating} onChange={setRating} editable={true} showNumber={false} />
                   <span className="text-sm font-medium text-gray-600">{getRatingLabel(rating)}</span>
                   {!isAIProcessing && (
                     <button
@@ -1648,7 +1583,6 @@ const AddItemModal = ({
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                disabled={isAIProcessing}
                 placeholder="Add your personal thoughts, memories, or additional notes..."
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
                 rows={3}
@@ -1665,8 +1599,7 @@ const AddItemModal = ({
                     <div className="flex items-center bg-gray-100 rounded-lg px-1 py-0.5">
                       <button
                         onClick={() => handleRarityChange(-1)}
-                        disabled={isAIProcessing}
-                        className="p-1 disabled:opacity-30 active:scale-95"
+                        className="p-1 active:scale-95"
                       >
                         <ArrowLeft className="w-3 h-3 text-gray-600" />
                       </button>
@@ -1675,8 +1608,7 @@ const AddItemModal = ({
                       </span>
                       <button
                         onClick={() => handleRarityChange(1)}
-                        disabled={isAIProcessing}
-                        className="p-1 disabled:opacity-30 active:scale-95"
+                        className="p-1 active:scale-95"
                       >
                         <ArrowRight className="w-3 h-3 text-gray-600" />
                       </button>
@@ -1714,7 +1646,6 @@ const AddItemModal = ({
                     <textarea
                       value={qualityOverview}
                       onChange={(e) => setQualityOverview(e.target.value)}
-                      disabled={isAIProcessing}
                       placeholder={
                         isAIProcessing 
                           ? "AI is analyzing the image..." 
@@ -2283,6 +2214,21 @@ const AddItemModal = ({
                 >
                   <span>Crop</span>
                 </button>
+                
+                {/* Retry Analysis button */}
+                {(aiError || aiCancelled) && onRetryAI && (
+                  <button
+                    onClick={() => {
+                      setShowFullScreenPhoto(false);
+                      setAiCancelled(false);
+                      onRetryAI();
+                    }}
+                    className="px-4 py-2 bg-teal-600/80 backdrop-blur-sm rounded-full flex items-center gap-2 text-white font-medium hover:bg-teal-600"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Retry Analysis</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2344,29 +2290,46 @@ const AddItemModal = ({
               
               <h2 className="text-white font-semibold">Crop Photo</h2>
               
-              <button
-                onClick={async () => {
-                  try {
-                    const cropped = await getCroppedImg();
-                    setCurrentImage(cropped);
-                    setZoom(1);
-                    setCrop({ x: 0, y: 0 });
-                    setIsCropping(false);
-                  } catch (error) {
-                    console.error('Crop error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-                  }
-                }}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium"
-              >
-                Done
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Retry Analysis button */}
+                {(aiError || aiCancelled) && onRetryAI && aiRetryCount < 3 && (
+                  <button
+                    onClick={() => {
+                      setIsCropping(false);
+                      setAiCancelled(false);
+                      onRetryAI();
+                    }}
+                    className="px-4 py-2 bg-teal-600/80 text-white rounded-lg font-medium hover:bg-teal-600 flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Retry Analysis</span>
+                  </button>
+                )}
+                
+                <button
+                  onClick={async () => {
+                    try {
+                      const cropped = await getCroppedImg();
+                      setCurrentImage(cropped);
+                      setZoom(1);
+                      setCrop({ x: 0, y: 0 });
+                      setIsCropping(false);
+                    } catch (error) {
+                      console.error('Crop error:', JSON.stringify({
+            message: error.message,
+            name: error.name,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+            fullError: error
+          }, null, 2));
+                    }
+                  }}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium"
+                >
+                  Done
+                </button>
+              </div>
             </div>
 
             {/* Simple Cropper */}
@@ -2423,6 +2386,32 @@ const AddItemModal = ({
         productName={firstInWorldProduct}
         onComplete={() => setShowFirstInWorldBanner(false)}
       />
+
+      {/* AI Status Toast */}
+      <AnimatePresence>
+        {showAIToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+            style={{ width: 'auto', maxWidth: '80%' }}
+          >
+            <div className="bg-gray-900 text-white rounded-full px-3 py-2 shadow-lg flex items-center gap-2 justify-center">
+              <span className="text-xs font-medium">{aiToastMessage}</span>
+              {aiError && (
+                <button
+                  onClick={onRetryAI}
+                  className="px-4 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 hover:bg-white/20"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

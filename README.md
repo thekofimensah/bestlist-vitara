@@ -112,7 +112,6 @@ Add a prompt when they try and create an entry without any notes. It should say 
    Product card should show easy to read date and time.
 Cropping still not perfect
 
-Keyboards aren't working like I like them to (swype, auto capitalize, etc...)
 Profile view 
    Add button for contact support/ give feedback
 
@@ -210,19 +209,12 @@ Crop still not draggging from corners
 
 Android native back not working from within list
 
-Add a refresh on slide down for any pages that make sense to be refreshed 
-
-When entering price, it would be gopd if it defaulted to number keyboard
 
 The price should default to the currency of the current location (and it can also be changed) If they change it, then use that currency for now on, but if they click on the currency, they can change to a different one. 
 
 
 
-Remove feed for you, and only following for now. Push it lower on the page and maybe make the images go edge to edge and immersive.
 
-AI analysis stopped popup is so ugly
-
-Can't get the keyboard to act native, only when a popup with a native look comes, but that's no bueno
 
 
 Need to resize image, screenshotted images are too long for the stars to work. But do this only when we do the redesign of that screen
@@ -230,10 +222,6 @@ Need to resize image, screenshotted images are too long for the stars to work. B
 Expected behaviors:
 So when the drag to refresh functionality appears, every element on the page should be refreshed.
 
-There are a couple of popups I want you to redesign using better ui/ux design. They just are quite ugly, and I'm going for a clean minimal feel. Could you give me a redesign of the notifications view (when people click on the bell and they can see all their new and old notifications?)
 
-Let's follow simiarl design styles to google and other good designed apps like instagram.
 
-I'm referring mainly to the size of the popup, the fonts, and the shape of the popup relative to the screen.
-
-Also when we cancel an ai process from loading on an image, a popup appears that is incredibly ugly. Fix that to look better and fix the biuttons to make sense, etc..
+I want

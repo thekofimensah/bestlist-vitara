@@ -73,7 +73,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
         </div>
         
         {/* App Name */}
-        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>ChefKiss</h1>
+        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Yumery</h1>
         <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
         
         {/* Progress Bar */}
@@ -1368,7 +1368,7 @@ const App = () => {
             <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
               <span className="text-white text-xs font-bold">b</span>
             </div>
-            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>ChefKiss</h1>
+            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Yumery</h1>
           </div>
           <div className="flex items-center gap-3">
             <button 

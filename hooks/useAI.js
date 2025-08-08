@@ -5,6 +5,7 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 export const useAI = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
 
   const encodeImageToBase64 = useCallback((file) => {
     return new Promise((resolve, reject) => {
@@ -50,6 +51,7 @@ export const useAI = () => {
 
     setIsProcessing(true);
     setError(null);
+    setResult(null);
     
     const makeRequest = async (attempt = 1, maxAttempts = 3) => {
       const startTime = Date.now();
@@ -185,14 +187,14 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
           throw new Error(`AI analysis failed: ${response.status} - ${errorText.substring(0, 200)}`);
         }
 
-        const result = await response.json();
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const json = await response.json();
+        const responseText = json.candidates?.[0]?.content?.parts?.[0]?.text;
         const elapsed = Date.now() - startTime;
         
         console.log(`🤖 [AI] Response received in ${elapsed}ms`);
         
         if (!responseText) {
-          console.error('🤖 [AI] Empty response from Gemini:', result);
+          console.error('🤖 [AI] Empty response from Gemini:', json);
           throw new Error('No response text from AI');
         }
 
@@ -222,6 +224,16 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
         console.log('🤖 [AI] Structured response:', JSON.stringify(aiData, null, 2));
         console.log('🤖 [AI] Formatted result:', JSON.stringify(aiResult, null, 2));
 
+        // Auto-cancel rules: low confidence or missing essential fields
+        const confidence = typeof aiData.confidence === 'number' ? aiData.confidence : 0;
+        const hasName = Boolean(aiData.product || aiData.name);
+        if (!hasName || confidence < 0.4) {
+          const reason = !hasName ? 'missing product name' : `low confidence (${Math.round(confidence * 100)}%)`;
+          console.warn(`🤖 [AI] Auto-cancelling due to ${reason}`);
+          throw new Error(`AI result not reliable: ${reason}`);
+        }
+
+        setResult(aiResult);
         return aiResult;
       } catch (err) {
         const elapsed = Date.now() - startTime;
@@ -268,9 +280,11 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
     };
     
     try {
-      return await makeRequest();
+      const ai = await makeRequest();
+      console.log('✅ [AI] Final status: success');
+      return ai;
     } catch (err) {
-      console.error('🤖 [AI] Analysis failed:', {
+      console.error('❌ [AI] Analysis failed:', {
         message: err.message,
         name: err.name,
         attempts: '3 attempts made'
@@ -298,11 +312,13 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
         tags: [],
         productType: ''
       };
+      console.log('ℹ️ [AI] Returning fallback result due to error');
       return fallbackResult;
     } finally {
       setIsProcessing(false);
+      console.log('🧹 [AI] Processing flag cleared');
     }
   }, [encodeImageToBase64]);
 
-  return { analyzeImage, isProcessing, error };
+  return { analyzeImage, isProcessing, error, result };
 };

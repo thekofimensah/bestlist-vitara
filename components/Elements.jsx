@@ -9,10 +9,11 @@ export const RatingOverlay = ({
   onRatingSelect, 
   isVisible = true 
 }) => {
-  const [showStars, setShowStars] = useState(false);
+  const [showStars, setShowStars] = useState(true);
   const [selectedStar, setSelectedStar] = useState(null);
   const [showExit, setShowExit] = useState(false);
   const [sparkles, setSparkles] = useState([]);
+  const [isTallImage, setIsTallImage] = useState(false);
 
   // Animation sequence
   useEffect(() => {
@@ -25,9 +26,8 @@ export const RatingOverlay = ({
         delay: Math.random() * 0.5
       }));
       setSparkles(sparklePositions);
-      
-      // Then show stars after a delay
-      setTimeout(() => setShowStars(true), 800);
+      // Stars visible immediately for snappier UX
+      setShowStars(true);
     }
   }, [isVisible]);
 
@@ -49,24 +49,37 @@ export const RatingOverlay = ({
     }, 300);
   };
 
-  const starOrder = [3, 2, 4, 1, 5]; // Center out cascade
+  // Display stars left-to-right 1..5 so selection maps correctly.
+  // Use a center-out delay for entrance animation only.
+  const stars = [1, 2, 3, 4, 5];
+  const getStarDelay = (value) => {
+    const center = 3; // middle star
+    const distance = Math.abs(value - center);
+    return 0.2 + distance * 0.06;
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       {/* Card Container */}
       <motion.div 
-        className="bg-white rounded-3xl overflow-hidden w-full max-w-md mx-auto flex flex-col"
+        className="bg-white rounded-3xl overflow-hidden w-full max-w-md max-h-[90vh] mx-auto flex flex-col shadow-2xl"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
         {/* Image Section */}
-        <div className="relative bg-gray-100 aspect-square">
+        <div className="relative bg-gray-100 flex-shrink-0 h-[52vh] sm:h-[56vh] md:h-[60vh]">
           <img 
             src={image} 
             alt="Captured" 
             className="w-full h-full object-cover"
             style={{ filter: getInstagramClassicFilter() }}
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              if (img.naturalHeight && img.naturalWidth) {
+                setIsTallImage(img.naturalHeight / img.naturalWidth > 1.4);
+              }
+            }}
           />
           
           {/* Sparkle effects over image */}
@@ -101,11 +114,10 @@ export const RatingOverlay = ({
         </div>
 
         {/* Content Section */}
-        <div className="p-6 flex flex-col items-center text-center">
+        <div className="p-5 flex flex-col items-center text-center overflow-y-auto">
           {/* Title/Header */}
-          <div className="mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Rate this item</h2>
-            
+          <div className="mb-3">
+            <h2 className="text-xl font-semibold tracking-tight text-gray-900">Rate this item</h2>
           </div>
 
           {/* Star Rating Section */}
@@ -116,7 +128,7 @@ export const RatingOverlay = ({
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-gray-700 text-lg font-medium mb-6 text-center px-6"
+                className="text-gray-700 text-base font-medium mb-5 text-center px-6"
               >
                 How would you rate this?
               </motion.div>
@@ -125,17 +137,17 @@ export const RatingOverlay = ({
                 className="flex items-center gap-4"
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 }}
+                transition={{ delay: 0.1 }}
               >
-                {starOrder.map((rating, index) => (
+                {stars.map((value) => (
                   <motion.button
-                    key={rating}
-                    onClick={() => handleStarSelect(rating)}
+                    key={value}
+                    onClick={() => handleStarSelect(value)}
                     className="relative"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ 
-                      delay: 0.4 + (index * 0.1),
+                      delay: getStarDelay(value),
                       type: "spring",
                       stiffness: 300 
                     }}
@@ -144,22 +156,22 @@ export const RatingOverlay = ({
                   >
                     <Star
                       className={`w-12 h-12 transition-all duration-200 ${
-                        selectedStar === rating
+                        selectedStar === value
                           ? 'text-teal-500 fill-teal-500'
                           : 'text-gray-400 hover:text-yellow-400'
                       }`}
-                      fill={selectedStar === rating ? 'currentColor' : 'none'}
+                      fill={selectedStar === value ? 'currentColor' : 'none'}
                       style={{
-                        filter: selectedStar === rating 
+                        filter: selectedStar === value 
                           ? 'drop-shadow(0 2px 4px rgba(20, 184, 166, 0.3))' 
                           : 'none',
-                        stroke: selectedStar === rating ? 'none' : '#6B7280',
-                        strokeWidth: selectedStar === rating ? 0 : 1.5
+                        stroke: selectedStar === value ? 'none' : '#6B7280',
+                        strokeWidth: selectedStar === value ? 0 : 1.5
                       }}
                     />
                     
                     {/* Glow effect for selected star */}
-                    {selectedStar === rating && (
+                    {selectedStar === value && (
                       <motion.div
                         className="absolute inset-0 rounded-full bg-teal-400/30"
                         initial={{ scale: 1, opacity: 0 }}
@@ -231,7 +243,7 @@ export const RatingOverlay = ({
                 className="text-gray-600 text-sm mt-4 text-center"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
+                transition={{ delay: 0.3 }}
               >
                 Tap a star to continue
               </motion.p>

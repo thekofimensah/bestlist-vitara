@@ -113,7 +113,7 @@ export const NotificationsDropdown = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-25 z-40"
+            className="fixed inset-0 bg-gray-500 bg-opacity-20 z-40"
             onClick={onClose}
           />
 
@@ -122,34 +122,35 @@ export const NotificationsDropdown = ({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="absolute right-2 top-14 w-96 max-w-[calc(100vw-1rem)] bg-white rounded-xl shadow-xl z-50 overflow-hidden"
+            role="dialog"
+            aria-label="Notifications"
+            className="fixed right-4 top-16 w-[420px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
           >
-            <div className="p-4 border-b flex items-center justify-between">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
-                <p className="text-sm text-gray-500">
-                  {unreadCount} unread ({notifications?.length || 0} total)
-                </p>
+                <h3 className="text-base font-semibold text-gray-900">Notifications</h3>
+                <p className="text-xs text-gray-500">{unreadCount} unread · {notifications?.length || 0} total</p>
               </div>
               <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
                   <button
                     onClick={onMarkAllRead}
-                    className="text-sm text-teal-600 hover:text-teal-700"
+                    className="px-3 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
                   >
                     Mark all read
                   </button>
                 )}
                 <button
                   onClick={onClose}
-                  className="p-1 hover:bg-gray-100 rounded-full"
+                  className="p-1.5 hover:bg-gray-100 rounded-full"
+                  aria-label="Close notifications"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-4 h-4 text-gray-500" />
                 </button>
               </div>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto">
+            <div className="max-h-[70vh] overflow-y-auto divide-y divide-gray-100">
               {notifications && notifications.length > 0 ? (
                 <>
                   {logToAndroid('🔔 Rendering', notifications.length, 'notifications')}
@@ -163,15 +164,10 @@ export const NotificationsDropdown = ({
                   ))}
                 </>
               ) : (
-                <>
-                  {logToAndroid('🔔 No notifications to display')}
-                  <div className="p-8 text-center text-gray-500">
-                    <div className="mb-2">No notifications yet</div>
-                    <div className="text-xs text-gray-400">
-                      Debug: {notifications ? `Array with ${notifications.length} items` : 'notifications is null/undefined'}
-                    </div>
-                  </div>
-                </>
+                <div className="p-10 text-center">
+                  <div className="text-sm text-gray-600 mb-1">No notifications yet</div>
+                  <div className="text-xs text-gray-400">You're all caught up</div>
+                </div>
               )}
             </div>
           </motion.div>

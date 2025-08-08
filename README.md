@@ -183,7 +183,7 @@ Foodex
 Tastest
 Bestist
 Bestest
-
+yumary/yumery/yumory
 
 
 
@@ -225,5 +225,8 @@ AI analysis stopped popup is so ugly
 Can't get the keyboard to act native, only when a popup with a native look comes, but that's no bueno
 
 
+Need to resize image, screenshotted images are too long for the stars to work. But do this only when we do the redesign of that screen
+
 Expected behaviors:
 So when the drag to refresh functionality appears, every element on the page should be refreshed.
+

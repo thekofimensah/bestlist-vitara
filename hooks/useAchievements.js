@@ -16,7 +16,7 @@ const useAchievements = () => {
     globalAchievements = useGlobalAchievements();
     showAchievement = globalAchievements?.showAchievement || (() => {});
   } catch (error) {
-    console.log('🏆 [Achievements] Global achievements not available:', error.message);
+    
   }
 
   // Get all available achievements
@@ -138,8 +138,6 @@ const useAchievements = () => {
 
         if (existing) {
           // Update existing count for repeatable achievement
-          console.log(`🏆 [Achievements] Updating repeatable achievement count from ${existing.count} to ${existing.count + 1}`);
-          
           const { error: updateError } = await supabase
             .from('user_achievements')
             .update({
@@ -152,7 +150,6 @@ const useAchievements = () => {
             .eq('achievement_id', achievementId);
 
           if (updateError) throw updateError;
-          console.log(`🏆 [Achievements] Successfully updated repeatable achievement count to ${existing.count + 1}`);
           
           // Return the updated count so the notification system can show it
           return { success: true, count: existing.count + 1 };
@@ -164,8 +161,6 @@ const useAchievements = () => {
       }
 
       // Insert new achievement
-      console.log(`🏆 [Achievements] Creating new achievement record with count 1`);
-      
       const { error } = await supabase
         .from('user_achievements')
         .insert({
@@ -177,7 +172,6 @@ const useAchievements = () => {
         });
 
       if (error) throw error;
-      console.log(`🏆 [Achievements] Successfully created new achievement record`);
       return { success: true, count: 1 };
     } catch (error) {
       console.error('Error awarding achievement:', JSON.stringify({
@@ -333,26 +327,25 @@ const useAchievements = () => {
           .not('image_url', 'is', null)
           .in('list_id', otherUserListIds);
       } else if (criteria.scope === 'country' && context.location) {
-        // Check if anyone else has photographed from this country
+        // For "first picture in new country" - check if THIS user has photographed in this country before
         const country = extractCountryFromLocation(context.location);
         if (!country) return null;
         
-        // First get all lists that belong to other users
-        const { data: otherUserLists, error: listsError } = await supabase
+        // Get this user's lists
+        const { data: userLists, error: listsError } = await supabase
           .from('lists')
           .select('id')
-          .neq('user_id', user.id);
+          .eq('user_id', user.id);
           
         if (listsError) throw listsError;
-        
-        if (!otherUserLists || otherUserLists.length === 0) {
-          // No other users exist, so this is definitely a first
+        if (!userLists || userLists.length === 0) {
+          // User has no lists yet, so this is definitely their first photo in any country
           const result = await awardAchievement(achievement.id, { context });
           if (result?.success) {
             return { 
               achievement, 
               awarded: true, 
-              isGlobalFirst: true,
+              isGlobalFirst: false, // This is personal first, not global
               count: result.count,
               isRepeatable: true
             };
@@ -360,15 +353,15 @@ const useAchievements = () => {
           return null;
         }
         
-        const otherUserListIds = otherUserLists.map(list => list.id);
+        const userListIds = userLists.map(list => list.id);
         
-        // Check if any other user has items from this country
+        // Check if THIS user has any items from this country already
         query = supabase
           .from('items')
           .select('id')
           .ilike('location', `%${country}%`)
           .not('image_url', 'is', null)
-          .in('list_id', otherUserListIds);
+          .in('list_id', userListIds);
       }
 
       if (!query) return null;
@@ -376,14 +369,14 @@ const useAchievements = () => {
       const { data, error } = await query.limit(1);
       if (error) throw error;
 
-      // If no one else has done this action, award the achievement
+      // If user hasn't done this action before, award the achievement
       if (!data || data.length === 0) {
         const result = await awardAchievement(achievement.id, { context });
         if (result?.success) {
           return { 
             achievement, 
             awarded: true, 
-            isGlobalFirst: true,
+            isGlobalFirst: criteria.scope === 'global', // Only global scope is truly "global first"
             count: result.count,
             isRepeatable: true
           };
@@ -468,11 +461,33 @@ const useAchievements = () => {
     }
   }, [user?.id, isProcessing, getAchievements, checkCounterAchievement, checkFirstActionAchievement, checkGlobalFirstAchievement, showAchievement]);
 
+  // Function to remove achievement (for when users don't save items)
+  const removeAchievement = useCallback(async (achievementId, context = {}) => {
+    if (!user?.id) return false;
+    
+    try {
+      // Only remove if it was awarded in the current session and user hasn't saved the item
+      const { error } = await supabase
+        .from('user_achievements')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('achievement_id', achievementId)
+        .is('notified_at', null); // Only remove unnotified achievements (recently awarded)
+      
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error removing achievement:', error.message);
+      return false;
+    }
+  }, [user?.id]);
+
   return {
     checkAchievements,
     getUserAchievements,
     getAchievements,
     hasAchievement,
+    removeAchievement,
     isProcessing
   };
 };

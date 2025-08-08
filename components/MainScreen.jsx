@@ -407,8 +407,11 @@ const MainScreen = React.forwardRef(({
   const streamRef = useRef(null);
   
   // Achievement hooks
-  const { checkAchievements } = useAchievements();
+  const { checkAchievements, removeAchievement } = useAchievements();
   const { showAchievement } = useGlobalAchievements();
+  
+  // Track AI-triggered achievements for potential removal
+  const [aiTriggeredAchievements, setAiTriggeredAchievements] = useState([]);
   
   // Camera states
   const [isCapturing, setIsCapturing] = useState(false);
@@ -456,6 +459,16 @@ const MainScreen = React.forwardRef(({
       
       if (achievements && achievements.length > 0) {
         console.log('🏆 [First in World] Achievement unlocked!', achievements);
+        
+        // Track achievements for potential removal if user doesn't save
+        setAiTriggeredAchievements(prev => [
+          ...prev,
+          ...achievements.map(a => ({
+            achievementId: a.achievement.id,
+            productName: aiResult.productName,
+            context
+          }))
+        ]);
         
         // Show achievement immediately with special effects
         achievements.forEach(achievement => {
@@ -932,6 +945,21 @@ const MainScreen = React.forwardRef(({
       if (capturedImage.storagePath) {
         await deletePhotoEverywhere(capturedImage.storagePath);
       }
+      
+      // Remove AI-triggered achievements if user didn't save the item
+      if (aiTriggeredAchievements.length > 0) {
+        console.log('🏆 [Cleanup] Removing AI-triggered achievements for unsaved item:', aiTriggeredAchievements);
+        
+        for (const achievementData of aiTriggeredAchievements) {
+          try {
+            await removeAchievement(achievementData.achievementId, achievementData.context);
+          } catch (error) {
+            console.error('❌ [Cleanup] Failed to remove achievement:', error.message);
+          }
+        }
+        
+        setAiTriggeredAchievements([]);
+      }
     }
     setShowModal(false);
     setCapturedImage(null);
@@ -954,6 +982,13 @@ const MainScreen = React.forwardRef(({
   const handleSave = async (...args) => {
     setWasSaved(true);
     const savedItem = await onAddItem(...args);
+    
+    // Clear AI-triggered achievements since user saved the item
+    if (aiTriggeredAchievements.length > 0) {
+      console.log('🏆 [Save] Clearing AI-triggered achievements (item was saved):', aiTriggeredAchievements);
+      setAiTriggeredAchievements([]);
+    }
+    
     setShowModal(false);
     setCapturedImage(null);
     return savedItem; // Return the saved item for post creation

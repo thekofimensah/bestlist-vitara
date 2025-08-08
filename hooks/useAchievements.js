@@ -125,17 +125,19 @@ const useAchievements = () => {
 
       // For repeatable achievements, increment count instead of checking if already has
       if (achievement.is_repeatable) {
-        const { data: existing, error: fetchError } = await supabase
+        // Fetch a single existing row (do not fail if multiple or none)
+        const { data: existingRows, error: fetchError } = await supabase
           .from('user_achievements')
-          .select('count')
+          .select('id, count')
           .eq('user_id', user.id)
           .eq('achievement_id', achievementId)
-          .single();
+          .limit(1);
 
-        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = not found
+        if (fetchError) {
           throw fetchError;
         }
 
+        const existing = existingRows && existingRows[0] ? existingRows[0] : null;
         if (existing) {
           // Update existing count for repeatable achievement
           const { error: updateError } = await supabase
@@ -211,7 +213,7 @@ const useAchievements = () => {
   // Check first action achievements
   const checkFirstActionAchievement = useCallback(async (achievement, actionType) => {
     const { criteria } = achievement;
-    
+    console.log('🏆 [FirstAction] Check', { achievementId: achievement.id, criteria, actionType });
     if (criteria.action === actionType) {
       const result = await awardAchievement(achievement.id);
       if (result?.success) {
@@ -285,50 +287,48 @@ const useAchievements = () => {
 
     try {
       let query;
+      const sanitize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const isLikelyPackagedProduct = () => {
+        // Must have a brand to be considered a real product
+        const brand = context.ai_brand || context.brand;
+        if (!brand || sanitize(brand).length < 2) return false;
+        // Heuristics to exclude dishes/meals
+        const name = sanitize(context.ai_product_name || context.product_name);
+        const dishWords = ['plate', 'bowl', 'soup', 'salad', 'pizza', 'pasta', 'ravioli', 'ramen', 'steak', 'sandwich'];
+        if (dishWords.some((w) => name.includes(` ${w} `) || name.endsWith(` ${w}`) || name.startsWith(`${w} `))) {
+          return false;
+        }
+        return true;
+      };
       
       if (criteria.scope === 'product' && context.ai_product_name) {
-        // Check if anyone else has the same AI-generated product name
-        // Only check AI-generated names, not user-entered names
-        if (!context.ai_product_name || context.user_product_name) {
+        // Check if anyone else has the same AI-identified packaged product
+        // Only consider packaged products with a brand
+        const minConfidenceOk = typeof context.ai_confidence === 'number' ? context.ai_confidence >= 0.6 : true;
+        if (!isLikelyPackagedProduct() || !minConfidenceOk || context.user_product_name) {
+          console.log('🏆 [GlobalFirst/Product] Skipping due to validation', {
+            isLikelyPackaged: isLikelyPackagedProduct(),
+            minConfidenceOk,
+            hasUserProductName: !!context.user_product_name
+          });
           // Skip if no AI product name or if user entered their own name
           return null;
         }
         
-        // First get all lists that belong to other users
-        const { data: otherUserLists, error: listsError } = await supabase
-          .from('lists')
-          .select('id')
-          .neq('user_id', user.id);
-          
-        if (listsError) throw listsError;
-        
-        if (!otherUserLists || otherUserLists.length === 0) {
-          // No other users exist, so this is definitely a first
-          const result = await awardAchievement(achievement.id, { context });
-          if (result?.success) {
-            return { 
-              achievement, 
-              awarded: true, 
-              isGlobalFirst: true,
-              count: result.count,
-              isRepeatable: true
-            };
-          }
-          return null;
-        }
-        
-        const otherUserListIds = otherUserLists.map(list => list.id);
-        
-        // Check if any other user has the same AI-generated product name
+        // Check if this product (brand + normalized name) exists ANYWHERE already
+        const normalizedName = sanitize(context.ai_product_name);
+        const brand = (context.ai_brand || context.brand || '').trim();
+        console.log('🏆 [GlobalFirst/Product] Search tokens', { brand, normalizedName, rawName: context.ai_product_name });
         query = supabase
           .from('items')
           .select('id')
-          .eq('ai_product_name', context.ai_product_name)
-          .not('image_url', 'is', null)
-          .in('list_id', otherUserListIds);
+          .ilike('ai_product_name', `%${normalizedName}%`)
+          .eq('ai_brand', brand)
+          .not('image_url', 'is', null);
       } else if (criteria.scope === 'country' && context.location) {
         // For "first picture in new country" - check if THIS user has photographed in this country before
         const country = extractCountryFromLocation(context.location);
+        console.log('🏆 [GlobalFirst/Country] Tokens', { raw: context.location, country });
         if (!country) return null;
         
         // Get this user's lists
@@ -354,20 +354,26 @@ const useAchievements = () => {
         }
         
         const userListIds = userLists.map(list => list.id);
+        console.log('🏆 [GlobalFirst/Country] Lists in scope', userListIds.length);
         
         // Check if THIS user has any items from this country already
+        console.log('🏆 [GlobalFirst/Country] Query location ILIKE', `%${country}%`);
         query = supabase
           .from('items')
           .select('id')
           .ilike('location', `%${country}%`)
           .not('image_url', 'is', null)
-          .in('list_id', userListIds);
+          .in('list_id', userListIds); //remove this .in('list_id', userListIds) filter to check across all users. if you want to change in the future. currently current user only
       }
 
       if (!query) return null;
 
       const { data, error } = await query.limit(1);
-      if (error) throw error;
+      if (error) {
+        console.error('🏆 [GlobalFirst] Query error', error);
+        throw error;
+      }
+      console.log('🏆 [GlobalFirst] Query result rows', Array.isArray(data) ? data.length : 0);
 
       // If user hasn't done this action before, award the achievement
       if (!data || data.length === 0) {
@@ -404,7 +410,7 @@ const useAchievements = () => {
     
     try {
       const achievements = await getAchievements();
-      const newAchievements = [];
+      let newAchievements = [];
 
       for (const achievement of achievements) {
         const { criteria } = achievement;
@@ -434,16 +440,24 @@ const useAchievements = () => {
 
         if (result) {
           newAchievements.push(result);
-          
-          // 🎉 Trigger notification for new achievement
-          showAchievement({
-            achievement: result.achievement,
-            isGlobalFirst: result.isGlobalFirst || false,
-            count: result.count || 1,
-            isRepeatable: result.isRepeatable || false
-          });
         }
       }
+
+      // Priority: if a first_action achievement is present, suppress global_first from the same batch
+      const hasFirstAction = newAchievements.some(a => a?.achievement?.criteria?.type === 'first_action');
+      if (hasFirstAction) {
+        newAchievements = newAchievements.filter(a => a?.achievement?.criteria?.type !== 'global_first');
+      }
+
+      // Now trigger notifications in order
+      newAchievements.forEach(result => {
+        showAchievement({
+          achievement: result.achievement,
+          isGlobalFirst: result.isGlobalFirst || false,
+          count: result.count || 1,
+          isRepeatable: result.isRepeatable || false
+        });
+      });
 
       return newAchievements;
     } catch (error) {

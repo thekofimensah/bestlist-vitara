@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, List, User, Search, Bell, X } from 'lucide-react';
+import { Home, List, User, Search, Bell, X, Trophy } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import MainScreen from './components/MainScreen';
 import ListsView from './components/ListsView';
@@ -15,6 +15,8 @@ import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
 import { NotificationsDropdown } from './components/secondary/NotificationsDropdown';
+import AchievementsDropdown from './components/gamification/AchievementsDropdown';
+import useAchievements from './hooks/useAchievements';
 import { useNotifications } from './hooks/useNotifications';
 import PostDetailView from './components/secondary/PostDetailView';
 import AchievementSystem from './components/gamification/AchievementSystem';
@@ -45,8 +47,8 @@ const formatPostForDisplay = (post) => {
   return {
     id: post.id,
     user: {
-      name: post.creator?.profiles?.display_name || post.creator?.profiles?.username || 'User',
-      avatar: post.creator?.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
+      name: post.user?.name || post.profiles?.display_name || post.profiles?.username || 'User',
+      avatar: post.user?.avatar || post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
     },
     image: post.items?.image_url || '',
     rating: post.items?.rating || 3,
@@ -115,6 +117,21 @@ const App = () => {
   }, []);
   const [user, setUser] = useState(null);
   const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [recentAchievements, setRecentAchievements] = useState([]);
+  const { getUserAchievements } = useAchievements();
+
+  // Load recent achievements when user opens the dropdown or on user change
+  useEffect(() => {
+    const load = async () => {
+      if (!user?.id) return;
+      const data = await getUserAchievements(user.id);
+      setRecentAchievements(data?.slice(0, 50) || []);
+    };
+    if (achievementsOpen) {
+      load();
+    }
+  }, [achievementsOpen, user?.id]);
   const { trackUserSession, isTracking } = useUserTracking();
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
@@ -1377,6 +1394,13 @@ const App = () => {
             >
               <Search className="w-4 h-4 text-gray-700" />
             </button>
+            <button
+              onClick={() => setAchievementsOpen((v) => !v)}
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+              aria-label="Achievements"
+            >
+              <Trophy className="w-4 h-4 text-gray-700" />
+            </button>
             <div className="relative">
               <button 
                 onClick={handleNotifications}
@@ -1400,6 +1424,11 @@ const App = () => {
                 onNavigateToPost={handleNavigateToPost}
               />
             </div>
+            <AchievementsDropdown
+              isOpen={achievementsOpen}
+              onClose={() => setAchievementsOpen(false)}
+              achievements={recentAchievements}
+            />
           </div>
         </div>
       </div>

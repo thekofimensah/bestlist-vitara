@@ -422,7 +422,7 @@ const MainScreen = React.forwardRef(({
   const [videoReady, setVideoReady] = useState(false);
   const [error, setError] = useState(null);
   const [wasSaved, setWasSaved] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
+  // Removed nested scroll orchestration – use a single page scroll
   // const [selectedTab, setSelectedTab] = useState('For You'); // Commented out - using Following only for now
   const [selectedTab, setSelectedTab] = useState('Following');
   const [showModal, setShowModal] = useState(false);
@@ -440,6 +440,28 @@ const MainScreen = React.forwardRef(({
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
 
+  // Log AI failures to Supabase (app_errors table)
+  const logAIFailure = async ({ message, imageUrl, source = 'unknown', location = null, extra = {} }) => {
+    try {
+      const platform = Capacitor.getPlatform?.() || 'web';
+      const payload = {
+        reason: message,
+        imageUrl,
+        source,
+        location,
+        ...extra,
+      };
+      await supabase.from('app_errors').insert({
+        error_type: 'ai_failure',
+        error_message: JSON.stringify(payload),
+        platform,
+        os_version: navigator?.userAgent || null,
+      });
+    } catch (e) {
+      console.log('⚠️ Failed to log AI failure', e);
+    }
+  };
+
   // Check for "First in World" achievement immediately after AI completion
   const checkFirstInWorldAchievement = async (aiResult) => {
     try {
@@ -449,9 +471,11 @@ const MainScreen = React.forwardRef(({
       
       const context = {
         ai_product_name: aiResult.productName,
+        ai_brand: aiResult.brand || null,
         user_product_name: null, // This is AI-generated, not user-entered
         hasPhoto: true,
-        location: aiResult.location || 'Unknown'
+        // Prefer device-resolved location ("City, Country") for location-based checks
+        location: deviceLocation || aiResult.location || 'Unknown'
       };
 
       // Check for "First in World" achievements 
@@ -505,10 +529,8 @@ const MainScreen = React.forwardRef(({
     }
   };
 
-  // Calculate camera and feed heights based on scroll
-  const cameraHeight = Math.max(0, 60 - (scrollY * 0.15)); // Increased camera height to push feed lower
-  const feedHeight = Math.min(100, 40 + (scrollY * 0.15)); // Reduced initial feed height to deemphasize
-  const isCameraHidden = scrollY > 150;
+  // Fixed camera height; allow the entire page to scroll so the camera fully scrolls away
+  const cameraHeight = 60; // vh
 
   // const tabs = ['For You', 'Following']; // Commented out - using Following only for now
   const tabs = ['Following']; // Only Following tab for now
@@ -877,6 +899,14 @@ const MainScreen = React.forwardRef(({
           code: error.code,
           fullError: error
         }, null, 2));
+
+          // Persist failure with photo and reason
+          await logAIFailure({
+            message: error.message,
+            imageUrl: (capturedImage?.url) || null,
+            source: 'camera',
+            location: deviceLocation,
+          });
           
           // Check if this is an invalid image error (not a product)
           const errorMessage = error.message || '';
@@ -942,18 +972,8 @@ const MainScreen = React.forwardRef(({
         await deletePhotoEverywhere(capturedImage.storagePath);
       }
       
-      // Remove AI-triggered achievements if user didn't save the item
+      // Do not delete DB achievements on modal close; just clear local queue
       if (aiTriggeredAchievements.length > 0) {
-        console.log('🏆 [Cleanup] Removing AI-triggered achievements for unsaved item:', aiTriggeredAchievements);
-        
-        for (const achievementData of aiTriggeredAchievements) {
-          try {
-            await removeAchievement(achievementData.achievementId, achievementData.context);
-          } catch (error) {
-            console.error('❌ [Cleanup] Failed to remove achievement:', error.message);
-          }
-        }
-        
         setAiTriggeredAchievements([]);
       }
     }
@@ -1113,6 +1133,14 @@ const MainScreen = React.forwardRef(({
           code: error.code,
           fullError: error
         }, null, 2));
+
+              // Persist failure with photo and reason
+              await logAIFailure({
+                message: error.message,
+                imageUrl: (capturedImage?.url) || null,
+                source: 'gallery',
+                location: deviceLocation,
+              });
               
               // Check if this is an invalid image error (not a product)
               const errorMessage = error.message || '';
@@ -1167,10 +1195,7 @@ const MainScreen = React.forwardRef(({
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
-  const handleScroll = (e) => {
-    const scrollTop = e.currentTarget.scrollTop;
-    setScrollY(scrollTop);
-  };
+  // No nested scroll handler; page scroll handles everything
 
   const deletePhotoEverywhere = async (storagePath) => {
     try {
@@ -1237,7 +1262,7 @@ const MainScreen = React.forwardRef(({
 
   return (
     <div 
-      className="h-screen bg-stone-50 overflow-hidden safe-area-inset" 
+      className="h-screen bg-stone-50 overflow-auto safe-area-inset" 
       style={{ 
         backgroundColor: '#F6F6F4',
         paddingBottom: 'env(safe-area-inset-bottom)'
@@ -1253,8 +1278,8 @@ const MainScreen = React.forwardRef(({
 
       {/* Camera Section */}
       <div 
-        className={`relative transition-all duration-300 ease-out ${isCameraHidden ? 'h-0 overflow-hidden' : ''}`}
-        style={{ height: isCameraHidden ? '0vh' : `${cameraHeight}vh` }}
+        className={`relative transition-all duration-300 ease-out`}
+        style={{ height: `${cameraHeight}vh` }}
       >
         {/* Camera Feed */}
         <div className="w-full h-full bg-black rounded-2xl overflow-hidden mx-4 mt-4" style={{ width: 'calc(100% - 32px)' }}>
@@ -1329,9 +1354,8 @@ const MainScreen = React.forwardRef(({
 
       {/* Feed Card */}
       <div 
-        className="bg-white transition-all duration-300 ease-out overflow-hidden"
+        className="bg-white transition-all duration-300 ease-out"
         style={{
-          height: isCameraHidden ? 'calc(100vh - 80px)' : `${feedHeight}vh`,
           borderTopLeftRadius: '32px',
           borderTopRightRadius: '32px',
           boxShadow: '0 8px 24px -4px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05)'
@@ -1372,16 +1396,7 @@ const MainScreen = React.forwardRef(({
         </div>
 
         {/* Feed Content - Real social feed */}
-        <div 
-          ref={feedRef}
-          onScroll={handleScroll}
-          className="overflow-y-auto"
-          style={{ 
-            height: isCameraHidden 
-              ? 'calc(100vh - 140px)' 
-              : `calc(${feedHeight}vh - 100px)`
-          }}
-        >
+        <div>
           <div className="space-y-4">
             {/* Loading State */}
             {isLoadingFeed && (

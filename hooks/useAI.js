@@ -63,17 +63,25 @@ export const useAI = () => {
         const base64Image = await encodeImageToBase64(imageFile);
         console.log(`🤖 [AI] Image encoded (${base64Image.length} chars), location: ${location || 'none'}`);
         
-        // Simplified prompt - no JSON format instructions needed
+        // Expert prompt to produce a canonical, human-style product name
         const prompt = `
-Identify the product in the image.${location ? `
+You are a product identification expert. Identify the on-pack product and produce a single, canonical product name people would naturally use when referring to it in conversation or search.
 
-LOCATION CONTEXT: This photo was taken in ${location}. Use this location information to:
-- Prioritize brands and products commonly sold in ${location}
-- Consider local/regional brands, store chains, and specialties specific to this area
-- Account for regional product variations, labeling, and naming conventions
-- Focus on products that would realistically be found in restaurants, grocery stores, markets, or shops in ${location}` : ''}
+Rules for the name field (MUST follow):
+1) Structure: [Brand] [Core product] [Variant/essential qualifiers]
+   - Include brand if clearly visible. If unsure, omit brand (don't guess).
+   - "Core product" is the primary noun phrase (e.g., Toothpaste Tablets, Whole Milk, Dark Roast Coffee).
+   - "Variant/essential qualifiers" include only intrinsic, distinguishing details like flavor, strength, fat %, roast level, SPF, form (tablets/powder/liquid), decaf, alcohol %, or other regulated style descriptors.
+2) Exclude marketing/packaging/ethos claims: plastic free, eco-friendly, zero-waste, cruelty-free, sustainable, BPA-free, non‑GMO, gluten-free (unless it is the legally defining style), etc.
+3) Exclude pack/count/size/weight unless it’s the defining variant (e.g., "2%" or "4%" milk fat IS allowed).
+4) Remove long ingredient/benefit lists (e.g., "with Aloe Vera, Tea Tree and Xylitol"). Keep it short and canonical.
+5) Language: English. Use Title Case. No emojis. No trailing punctuation. Max 80 chars.
 
-Focus on food and beverage products, household items, and consumer goods. Default to english.`;
+Additional guidance${location ? ` (photo taken in ${location})` : ''}:
+- Prefer brands and variants common to the region; avoid unlikely guesses.
+- If the object is food/drink or consumer goods, use retail naming conventions.
+
+Return JSON using the schema. Ensure the name field adheres to the rules exactly.`;
 
         const requestBody = {
           contents: [{
@@ -95,7 +103,7 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
               properties: {
                 name: {
                   type: "STRING",
-                  description: "Product name"
+                  description: "Canonical human-style product name following rules: [Brand] [Variant/essential qualifiers] [Core product] ; exclude marketing/packaging/ethos claims; Title Case; English; <= 80 chars."
                 },
                 brand: {
                   type: "STRING", 
@@ -128,8 +136,8 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
                   description: "Array of allergens if mentioned or inferred from description"
                 }
               },
-              required: ["name", "brand", "category", "confidence", "description", "product", "tags"],
-              propertyOrdering: ["name", "brand", "category", "confidence", "description", "product", "tags", "allergens"]
+              required: ["name", "brand", "category", "confidence", "description", "tags"],
+              propertyOrdering: ["name", "brand", "product", "category", "confidence", "description", "tags", "allergens"]
             }
           }
         };
@@ -150,13 +158,20 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
           const errorText = await response.text();
           const elapsed = Date.now() - startTime;
           
-          console.error(`🤖 [AI] API Error (${elapsed}ms):`, {
-            status: response.status,
-            statusText: response.statusText,
-            attempt,
-            timeout: timeoutMs,
-            errorText: errorText.substring(0, 500) // Truncate long errors
-          });
+          console.error(
+            `🤖 [AI] API Error (${elapsed}ms): ` +
+              JSON.stringify(
+                {
+                  status: response.status,
+                  statusText: response.statusText,
+                  attempt,
+                  timeout: timeoutMs,
+                  errorText: errorText.substring(0, 500), // Truncate long errors
+                },
+                null,
+                2
+              )
+          );
           
           // Handle different error types with specific retry logic
           if (response.status === 503 && attempt < maxAttempts) {
@@ -194,7 +209,7 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
         console.log(`🤖 [AI] Response received in ${elapsed}ms`);
         
         if (!responseText) {
-          console.error('🤖 [AI] Empty response from Gemini:', json);
+          console.error('🤖 [AI] Empty response from Gemini: ' + JSON.stringify(json, null, 2));
           throw new Error('No response text from AI');
         }
 
@@ -203,15 +218,59 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
         try {
           aiData = JSON.parse(responseText);
         } catch (parseError) {
-          console.error('🤖 [AI] JSON parse error:', parseError);
-          console.error('🤖 [AI] Raw response text:', responseText.substring(0, 500));
+          console.error('🤖 [AI] JSON parse error: ' + JSON.stringify({ message: parseError.message, name: parseError.name }, null, 2));
+          console.error('🤖 [AI] Raw response text: ' + responseText.substring(0, 500));
           throw new Error('Invalid JSON response from AI');
         }
 
+        // Normalize product naming for consistency across AI variations
+        const normalizeProductName = (brand, product, name) => {
+          const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+          const baseRaw = clean(product || name || '');
+          if (!baseRaw && !brand) return 'Unknown Product';
+
+          // 1) Cut trailing descriptive clauses: after 'with ...', parentheses, or extra comma sections
+          let core = baseRaw
+            .replace(/\bwith\b.*$/i, '')
+            .replace(/\([^)]*\)/g, '')
+            .trim();
+
+          // 2) Keep only the first comma section (e.g., remove ", plastic free, vegan")
+          if (core.includes(',')) {
+            core = core.split(',')[0].trim();
+          }
+
+          // 3) Remove common marketing qualifiers at the end (if present)
+          const bannedSuffixes = [
+            'plastic free', 'vegan', 'eco friendly', 'eco-friendly', 'zero waste',
+            'natural', 'cruelty free', 'cruelty-free', 'sustainable', 'biodegradable',
+            'organic', 'non gmo', 'non-gmo', 'gluten free', 'gluten-free'
+          ];
+          bannedSuffixes.forEach((phrase) => {
+            const re = new RegExp(`(?:,?\s*${phrase})+$`, 'i');
+            core = core.replace(re, '').trim();
+          });
+
+          // 4) Collapse double spaces and trim punctuation
+          core = core.replace(/\s{2,}/g, ' ').replace(/[\s,.;-]+$/g, '').trim();
+
+          // 5) Ensure brand appears exactly once at the front
+          const startsWithBrand = brand && new RegExp(`^${brand}[^a-z0-9]?`, 'i').test(core);
+          const finalName = clean(startsWithBrand ? core : `${brand ? brand + ' ' : ''}${core}`);
+
+          // 6) Cap length to a sane limit to avoid overflow
+          return finalName.length > 80 ? finalName.slice(0, 77).trim() + '…' : finalName;
+        };
+
+        const brand = aiData.brand || '';
+        const normalizedName = (aiData.name && aiData.name.trim())
+          ? aiData.name.trim()
+          : normalizeProductName(brand, aiData.product, aiData.name);
+
         // Return data in the format expected by the app
         const aiResult = {
-          productName: aiData.product || aiData.name || 'Unknown Product',
-          brand: aiData.brand || '',
+          productName: normalizedName,
+          brand: brand,
           category: aiData.category || '',
           species: aiData.description || 'Unknown',
           certainty: Math.round((aiData.confidence || 0) * 100),
@@ -222,6 +281,7 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
 
         console.log(`🤖 [AI] Analysis completed in ${elapsed}ms`);
         console.log('🤖 [AI] Structured response:', JSON.stringify(aiData, null, 2));
+        console.log('🤖 [AI] Normalized product name:', JSON.stringify({ brand, nameField: aiData.name, productField: aiData.product, normalizedName }, null, 2));
         console.log('🤖 [AI] Formatted result:', JSON.stringify(aiResult, null, 2));
 
         // Auto-cancel rules: low confidence or missing essential fields
@@ -253,11 +313,18 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
         }
         
         // Handle other errors
-        console.error(`🤖 [AI] Error on attempt ${attempt}:`, {
-          name: err.name,
-          message: err.message,
-          elapsed: elapsed + 'ms'
-        });
+        console.error(
+          `🤖 [AI] Error on attempt ${attempt}: ` +
+            JSON.stringify(
+              {
+                name: err.name,
+                message: err.message,
+                elapsed: elapsed + 'ms',
+              },
+              null,
+              2
+            )
+        );
         
         // Retry on network errors or server issues
         const isRetryableError = (
@@ -284,11 +351,18 @@ Focus on food and beverage products, household items, and consumer goods. Defaul
       console.log('✅ [AI] Final status: success');
       return ai;
     } catch (err) {
-      console.error('❌ [AI] Analysis failed:', {
-        message: err.message,
-        name: err.name,
-        attempts: '3 attempts made'
-      });
+      console.error(
+        '❌ [AI] Analysis failed: ' +
+          JSON.stringify(
+            {
+              message: err.message,
+              name: err.name,
+              attempts: '3 attempts made',
+            },
+            null,
+            2
+          )
+      );
       
       // Provide more specific error messages
       let userFriendlyError = err.message;

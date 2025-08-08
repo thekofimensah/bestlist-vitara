@@ -112,18 +112,6 @@ const ProfileView = ({ onBack, isRefreshing = false }) => {
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile</h3>
             <div className="space-y-3">
-              {/* Username (read-only) */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block">Username</label>
-                    <p className="text-base text-gray-900">
-                      {userProfile?.username ? `${userProfile.username}` : 'Username not set'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {/* Bio */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between">

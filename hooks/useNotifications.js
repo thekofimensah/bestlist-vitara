@@ -148,9 +148,8 @@ export const useNotifications = (userId) => {
       .update({ read: true })
       .eq('id', notificationId);
     
-    setNotifications(prev => 
-      prev.map(n => n.id === notificationId ? {...n, read: true} : n)
-    );
+    // Remove from list when swiped/acted on
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
     setUnreadCount(prev => Math.max(0, prev - 1));
   };
 

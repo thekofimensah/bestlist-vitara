@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { Bell, X, Heart, MessageSquare, UserPlus } from 'lucide-react';
 
 // Helper function to log to Android Studio
@@ -14,6 +14,7 @@ const logToAndroid = (message, data = null) => {
 };
 
 const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
+  const controls = useAnimation();
   const getIcon = () => {
     switch (notification.type) {
       case 'like':
@@ -51,16 +52,47 @@ const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
     }
   };
 
+  const handleDragEnd = async (_, info) => {
+    const distance = info.offset.x;
+    const velocity = info.velocity.x || 0;
+    const threshold = 140;
+    const fast = Math.abs(velocity) > 500;
+    if (Math.abs(distance) > threshold || fast) {
+      const direction = distance >= 0 ? 1 : -1;
+      await controls.start({
+        x: direction * ((typeof window !== 'undefined' ? window.innerWidth : 600) + 120),
+        opacity: 0,
+        transition: { type: 'spring', stiffness: 500, damping: 38 }
+      });
+      // slight pause before removing so list doesn't feel jumpy
+      setTimeout(() => onMarkRead(notification.id), 120);
+    } else {
+      controls.start({ x: 0, opacity: 1, transition: { type: 'spring', stiffness: 600, damping: 35, bounce: 0.35 } });
+    }
+  };
+
   return (
     <motion.div
+      layout
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className={`p-3 flex items-center gap-3 hover:bg-gray-50 cursor-pointer transition-colors ${
-        !notification.read ? 'bg-teal-50' : ''
-      }`}
-      onClick={handleClick}
+      transition={{ layout: { duration: 0.2 } }}
     >
+      {/* Simple white card (removed gradient background) */}
+      <motion.div
+        layout
+        animate={controls}
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.2}
+        dragMomentum={true}
+        whileTap={{ scale: 0.98 }}
+        onDragEnd={handleDragEnd}
+        className="rounded-xl bg-white p-3 flex items-center gap-3 cursor-pointer border border-gray-100 shadow-sm"
+        onClick={handleClick}
+      >
+        <motion.div className="flex items-center gap-3 w-full" layout>
       <div className="flex-shrink-0">
         {notification.profiles?.avatar_url ? (
           <img
@@ -80,9 +112,11 @@ const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
           {new Date(notification.created_at).toLocaleDateString()}
         </p>
       </div>
-      {!notification.read && (
-        <div className="w-2 h-2 bg-teal-500 rounded-full flex-shrink-0" />
-      )}
+        {!notification.read && (
+          <div className="w-2 h-2 bg-teal-500 rounded-full flex-shrink-0" />
+        )}
+        </motion.div>
+      </motion.div>
     </motion.div>
   );
 };
@@ -150,26 +184,37 @@ export const NotificationsDropdown = ({
               </div>
             </div>
 
-            <div className="max-h-[70vh] overflow-y-auto divide-y divide-gray-100">
+            {/* Staggered list so new rows pause briefly after a dismiss */}
+            <motion.div className="max-h-[70vh] overflow-y-auto space-y-2 p-2"
+              initial={false}
+              variants={{}}
+            >
               {notifications && notifications.length > 0 ? (
-                <>
+                <AnimatePresence initial={false}>
                   {logToAndroid('🔔 Rendering', notifications.length, 'notifications')}
-                  {notifications.map((notification) => (
-                    <NotificationItem
+                  {notifications.map((notification, index) => (
+                    <motion.div
                       key={notification.id}
-                      notification={notification}
-                      onMarkRead={onMarkRead}
-                      onNavigateToPost={onNavigateToPost}
-                    />
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ delay: index === 0 ? 0 : 0.08, type: 'spring', stiffness: 250, damping: 22 }}
+                    >
+                      <NotificationItem
+                        notification={notification}
+                        onMarkRead={onMarkRead}
+                        onNavigateToPost={onNavigateToPost}
+                      />
+                    </motion.div>
                   ))}
-                </>
+                </AnimatePresence>
               ) : (
                 <div className="p-10 text-center">
                   <div className="text-sm text-gray-600 mb-1">No notifications yet</div>
                   <div className="text-xs text-gray-400">You're all caught up</div>
                 </div>
               )}
-            </div>
+            </motion.div>
           </motion.div>
         </>
       )}

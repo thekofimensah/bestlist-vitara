@@ -39,7 +39,7 @@ export const AchievementProvider = ({ children }) => {
     
     if (now - lastNotificationTime < cooldownPeriod && !shouldShowModal) {
       // Queue for later or batch with existing
-      setNotifications(prev => [...prev, { ...achievementData, id: Date.now() }]);
+      setNotifications(prev => [...prev, { ...achievementData, id: Date.now(), createdAt: now }]);
       console.log('🏆 [Achievement] Queued notification due to cooldown');
       return;
     }
@@ -48,11 +48,11 @@ export const AchievementProvider = ({ children }) => {
 
     if (shouldShowModal) {
       // Show full-screen modal for legendary/global first achievements
-      setCurrentModal({ ...achievementData, id: Date.now() });
+      setCurrentModal({ ...achievementData, id: Date.now(), createdAt: now });
       console.log('🏆 [Achievement] Showing modal for:', achievement.name);
     } else {
       // Show toast notification for common achievements
-      setNotifications(prev => [...prev, { ...achievementData, id: Date.now() }]);
+      setNotifications(prev => [...prev, { ...achievementData, id: Date.now(), createdAt: now }]);
       console.log('🏆 [Achievement] Showing toast for:', achievement.name);
     }
   };

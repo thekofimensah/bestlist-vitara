@@ -36,10 +36,18 @@
   animation: scanner 3s ease-in-out infinite;
 }
 
-/* Enable native gestures */
+/* Enable native gestures without breaking text inputs */
 html, body {
-  touch-action: manipulation;
+  touch-action: pan-y; /* allow horizontal gestures for keyboards */
   -webkit-overflow-scrolling: touch;
+}
+
+/* Text inputs must allow selection and long-press */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: auto; /* critical for glide typing */
 }
 
 /* Don't block gestures on modal overlays */
@@ -48,9 +56,10 @@ html, body {
   pointer-events: auto;
 }
 
-/* Allow edge gestures */
-*:not(input):not(textarea) {
+/* Restrict user-select only on non-text elements */
+*:not(input):not(textarea):not([contenteditable="true"]) {
   -webkit-user-select: none;
+  user-select: none;
   -webkit-touch-callout: none;
 }
 

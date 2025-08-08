@@ -230,3 +230,10 @@ Need to resize image, screenshotted images are too long for the stars to work. B
 Expected behaviors:
 So when the drag to refresh functionality appears, every element on the page should be refreshed.
 
+There are a couple of popups I want you to redesign using better ui/ux design. They just are quite ugly, and I'm going for a clean minimal feel. Could you give me a redesign of the notifications view (when people click on the bell and they can see all their new and old notifications?)
+
+Let's follow simiarl design styles to google and other good designed apps like instagram.
+
+I'm referring mainly to the size of the popup, the fonts, and the shape of the popup relative to the screen.
+
+Also when we cancel an ai process from loading on an image, a popup appears that is incredibly ugly. Fix that to look better and fix the biuttons to make sense, etc..

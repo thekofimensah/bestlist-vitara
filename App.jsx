@@ -10,6 +10,7 @@ import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
 import UserProfile from './components/secondary/PublicUserProfile.jsx';
 import PullToRefresh from './ui/PullToRefresh';
+import { enableNativeKeyboardEnhancements } from './lib/enableNativeKeyboard';
 import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser, getSessionOptimized } from './lib/supabase';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
@@ -107,6 +108,11 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
 };
 
 const App = () => {
+  // Enable native keyboard features globally
+  useEffect(() => {
+    const teardown = enableNativeKeyboardEnhancements();
+    return () => teardown && teardown();
+  }, []);
   const [user, setUser] = useState(null);
   const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
   const { trackUserSession, isTracking } = useUserTracking();
@@ -145,6 +151,7 @@ const App = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef(null);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchTab, setSearchTab] = useState('content'); // 'content' or 'users'
@@ -274,6 +281,23 @@ const App = () => {
       performSearch(query);
     }, 300);
   };
+
+  // Force native keyboard attributes on the search box specifically
+  useEffect(() => {
+    const el = searchInputRef.current;
+    if (!el) return;
+    try {
+      el.setAttribute('autocorrect', 'on');
+      el.setAttribute('autocapitalize', 'sentences');
+      el.setAttribute('spellcheck', 'true');
+      if (!el.hasAttribute('inputmode')) el.setAttribute('inputmode', 'search');
+      // Ensure iOS allows selection/long-press
+      el.style.webkitUserSelect = 'text';
+      el.style.userSelect = 'text';
+      el.style.webkitTouchCallout = 'default';
+      el.style.touchAction = 'manipulation';
+    } catch {}
+  }, [showSearch, searchTab]);
 
   const handleSearchTabChange = (tab) => {
     setSearchTab(tab);
@@ -1494,8 +1518,10 @@ const App = () => {
               </div>
               
               <div className="relative">
-                  <input
+                   <input
+                    ref={searchInputRef}
                     type="text"
+                     name="search"
                     value={searchQuery}
                     onChange={handleSearchChange}
                     placeholder={searchTab === 'content' ? 'Search lists and items...' : 'Search users...'}
@@ -1505,7 +1531,7 @@ const App = () => {
                     autoCorrect="on"
                     autoCapitalize="sentences"
                     spellCheck="true"
-                    inputMode="text"
+                    inputMode="search"
                     enterKeyHint="search"
                   />
                   {/* Search Icon */}

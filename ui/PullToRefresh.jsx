@@ -28,6 +28,11 @@ const PullToRefresh = ({
     if (!container) return;
 
     const handleTouchStart = (e) => {
+      // Do not activate pull-to-refresh while typing to preserve keyboard gestures
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        return;
+      }
       const isAtTop = container.scrollTop <= 5; // Small tolerance
       if (!isAtTop || isRefreshing || disabled) return;
 
@@ -39,6 +44,11 @@ const PullToRefresh = ({
     };
 
     const handleTouchMove = (e) => {
+      // Skip when an input is focused to avoid swallowing swipe-typing
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        return;
+      }
       if (!pullStarted.current || isRefreshing || disabled) return;
 
       const currentY = e.touches[0].clientY;
@@ -79,6 +89,11 @@ const PullToRefresh = ({
     };
 
     const handleTouchEnd = () => {
+      // Do not trigger refresh completion while editing text
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        return;
+      }
       if (!pullStarted.current) return;
       
       pullStarted.current = false;
@@ -110,9 +125,9 @@ const PullToRefresh = ({
       }
     };
 
-    // Add event listeners
+    // Add event listeners. Use passive: true everywhere to avoid intercepting gesture typing on Android
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
     container.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {

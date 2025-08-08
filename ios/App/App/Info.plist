@@ -45,6 +45,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- Keyboard improvements: allow autocorrect/autocapitalize and interactive dismiss -->
+	<key>KeyboardDisplayRequiresUserAction</key>
+	<false/>
+	<key>UIKeyboardDismissMode</key>
+	<string>interactive</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app requires camera access to take photos.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

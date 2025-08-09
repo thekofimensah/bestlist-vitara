@@ -290,7 +290,7 @@ const useAchievements = () => {
       const sanitize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
       const isLikelyPackagedProduct = () => {
         // Must have a brand to be considered a real product
-        const brand = context.ai_brand || context.brand;
+        const brand = context.ai_brand; // Only AI-detected brand qualifies
         if (!brand || sanitize(brand).length < 2) return false;
         // Heuristics to exclude dishes/meals
         const name = sanitize(context.ai_product_name || context.product_name);
@@ -317,7 +317,7 @@ const useAchievements = () => {
         
         // Check if this product (brand + normalized name) exists ANYWHERE already
         const normalizedName = sanitize(context.ai_product_name);
-        const brand = (context.ai_brand || context.brand || '').trim();
+        const brand = (context.ai_brand || '').trim(); // Only AI brand qualifies
         console.log('🏆 [GlobalFirst/Product] Search tokens', { brand, normalizedName, rawName: context.ai_product_name });
         query = supabase
           .from('items')

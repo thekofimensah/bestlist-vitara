@@ -326,10 +326,39 @@ const AddItemModal = ({
       setIsSearchingLocation(true);
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5`
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5&addressdetails=1&extratags=1`
         );
         const results = await response.json();
-        setLocationResults(results.map(r => {
+        // Sort by: prefix match > population (desc) > importance (desc)
+        const query = locationSearch.trim().toLowerCase();
+        const sorted = [...results].sort((a, b) => {
+          const aName = (a.name || a.display_name || '').toLowerCase();
+          const bName = (b.name || b.display_name || '').toLowerCase();
+          const aPrefix = aName.startsWith(query) ? 1 : 0;
+          const bPrefix = bName.startsWith(query) ? 1 : 0;
+          if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+          // Prefer city/town/village
+          const rankClass = (r) => {
+            const t = r.type || r.addresstype || '';
+            if (['city', 'town'].includes(t)) return 2;
+            if (t === 'village') return 1;
+            return 0;
+          };
+          const aRank = rankClass(a);
+          const bRank = rankClass(b);
+          if (aRank !== bRank) return bRank - aRank;
+          // Earlier substring match index is better
+          const aIdx = aName.indexOf(query);
+          const bIdx = bName.indexOf(query);
+          if (aIdx !== bIdx) return (aIdx === -1 ? 9999 : aIdx) - (bIdx === -1 ? 9999 : bIdx);
+          const aPop = Number(a.extratags?.population) || 0;
+          const bPop = Number(b.extratags?.population) || 0;
+          if (aPop !== bPop) return bPop - aPop;
+          const aImp = Number(a.importance) || 0;
+          const bImp = Number(b.importance) || 0;
+          return bImp - aImp;
+        });
+        setLocationResults(sorted.map(r => {
           // Extract city from various possible fields
           const city = r.address?.city || r.address?.town || r.address?.village || r.name || r.display_name.split(',')[0];
           
@@ -368,6 +397,10 @@ const AddItemModal = ({
     return () => clearTimeout(searchTimeout);
   }, [locationSearch]);
   const [place, setPlace] = useState('');
+  const placeInputRef = useRef(null);
+  const googleAutocompleteRef = useRef(null);
+  const googleScriptLoadingRef = useRef(false);
+  const [selectedPlaceCoords, setSelectedPlaceCoords] = useState(null);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [rarity, setRarity] = useState(1); // 1=Common, 2=Uncommon, 3=Rare
@@ -743,11 +776,11 @@ const AddItemModal = ({
       // Privacy setting
       is_public: isPublic,
       
-      // Photo metadata from photoMetadata if available
+      // Photo/location metadata
       photo_date_time: photoMetadata?.dateTime,
       photo_location_source: getPhotoLocationSource(),
-      latitude: photoMetadata?.latitude,
-      longitude: photoMetadata?.longitude
+      latitude: selectedPlaceCoords?.lat ?? photoMetadata?.latitude,
+      longitude: selectedPlaceCoords?.lng ?? photoMetadata?.longitude
     });
     console.log('🔍 Built item:', newItem);
     console.log('🔍 Built item JSON:', JSON.stringify(newItem, null, 2));
@@ -1136,6 +1169,76 @@ const AddItemModal = ({
       getCurrentLocation();
     }
   }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet]);
+
+  // Google Places Autocomplete for Place field
+  useEffect(() => {
+    const apiKey = import.meta.env?.VITE_GOOGLE_PLACES_API_KEY;
+    if (!apiKey || !placeInputRef.current) return;
+
+    const ensureScript = () => new Promise((resolve, reject) => {
+      if (window.google?.maps?.places) return resolve();
+      if (googleScriptLoadingRef.current) {
+        const check = () => {
+          if (window.google?.maps?.places) resolve();
+          else setTimeout(check, 100);
+        };
+        check();
+        return;
+      }
+      googleScriptLoadingRef.current = true;
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = (e) => reject(e);
+      document.head.appendChild(script);
+    });
+
+    let listener = null;
+    ensureScript()
+      .then(() => {
+        if (!placeInputRef.current || !window.google?.maps?.places) return;
+        const autocomplete = new window.google.maps.places.Autocomplete(placeInputRef.current, {
+          types: ['establishment', 'geocode'],
+          fields: ['name', 'formatted_address', 'address_components', 'geometry']
+        });
+        googleAutocompleteRef.current = autocomplete;
+        listener = autocomplete.addListener('place_changed', () => {
+          const selected = autocomplete.getPlace();
+          const newPlace = selected?.name || selected?.formatted_address || '';
+          if (newPlace) setPlace(newPlace);
+          // Save coords if available
+          if (selected?.geometry?.location) {
+            const lat = selected.geometry.location.lat();
+            const lng = selected.geometry.location.lng();
+            setSelectedPlaceCoords({ lat, lng });
+          }
+          // Attempt to update location (City, Country) from address components
+          if (selected?.address_components) {
+            const comps = selected.address_components;
+            const get = (type) => comps.find(c => c.types.includes(type))?.long_name;
+            const city = get('locality') || get('postal_town') || get('administrative_area_level_2') || get('administrative_area_level_1') || '';
+            const country = get('country') || '';
+            const newLocation = [city, country].filter(Boolean).join(', ');
+            if (newLocation) {
+              setLocation(newLocation);
+              setLocationManuallySet(true);
+            }
+          }
+        });
+      })
+      .catch(() => {
+        // Silent fail; manual input still works
+      });
+
+    return () => {
+      try {
+        if (listener) listener.remove();
+      } catch {}
+      googleAutocompleteRef.current = null;
+    };
+  }, []);
 
   // Handle Android back button/gesture
   useEffect(() => {
@@ -1697,6 +1800,7 @@ const AddItemModal = ({
                 {/* Place name (left) */}
                 <div className="flex-1">
                   <input
+                    ref={placeInputRef}
                     type="text"
                     value={place}
                     onChange={(e) => setPlace(e.target.value)}

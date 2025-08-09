@@ -69,7 +69,7 @@ You are a product identification expert. Identify the on-pack product and produc
 
 Rules for the name field (MUST follow):
 1) Structure: [Brand] [Core product] [Variant/essential qualifiers]
-   - Include brand if clearly visible. If unsure, omit brand (don't guess).
+   - Include brand only if clearly visible. If unsure, DO NOT GUESS a brand and set this to an empty string.
    - "Core product" is the primary noun phrase (e.g., Toothpaste Tablets, Whole Milk, Dark Roast Coffee).
    - "Variant/essential qualifiers" include only intrinsic, distinguishing details like flavor, strength, fat %, roast level, SPF, form (tablets/powder/liquid), decaf, alcohol %, or other regulated style descriptors.
 2) Exclude marketing/packaging/ethos claims: plastic free, eco-friendly, zero-waste, cruelty-free, sustainable, BPA-free, non‑GMO, gluten-free (unless it is the legally defining style), etc.
@@ -80,6 +80,11 @@ Rules for the name field (MUST follow):
 Additional guidance${location ? ` (photo taken in ${location})` : ''}:
 - Prefer brands and variants common to the region; avoid unlikely guesses.
 - If the object is food/drink or consumer goods, use retail naming conventions.
+
+Brand field rules (MUST follow):
+- If no real brand/manufacturer name is clearly visible, return an EMPTY string for brand.
+- If you see generic placeholders like "unbranded", "generic", "store brand", "house brand", "brandless", "unknown", "n/a", etc., return an EMPTY string for brand.
+- Do not fabricate brand names.
 
 Return JSON using the schema. Ensure the name field adheres to the rules exactly.`;
 
@@ -107,7 +112,7 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
                 },
                 brand: {
                   type: "STRING", 
-                  description: "Brand/manufacturer name"
+                  description: "Brand/manufacturer name; return empty string if not clearly visible or if only a generic placeholder (unbranded/generic/store brand/brandless). Do not guess."
                 },
                 category: {
                   type: "STRING",
@@ -262,7 +267,10 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
           return finalName.length > 80 ? finalName.slice(0, 77).trim() + '…' : finalName;
         };
 
-        const brand = aiData.brand || '';
+        // Normalize brand: treat generic/placeholder terms as empty to avoid false positives
+        const rawBrand = (aiData.brand || '').trim();
+        const brandDeny = new Set(['unbranded','generic','store brand','house brand','brandless','unknown','n/a','na','none','unspecified','not specified']);
+        const brand = brandDeny.has(rawBrand.toLowerCase()) ? '' : rawBrand;
         const normalizedName = (aiData.name && aiData.name.trim())
           ? aiData.name.trim()
           : normalizeProductName(brand, aiData.product, aiData.name);

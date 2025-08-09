@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Home, List, User, Search, Bell, X, Trophy } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import MainScreen from './components/MainScreen';
+import ErrorBoundary from './components/ErrorBoundary';
+import { installGlobalErrorTracking } from './lib/errorTracking';
 import ListsView from './components/ListsView';
 import ProfileView from './components/ProfileView';
 import ShowItemsInListView from './components/secondary/ShowItemsInListView';
@@ -113,6 +115,8 @@ const App = () => {
   // Enable native keyboard features globally
   useEffect(() => {
     const teardown = enableNativeKeyboardEnhancements();
+    // Install once
+    installGlobalErrorTracking();
     return () => teardown && teardown();
   }, []);
   const [user, setUser] = useState(null);
@@ -1359,11 +1363,16 @@ const App = () => {
 
   // Show auth view if no user (after loading is complete)
   if (!user) {
-    return <AuthView />;
+    return (
+      <ErrorBoundary name="AuthView">
+        <AuthView />
+      </ErrorBoundary>
+    );
   }
 
   return (
     <AchievementProvider>
+      <ErrorBoundary name="AppRoot">
       <div 
         className="min-h-screen bg-stone-50 relative" 
                  style={{
@@ -1456,7 +1465,9 @@ const App = () => {
 
       {/* Main Content - Updated height for PullToRefresh */}
       <main className="relative" style={{ height: 'calc(100vh - 140px)' }}>
-        {renderScreen()}
+        <ErrorBoundary name="MainContent">
+          {renderScreen()}
+        </ErrorBoundary>
       </main>
 
       {/* Bottom Navigation */}
@@ -1820,6 +1831,7 @@ const App = () => {
       {/* Achievement System - Global notifications */}
       <AchievementSystem />
     </div>
+    </ErrorBoundary>
   </AchievementProvider>
   );
 };

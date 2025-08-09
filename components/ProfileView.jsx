@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useImperativeHandle } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Camera, LogOut, Shield, FileText, Settings,
@@ -26,7 +26,7 @@ const StatCard = ({ icon, value, label }) => (
     </div>
   );
   
-const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUser }) => {
+const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem, onNavigateToUser }, ref) => {
   const { user, userProfile } = useAuth();
 
   const [loading, setLoading] = useState(false);
@@ -66,6 +66,12 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
   const [showAchievementModal, setShowAchievementModal] = useState(false);
   const fileInputRef = React.useRef(null);
 
+  // Expose imperative API to open/close settings from parent
+  useImperativeHandle(ref, () => ({
+    openSettings: () => setShowSettings(true),
+    closeSettings: () => setShowSettings(false),
+  }));
+
   // Initialize local avatar URL from profile; don't override if we've set a new one locally
   useEffect(() => {
     if (avatarUrl == null) {
@@ -84,7 +90,10 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
     try {
       const upload = await uploadImageToStorage(file, user.id);
       if (upload?.error || !upload?.url) return;
-      await supabase.from('profiles').update({ avatar_url: upload.url }).eq('id', user.id);
+      await Promise.all([
+        supabase.from('profiles').update({ avatar_url: upload.url }).eq('id', user.id),
+        supabase.from('users').update({ avatar_url: upload.url }).eq('id', user.id)
+      ]);
       // Optimistically reflect change without full reload
       setAvatarUrl(upload.url);
       // reset input so selecting the same file again triggers change
@@ -217,7 +226,14 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
     const title = showFollowers ? 'Followers' : 'Following';
     return (
       <div className="min-h-screen bg-white">
-        <div className="fixed top-0 left-0 right-0 z-20 pt-8 pb-3 bg-white">
+        <div
+          className="fixed top-0 left-0 right-0 z-20 pb-3 bg-white"
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top) + 32px)',
+            paddingLeft: 'env(safe-area-inset-left)',
+            paddingRight: 'env(safe-area-inset-right)'
+          }}
+        >
           <div className="px-4 flex items-center justify-between">
             <button onClick={() => { setShowFollowers(false); setShowFollowing(false); }} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
               <ArrowLeft className="w-5 h-5 text-gray-700" />
@@ -290,7 +306,15 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
         </div>
 
         {/* Settings header */}
-        <div className="fixed top-0 left-0 right-0 z-20 pt-8 pb-4" style={{ backgroundColor: '#F6F6F4' }}>
+        <div
+          className="fixed top-0 left-0 right-0 z-20 pb-4"
+          style={{
+            backgroundColor: '#F6F6F4',
+            paddingTop: 'calc(env(safe-area-inset-top) + 32px)',
+            paddingLeft: 'env(safe-area-inset-left)',
+            paddingRight: 'env(safe-area-inset-right)'
+          }}
+        >
           <div className="px-4 flex items-center justify-between">
             <button onClick={() => setShowSettings(false)} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
               <ArrowLeft className="w-5 h-5 text-gray-700" />
@@ -306,20 +330,7 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
   /* -------- Profile (mimic screenshot layout, our style) -------- */
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#FFFFFF' }}>
-      {/* Fixed Header */}
-      <div className="fixed top-0 left-0 right-0 z-20 pt-8 pb-3" style={{ backgroundColor: '#FFFFFF' }}>
-        <div className="px-4 flex items-center justify-between">
-          <button onClick={onBack} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
-          </button>
-          <h2 className="text-base font-semibold text-gray-900">Profile</h2>
-          <button onClick={() => setShowSettings(true)} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
-            <Settings className="w-5 h-5 text-gray-700" />
-          </button>
-        </div>
-      </div>
-
-      <div className="pt-20 px-4 pb-8 space-y-6">
+      <div className="px-4 pb-8 pt-6 space-y-6">
         {/* Header row (best-practice alignment) */}
         <div className="p-1">
           <div className="grid grid-cols-[auto,1fr] gap-4 items-start">
@@ -503,6 +514,6 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
         )}
     </div>
   );
-};
+});
 
 export default ProfileView;

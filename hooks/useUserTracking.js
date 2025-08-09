@@ -1,6 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+
 import { Device } from '@capacitor/device';
 import { App } from '@capacitor/app';
+import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
@@ -8,6 +10,26 @@ import { useAuth } from './useAuth';
 const useUserTracking = () => {
   const { user } = useAuth();
   const [isTracking, setIsTracking] = useState(false);
+  // Session tracking (separate from sign-in count)
+  const INACTIVITY_MS = 15 * 60 * 1000; // 15 minutes
+  const TICK_MS = 5000; // accumulate every 5s
+  const FLUSH_MS = 60000; // send to server once per minute
+
+
+  // Refs/state for session lifecycle
+  const sessionIdRef = React.useRef(null);
+  const sessionStartedAtRef = React.useRef(null);
+  const isForegroundRef = React.useRef(false);
+  const lastTickAtRef = React.useRef(null);
+  const lastInteractionAtRef = React.useRef(null);
+  const lastFlushAtRef = React.useRef(0);
+  const foregroundSecondsRef = React.useRef(0);
+  const activeSecondsRef = React.useRef(0);
+
+  const prefKey = (key) => (user?.id ? `${key}_${user.id}` : key);
+
+  const nowIso = () => new Date().toISOString();
+  const nowMs = () => Date.now();
 
   // Get comprehensive device info
   const getDeviceInfo = useCallback(async () => {
@@ -128,6 +150,188 @@ const useUserTracking = () => {
       console.error('❌ Error updating user metadata:', error);
     }
   }, [user]);
+
+  // ---------- Session storage helpers ----------
+  const getStored = async (key) => (await Preferences.get({ key })).value;
+  const setStored = async (key, value) => Preferences.set({ key, value });
+  const removeStored = async (key) => Preferences.remove({ key });
+
+  // ---------- Session DB operations ----------
+  const insertSession = useCallback(async () => {
+    if (!user?.id) return null;
+    try {
+      const deviceInfo = await getDeviceInfo();
+      const startedAt = nowIso();
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .insert([
+          {
+            user_id: user.id,
+            started_at: startedAt,
+            total_foreground_seconds: 0,
+            total_active_seconds: 0,
+            platform: deviceInfo.platform || null,
+            os_version: deviceInfo.osVersion || null,
+            app_version: deviceInfo.appVersion || null,
+            device_model: deviceInfo.model || null,
+            is_virtual: deviceInfo.isVirtual ?? null,
+          },
+        ])
+        .select('id, started_at')
+        .single();
+      if (error) throw error;
+      return { id: data.id, startedAt: data.started_at };
+    } catch (e) {
+      console.error('❌ insertSession error:', e);
+      return null;
+    }
+  }, [user, getDeviceInfo]);
+
+  const updateSessionTotals = useCallback(async (finalize = false) => {
+    const sessionId = sessionIdRef.current;
+    if (!user?.id || !sessionId) return;
+    try {
+      const updates = {
+        total_foreground_seconds: Math.floor(foregroundSecondsRef.current),
+        total_active_seconds: Math.floor(activeSecondsRef.current),
+        updated_at: nowIso(),
+      };
+      if (finalize) {
+        updates.ended_at = nowIso();
+      }
+      const { error } = await supabase
+        .from('user_sessions')
+        .update(updates)
+        .eq('id', sessionId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (e) {
+      console.error('❌ updateSessionTotals error:', e);
+    }
+  }, [user]);
+
+  // ---------- Session lifecycle ----------
+  const startNewSession = useCallback(async () => {
+    const created = await insertSession();
+    if (!created) return;
+    sessionIdRef.current = created.id;
+    sessionStartedAtRef.current = created.startedAt;
+    foregroundSecondsRef.current = 0;
+    activeSecondsRef.current = 0;
+    lastTickAtRef.current = nowMs();
+    lastFlushAtRef.current = 0;
+    await setStored(prefKey('session_last_seen_at'), String(nowMs()));
+    await setStored(prefKey('session_current_id'), sessionIdRef.current);
+  }, [insertSession]);
+
+  const resumeOrStartSession = useCallback(async () => {
+    const lastSeenStr = await getStored(prefKey('session_last_seen_at'));
+    const lastSeen = lastSeenStr ? Number(lastSeenStr) : 0;
+    const gap = nowMs() - lastSeen;
+    const existingId = await getStored(prefKey('session_current_id'));
+    if (!existingId || gap >= INACTIVITY_MS) {
+      // If we had a previous session and user was inactive long enough, finalize it before starting a new one
+      if (existingId && gap >= INACTIVITY_MS) {
+        sessionIdRef.current = existingId;
+        await updateSessionTotals(true);
+        await removeStored(prefKey('session_current_id'));
+      }
+      await startNewSession();
+    } else {
+      // Resume existing session
+      sessionIdRef.current = existingId;
+      sessionStartedAtRef.current = (await getStored(prefKey('session_started_at'))) || null;
+      lastTickAtRef.current = nowMs();
+    }
+    await setStored(prefKey('session_last_seen_at'), String(nowMs()));
+  }, [INACTIVITY_MS, startNewSession]);
+
+  const endSessionIfAny = useCallback(async () => {
+    if (!sessionIdRef.current) return;
+    await updateSessionTotals(true);
+    // Clear session refs but keep last seen for inactivity threshold
+    sessionIdRef.current = null;
+    sessionStartedAtRef.current = null;
+    await removeStored(prefKey('session_current_id'));
+  }, [updateSessionTotals]);
+
+  // ---------- Foreground tracking ----------
+  const handleAppState = useCallback(async (state) => {
+    if (!user?.id) return;
+    if (state.isActive) {
+      isForegroundRef.current = true;
+      lastTickAtRef.current = nowMs();
+      lastInteractionAtRef.current = nowMs();
+      await resumeOrStartSession();
+    } else {
+      isForegroundRef.current = false;
+      await setStored(prefKey('session_last_seen_at'), String(nowMs()));
+      await updateSessionTotals(false);
+    }
+  }, [resumeOrStartSession, updateSessionTotals, user?.id]);
+
+  // Periodic accumulation and flush
+  useEffect(() => {
+    if (!user?.id) return;
+    let tickTimer = null;
+    let flushTimer = null;
+
+    const tick = async () => {
+      const now = nowMs();
+      if (isForegroundRef.current && sessionIdRef.current && lastTickAtRef.current) {
+        const deltaSec = (now - lastTickAtRef.current) / 1000;
+        foregroundSecondsRef.current += deltaSec;
+        // Consider user "active" if they returned in the last INACTIVITY window's first minute; simplified proxy
+        if (lastInteractionAtRef.current && (now - lastInteractionAtRef.current) <= 60000) {
+          activeSecondsRef.current += deltaSec;
+        }
+      }
+      lastTickAtRef.current = now;
+    };
+
+    const schedule = () => {
+      tickTimer = setInterval(tick, TICK_MS);
+      flushTimer = setInterval(() => updateSessionTotals(false), FLUSH_MS);
+    };
+
+    schedule();
+    return () => {
+      if (tickTimer) clearInterval(tickTimer);
+      if (flushTimer) clearInterval(flushTimer);
+    };
+  }, [user?.id, updateSessionTotals]);
+
+  // App lifecycle listeners
+  useEffect(() => {
+    if (!user?.id) return;
+    const sub = App.addListener('appStateChange', handleAppState);
+    // Web fallback
+    const onVis = async () => {
+      if (document.visibilityState === 'visible') {
+        await handleAppState({ isActive: true });
+      } else {
+        await handleAppState({ isActive: false });
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      sub && sub.remove();
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user?.id, handleAppState]);
+
+  // Kick off session when hook mounts and app is active
+  useEffect(() => {
+    (async () => {
+      if (!user?.id) return;
+      // Heuristic: assume active on mount; App listener will reconcile
+      await resumeOrStartSession();
+      isForegroundRef.current = true;
+      lastTickAtRef.current = nowMs();
+      lastInteractionAtRef.current = nowMs();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Increment sign in count
   const incrementSignInCount = useCallback(async () => {

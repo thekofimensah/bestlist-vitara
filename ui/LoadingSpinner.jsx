@@ -2,10 +2,10 @@ import React from 'react';
 
 const LoadingSpinner = ({ size = 'md', color = 'teal' }) => {
   const sizeClasses = {
-    sm: 'w-8 h-8',     // ~20% larger than 4
-    md: 'w-10 h-10',     // ~20% larger than 6
-    lg: 'w-14 h-14',   // ~20% larger than 8
-    xl: 'w-19 h-19'    // ~20% larger than 12
+    sm: 'w-4 h-4',
+    md: 'w-6 h-6',
+    lg: 'w-8 h-8',
+    xl: 'w-12 h-12'
   };
 
   const colorClasses = {
@@ -15,9 +15,7 @@ const LoadingSpinner = ({ size = 'md', color = 'teal' }) => {
   };
 
   return (
-    <div className="mt-24 md:mt-32">
-      <div className={`${sizeClasses[size]} ${colorClasses[color]} border-2 border-t-transparent rounded-full animate-spin`} />
-    </div>
+    <div className={`${sizeClasses[size]} ${colorClasses[color]} border-2 border-t-transparent rounded-full animate-spin`} />
   );
 };
 

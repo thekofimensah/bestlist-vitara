@@ -75,9 +75,10 @@ Remember:
 - Use `./gradlew clean assembleDebug` as a last resort when builds fail
 
 
-Command I use for changes:
-npm run build && npx cap sync android
+## Command I use for changes:
 
+npm run build && npx cap sync android
+npm run build && npx cap sync ios
 
 To do:
 

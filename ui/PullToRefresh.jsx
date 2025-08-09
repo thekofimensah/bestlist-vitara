@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 const PullToRefresh = ({ 
   children, 
   onRefresh, 
-  threshold = 80,
+  threshold = 160,
   disabled = false,
   className = '',
 }) => {
@@ -99,12 +99,6 @@ const PullToRefresh = ({
       pullStarted.current = false;
       const finalDistance = pullDistanceRef.current;
       
-      console.log('🔄 PullToRefresh: Touch end', JSON.stringify({ 
-        finalDistance: Math.round(finalDistance), 
-        threshold, 
-        willRefresh: finalDistance > threshold && !isRefreshing 
-      }));
-      
       if (finalDistance > threshold && !isRefreshing) {
         console.log('🔄 PullToRefresh: Starting refresh...');
         setIsRefreshing(true);
@@ -152,16 +146,16 @@ const PullToRefresh = ({
     >
              {/* Simple spinner that comes down */}
        {pullDistance > 0 && (
-         <div 
+          <div 
            className="fixed top-0 left-1/2 z-50 flex items-center justify-center"
            style={{ 
-             transform: `translateX(-50%) translateY(${Math.min(pullDistance - 20, 40)}px)`,
+             transform: `translateX(-50%) translateY(${Math.min(pullDistance - 20, 80)}px)`,
              pointerEvents: 'none'
            }}
          >
            {/* Clean spinner only */}
            <div
-             className="w-6 h-6 border-2 border-gray-300 rounded-full bg-white shadow-sm"
+              className="w-12 h-12 border-4 border-gray-300 rounded-full bg-white shadow-sm"
              style={{
                borderTopColor: '#1F6D5A',
                transform: `rotate(${spinnerRotation}deg)`,

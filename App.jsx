@@ -167,6 +167,7 @@ const App = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState(null);
+  const profileViewRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef(null);
   const [searchResults, setSearchResults] = useState([]);
@@ -1176,6 +1177,7 @@ const App = () => {
         return (
           <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
             <ProfileView 
+              ref={profileViewRef}
               onBack={() => navigateToScreen('home')}
               isRefreshing={refreshing}
               onEditItem={handleEditItem}
@@ -1376,10 +1378,13 @@ const App = () => {
       
       {/* Header */}
       <div 
-        className="sticky bg-stone-50 z-10 pt-8 pb-2" 
+        className="sticky bg-stone-50 z-10 pb-2" 
         style={{ 
           backgroundColor: '#F6F6F4',
-          top: (connectionError || isRetrying) ? '48px' : '0'
+          top: (connectionError || isRetrying) ? '48px' : '0',
+          paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
+          paddingLeft: 'env(safe-area-inset-left)',
+          paddingRight: 'env(safe-area-inset-right)'
         }}
       >
         <div className="px-4 mb-3 flex items-center justify-between">
@@ -1390,47 +1395,61 @@ const App = () => {
             <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Yumery</h1>
           </div>
           <div className="flex items-center gap-3">
-            <button 
-              onClick={handleSearch}
-              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
-            >
-              <Search className="w-4 h-4 text-gray-700" />
-            </button>
-            <button
-              onClick={() => setAchievementsOpen((v) => !v)}
-              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
-              aria-label="Achievements"
-            >
-              <Trophy className="w-4 h-4 text-gray-700" />
-            </button>
-            <div className="relative">
-              <button 
-                onClick={handleNotifications}
-                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+            {currentScreen === 'profile' ? (
+              <button
+                onClick={() => profileViewRef.current?.openSettings?.()}
+                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+                aria-label="Settings"
               >
-                <Bell className="w-4 h-4 text-gray-700" />
-                {unreadCount > 0 && (
-                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                    <span className="text-[10px] font-medium text-white">{unreadCount}</span>
-                  </div>
-                )}
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 15a1.65 1.65 0 0 0-1.51-1H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 3.6c.19 0 .37-.04.54-.1H9a2 2 0 1 1 4 0h.46c.17.06.35.1.54.1a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c0 .19.04.37.1.54V9a2 2 0 1 1 0 4h-.09c-.17.06-.35.1-.51.1Z"/>
+                </svg>
               </button>
-              
-              <NotificationsDropdown
-                notifications={notifications}
-                unreadCount={unreadCount}
-                isOpen={isOpen}
-                onClose={toggleOpen}
-                onMarkRead={markAsRead}
-                onMarkAllRead={markAllAsRead}
-                onNavigateToPost={handleNavigateToPost}
-              />
-            </div>
-            <AchievementsDropdown
-              isOpen={achievementsOpen}
-              onClose={() => setAchievementsOpen(false)}
-              achievements={recentAchievements}
-            />
+            ) : (
+              <>
+                <button 
+                  onClick={handleSearch}
+                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+                >
+                  <Search className="w-4 h-4 text-gray-700" />
+                </button>
+                <button
+                  onClick={() => setAchievementsOpen((v) => !v)}
+                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+                  aria-label="Achievements"
+                >
+                  <Trophy className="w-4 h-4 text-gray-700" />
+                </button>
+                <div className="relative">
+                  <button 
+                    onClick={handleNotifications}
+                    className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+                  >
+                    <Bell className="w-4 h-4 text-gray-700" />
+                    {unreadCount > 0 && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                        <span className="text-[10px] font-medium text-white">{unreadCount}</span>
+                      </div>
+                    )}
+                  </button>
+                  <NotificationsDropdown
+                    notifications={notifications}
+                    unreadCount={unreadCount}
+                    isOpen={isOpen}
+                    onClose={toggleOpen}
+                    onMarkRead={markAsRead}
+                    onMarkAllRead={markAllAsRead}
+                    onNavigateToPost={handleNavigateToPost}
+                  />
+                </div>
+                <AchievementsDropdown
+                  isOpen={achievementsOpen}
+                  onClose={() => setAchievementsOpen(false)}
+                  achievements={recentAchievements}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -8,6 +8,8 @@ PODS:
   - CapacitorCordova (5.0.5)
   - CapacitorDevice (5.0.5):
     - Capacitor
+  - CapacitorDialog (5.0.5):
+    - Capacitor
   - CapacitorFilesystem (5.0.5):
     - Capacitor
   - CapacitorGeolocation (5.0.5):
@@ -23,6 +25,7 @@ DEPENDENCIES:
   - "CapacitorCamera (from `../../node_modules/@capacitor/camera`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorDevice (from `../../node_modules/@capacitor/device`)"
+  - "CapacitorDialog (from `../../node_modules/@capacitor/dialog`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
   - "CapacitorKeyboard (from `../../node_modules/@capacitor/keyboard`)"
@@ -39,6 +42,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorDevice:
     :path: "../../node_modules/@capacitor/device"
+  CapacitorDialog:
+    :path: "../../node_modules/@capacitor/dialog"
   CapacitorFilesystem:
     :path: "../../node_modules/@capacitor/filesystem"
   CapacitorGeolocation:
@@ -54,11 +59,12 @@ SPEC CHECKSUMS:
   CapacitorCamera: 377414112fa965aa693e3075e74a025aa8bedd14
   CapacitorCordova: f8c06b897c74ee8f7701fe10e6443b40822bc83a
   CapacitorDevice: abcf146cd1455ea9578fc153d12dd06adabd8f26
+  CapacitorDialog: e9e1dc8d64064e74e75893e23271235512033a29
   CapacitorFilesystem: 0c22d8acd149c086d4870858dab6d471d5c36741
   CapacitorGeolocation: d3bea98fda331da437dd346264ce568e8f49a2e5
   CapacitorKeyboard: 8c80f3b39c7ce66550a98402aa650000cd0a6846
   CapacitorPreferences: 8d5f22f3e2cf4d27d7879094ad82bb2064aeb178
 
-PODFILE CHECKSUM: 3c45701cf08ce4cb8783748f9a7987735cdf691e
+PODFILE CHECKSUM: f4a250201bcb62f5380278c93afe533fbae6a294
 
 COCOAPODS: 1.16.2

@@ -768,7 +768,7 @@ $$;
 ```
 
 
-Supabase Table columns:
+# Current Supabase Table columns:
 
 table_name,columns
 achievements,"active,reward_points,criteria,id,name,category,rarity,icon,description,is_repeatable,created_at"

@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Edit3, Share } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Share } from 'lucide-react';
 import AddItemModal from '../AddItemModal';
 import ShareModal from './ShareModal';
 import SmartImage from './SmartImage';
-import { deleteItemFromList } from '../../lib/supabase';
+import { deleteItemAndRelated } from '../../lib/supabase';
 
 const VerdictBadge = ({ verdict }) => {
   const getVerdictStyle = () => {
@@ -44,19 +44,34 @@ const ItemTile = ({
   showSelection = false 
 }) => {
   const verdict = item.is_stay_away ? 'AVOID' : 'KEEP';
+  const longPressTimerRef = useRef(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
     <div
       onClick={onTap}
       onContextMenu={(e) => {
         e.preventDefault();
-        onLongPress?.();
+        onLongPress?.(e);
       }}
-      className={`relative cursor-pointer group ${
-        isSelected ? 'ring-2 ring-teal-500' : ''
-      }`}
+      onTouchStart={(e) => {
+        clearLongPressTimer();
+        longPressTimerRef.current = setTimeout(() => {
+          onLongPress?.(e);
+        }, 500);
+      }}
+      onTouchEnd={clearLongPressTimer}
+      onTouchCancel={clearLongPressTimer}
+      onTouchMove={clearLongPressTimer}
+      className={`relative cursor-pointer group`}
     >
-      <div className="relative">
+      <div className={`relative`}>
         <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
@@ -64,16 +79,21 @@ const ItemTile = ({
           useThumbnail={true}
           size="medium"
           lazyLoad={true}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (showSelection) {
+              onTap?.();
+            }
+          }}
         />
+        {showSelection && isSelected && (
+          <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
+        )}
         <VerdictBadge verdict={verdict} />
         <StarRating rating={item.rating} />
         
         {/* Selection indicator */}
-        {showSelection && isSelected && (
-          <div className="absolute top-2 left-2 w-6 h-6 bg-teal-500 rounded-full flex items-center justify-center">
-            <div className="w-3 h-3 bg-white rounded-full"></div>
-          </div>
-        )}
+        {/* visible already above */}
       </div>
       <div className="mt-2">
         <p className="text-sm text-gray-700 font-medium truncate">{item.name}</p>
@@ -100,13 +120,13 @@ const ShowItemsInListView = ({
   const [sortBy, setSortBy] = useState('Newest');
   const [filterBy, setFilterBy] = useState('All');
   const [selectedItems, setSelectedItems] = useState([]);
-  const [showContextMenu, setShowContextMenu] = useState(null);
-  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [showAddModal, setShowAddModal] = useState(false);
   const [shareModal, setShareModal] = useState({ isOpen: false, list: null });
   const [listMenu, setListMenu] = useState({ isOpen: false, x: 0, y: 0 });
   const [renameDialog, setRenameDialog] = useState({ isOpen: false, newName: '' });
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false });
+  const [bulkDeleteDialog, setBulkDeleteDialog] = useState({ isOpen: false });
+  const containerRef = useRef(null);
 
   // Combine all items
   const allItems = [
@@ -156,6 +176,18 @@ const ShowItemsInListView = ({
     return filtered;
   }, [allItems, searchQuery, sortBy, filterBy]);
 
+  // Click-away to cancel selection mode when interacting outside the view
+  useEffect(() => {
+    if (selectedItems.length === 0) return;
+    const handleClickAway = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setSelectedItems([]);
+      }
+    };
+    document.addEventListener('click', handleClickAway, true);
+    return () => document.removeEventListener('click', handleClickAway, true);
+  }, [selectedItems.length]);
+
   // Calculate counts
   // const favoriteItems = allItems.filter(item => !item.is_stay_away);
   // const avoidItems = allItems.filter(item => item.is_stay_away);
@@ -178,64 +210,73 @@ const ShowItemsInListView = ({
     }
   };
 
-  const handleItemLongPress = (item, event) => {
+  const handleItemLongPress = (item) => {
     if (selectedItems.length === 0) {
-      // Show context menu
-      setShowContextMenu(item);
-      setContextMenuPosition({
-        x: event.pageX || event.touches?.[0]?.pageX || 0,
-        y: event.pageY || event.touches?.[0]?.pageY || 0
-      });
+      setSelectedItems([item.id]);
     } else {
       // Toggle selection in selection mode
-      handleItemTap(item);
+      setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
     }
   };
 
   const handleDeleteSelected = async () => {
     try {
+      const errors = [];
       for (const itemId of selectedItems) {
-        await deleteItemFromList(itemId);
+        const { error } = await deleteItemAndRelated(itemId);
+        if (error) errors.push({ itemId, error });
       }
       setSelectedItems([]);
       if (refreshList) {
         refreshList();
       }
+      if (errors.length > 0) {
+        console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
+        const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';
+        alert(`Failed to delete ${errors.length} item(s). First error: ${firstMsg}`);
+      }
     } catch (error) {
       console.error('Error deleting items:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
+      alert('Failed to delete selected items. Please try again.');
     }
   };
 
   const handleEditItem = (item) => {
-    setShowContextMenu(null);
     if (onEditItem) {
       onEditItem(item, list);
     }
   };
 
   const handleRemoveItem = async (item) => {
-    setShowContextMenu(null);
     try {
-      await deleteItemFromList(item.id);
+      const confirmDelete = window.confirm('Remove this item from the list?');
+      if (!confirmDelete) return;
+      const { error } = await deleteItemAndRelated(item.id);
+      if (error) {
+        console.error('Failed to remove item:', error);
+        alert('Failed to remove item. Please try again.');
+        return;
+      }
       if (refreshList) {
         refreshList();
       }
     } catch (error) {
       console.error('Error removing item:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
+      alert('Failed to remove item. Please try again.');
     }
   };
 
@@ -256,7 +297,7 @@ const ShowItemsInListView = ({
   };
 
   return (
-    <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
+    <div ref={containerRef} className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
       {/* Header */}
       <div className="sticky top-0 bg-stone-50 z-20 pt-8 pb-4" style={{ backgroundColor: '#F6F6F4' }}>
         <div className="px-4 flex items-center justify-between mb-4">
@@ -386,7 +427,7 @@ const ShowItemsInListView = ({
                 item={item}
                 isSelected={selectedItems.includes(item.id)}
                 onTap={() => handleItemTap(item)}
-                onLongPress={(e) => handleItemLongPress(item, e)}
+                onLongPress={() => handleItemLongPress(item)}
                 showSelection={selectedItems.length > 0}
               />
             ))}
@@ -394,14 +435,23 @@ const ShowItemsInListView = ({
         )}
       </div>
 
-      {/* Floating Delete Button (when items selected) */}
+      {/* Floating Delete + Cancel when items selected */}
       {selectedItems.length > 0 && (
-        <button
-          onClick={handleDeleteSelected}
-          className="fixed bottom-24 right-6 w-14 h-14 bg-red-500 rounded-full flex items-center justify-center shadow-lg z-20"
-        >
-          <Trash2 className="w-6 h-6 text-white" />
-        </button>
+        <div className="fixed bottom-24 right-6 z-20 flex items-center gap-2">
+          <button
+            onClick={() => setSelectedItems([])}
+            className="px-4 py-3 bg-white rounded-full shadow border text-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => setBulkDeleteDialog({ isOpen: true })}
+            className="px-4 py-3 bg-red-600 text-white rounded-full shadow flex items-center gap-2"
+          >
+            <Trash2 className="w-5 h-5" />
+            Delete ({selectedItems.length})
+          </button>
+        </div>
       )}
 
       {/* Floating Add Button (when not in select mode) */}
@@ -415,40 +465,7 @@ const ShowItemsInListView = ({
         </button>
       )}
 
-      {/* Item Context Menu */}
-      {showContextMenu && (
-        <div 
-          className="fixed bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50"
-          style={{
-            left: contextMenuPosition.x,
-            top: contextMenuPosition.y,
-            transform: 'translate(-50%, -100%)'
-          }}
-        >
-          <button
-            onClick={() => handleEditItem(showContextMenu)}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
-          >
-            <Edit3 className="w-4 h-4" />
-            Edit Item
-          </button>
-          <button
-            onClick={() => handleRemoveItem(showContextMenu)}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-3"
-          >
-            <Trash2 className="w-4 h-4" />
-            Remove from List
-          </button>
-        </div>
-      )}
-
-      {/* Background overlay to close context menu */}
-      {showContextMenu && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-20 z-40"
-          onClick={() => setShowContextMenu(null)}
-        />
-      )}
+      {/* Item context menu removed; long-press now enables multi-select */}
 
       {/* Add Item Modal */}
       {showAddModal && (
@@ -533,6 +550,20 @@ const ShowItemsInListView = ({
             <div className="flex gap-3">
               <button onClick={() => setDeleteDialog({ isOpen: false })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
               <button onClick={handleDeleteList} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      {bulkDeleteDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Items?</h3>
+            <p className="text-gray-600 mb-4">Delete {selectedItems.length} selected item(s)? This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkDeleteDialog({ isOpen: false })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
+              <button onClick={() => { setBulkDeleteDialog({ isOpen: false }); handleDeleteSelected(); }} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>
             </div>
           </div>
         </div>

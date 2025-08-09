@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical, Share } from 'lucide-react';
+import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical, Share, Trash2 } from 'lucide-react';
 import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
+import { deleteItemAndRelated } from '../lib/supabase';
 
 
 const StarRating = ({ rating }) => {
@@ -20,7 +21,9 @@ const ItemTile = ({
   isAddTile, 
   onTap, 
   onImageTap,
-  onLongPress 
+  onLongPress,
+  showSelection = false,
+  isSelected = false
 }) => {
   if (isAddTile) {
     return (
@@ -38,10 +41,34 @@ const ItemTile = ({
 
   const verdict = item.is_stay_away ? 'AVOID' : 'LOVE';
 
+  const longPressTimerRef = useRef(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   return (
     <div
-      className="flex-shrink-0 relative cursor-pointer group"
+      className={`flex-shrink-0 relative cursor-pointer group`}
       style={{ width: '200px' }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onLongPress?.(item, e);
+      }}
+      onTouchStart={(e) => {
+        clearLongPressTimer();
+        longPressTimerRef.current = setTimeout(() => onLongPress?.(item, e), 500);
+      }}
+      onTouchEnd={clearLongPressTimer}
+      onTouchCancel={clearLongPressTimer}
+      onTouchMove={clearLongPressTimer}
+      onClick={(e) => {
+        e.stopPropagation();
+        onTap?.();
+      }}
     >
       <div className="relative">
         <SmartImage
@@ -54,12 +81,19 @@ const ItemTile = ({
           lazyLoad={true}
           onClick={(e) => {
             e.stopPropagation();
-            onImageTap?.(item);
+            if (showSelection) {
+              onTap?.();
+            } else {
+              onImageTap?.(item);
+            }
           }}
         />
+        {showSelection && isSelected && (
+          <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
+        )}
         {item.rating && <StarRating rating={item.rating} />}
       </div>
-      <div className="mt-2" onClick={onTap}>
+      <div className="mt-2" onClick={(e) => { e.stopPropagation(); onTap?.(); }}>
         <p className="text-xs text-gray-700 font-medium truncate">{item.name}</p>
       </div>
     </div>
@@ -70,6 +104,10 @@ const ListRow = ({
   list, 
   onItemTap,
   onItemImageTap, 
+  onItemLongPress,
+  selectedIds,
+  selectionEnabled,
+  onToggleSelectItem,
   onAddItem, 
   onListMenu, 
   onListTitleTap,
@@ -166,8 +204,11 @@ const ListRow = ({
             <ItemTile
               key={item.id}
               item={item}
-              onTap={() => onItemTap(item)}
+              onTap={() => (selectionEnabled ? onToggleSelectItem(item) : onItemTap(item))}
               onImageTap={onItemImageTap}
+              onLongPress={onItemLongPress}
+              showSelection={selectionEnabled}
+              isSelected={selectedIds?.includes(item.id)}
             />
           ))}
           <ItemTile
@@ -192,6 +233,10 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   const [contextMenu, setContextMenu] = useState({ isOpen: false, listId: null, x: 0, y: 0 });
   const [renameDialog, setRenameDialog] = useState({ isOpen: false, list: null, newName: '' });
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, list: null });
+  // Multi-select state for bulk deletion across the overview page
+  const [selectionEnabled, setSelectionEnabled] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [bulkDeleteDialog, setBulkDeleteDialog] = useState({ isOpen: false });
 
   // Update reordered lists when lists prop changes
   useEffect(() => {
@@ -218,6 +263,19 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
+  // Click-away to cancel selection mode when interacting outside the lists view
+  useEffect(() => {
+    if (!selectionEnabled) return;
+    const handleClickAway = (event) => {
+      if (scrollContainerRef.current && !scrollContainerRef.current.contains(event.target)) {
+        setSelectionEnabled(false);
+        setSelectedItemIds([]);
+      }
+    };
+    document.addEventListener('click', handleClickAway, true);
+    return () => document.removeEventListener('click', handleClickAway, true);
+  }, [selectionEnabled]);
+
   const handleItemTap = (item) => {
     // Open AddItemModal for editing by finding the parent list
     const parentList = lists.find(list => 
@@ -225,6 +283,56 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     );
     if (parentList && onEditItem) {
       onEditItem(item, parentList);
+    }
+  };
+
+  const handleItemLongPress = (item) => {
+    if (!selectionEnabled) {
+      setSelectionEnabled(true);
+      setSelectedItemIds([item.id]);
+    }
+    if (selectionEnabled) {
+      setSelectedItemIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
+    }
+  };
+
+  const handleToggleSelectItem = (item) => {
+    if (!selectionEnabled) return;
+    setSelectedItemIds(prev => {
+      const next = prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id];
+      if (next.length === 0) {
+        // Auto-cancel selection mode when none selected
+        setSelectionEnabled(false);
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectionEnabled || selectedItemIds.length === 0) return;
+    try {
+      const errors = [];
+      for (const id of selectedItemIds) {
+        const { error } = await deleteItemAndRelated(id);
+        if (error) errors.push({ id, error });
+      }
+      // Optimistic update of data in view
+      setReorderedLists(prev => prev.map(l => ({
+        ...l,
+        items: (l.items || []).filter(it => !selectedItemIds.includes(it.id)),
+        stayAways: (l.stayAways || []).filter(it => !selectedItemIds.includes(it.id))
+      })));
+      if (errors.length > 0) {
+        console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
+        const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';
+        alert(`Failed to delete ${errors.length} item(s). First error: ${firstMsg}`);
+      }
+    } catch (error) {
+      console.error('Error deleting selected items:', error);
+      alert('Failed to delete selected items. Please try again.');
+    } finally {
+      setSelectedItemIds([]);
+      setSelectionEnabled(false);
     }
   };
 
@@ -393,14 +501,38 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                     Done
                   </button>
                 ) : (
-                  <button
-                    onClick={handleEnterReorderMode}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-                    title="Reorder lists"
-                    disabled={isRefreshing}
-                  >
-                    <GripVertical className="w-4 h-4" />
-                  </button>
+                  <>
+                    {!selectionEnabled && (
+                      <button
+                        onClick={handleEnterReorderMode}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+                        title="Reorder lists"
+                        disabled={isRefreshing}
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </button>
+                    )}
+                    {selectionEnabled && (
+                      <>
+                        <button
+                          onClick={() => { setSelectionEnabled(false); setSelectedItemIds([]); }}
+                          className="px-3 py-1.5 bg-gray-100 rounded-full text-sm"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => setBulkDeleteDialog({ isOpen: true })}
+                          disabled={selectedItemIds.length === 0}
+                          className="px-3 py-1.5 bg-red-600 text-white rounded-full text-sm disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Trash2 className="w-4 h-4" />
+                            <span>Delete ({selectedItemIds.length})</span>
+                          </div>
+                        </button>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -430,6 +562,10 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         list={list}
                         onItemTap={handleItemTap}
                         onItemImageTap={handleItemImageTap}
+                        onItemLongPress={handleItemLongPress}
+                        selectedIds={selectedItemIds}
+                        selectionEnabled={selectionEnabled}
+                        onToggleSelectItem={handleToggleSelectItem}
                         onAddItem={handleAddItem}
                         onListMenu={handleListMenu}
                         onListTitleTap={handleListTitleTap}
@@ -447,6 +583,10 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                       list={list}
                       onItemTap={handleItemTap}
                       onItemImageTap={handleItemImageTap}
+                      onItemLongPress={handleItemLongPress}
+                      selectedIds={selectedItemIds}
+                      selectionEnabled={selectionEnabled}
+                      onToggleSelectItem={handleToggleSelectItem}
                       onAddItem={handleAddItem}
                       onListMenu={handleListMenu}
                       onListTitleTap={handleListTitleTap}
@@ -522,6 +662,8 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         list={shareModal.list}
       />
 
+      {/* Item Context Menu removed; long-press now enables multi-select */}
+
       {/* Context Menu */}
       {contextMenu.isOpen && (
         <>
@@ -586,6 +728,20 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             <div className="flex gap-3">
               <button onClick={() => setDeleteDialog({ isOpen: false, list: null })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
               <button onClick={handleDeleteList} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      {bulkDeleteDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Items?</h3>
+            <p className="text-gray-600 mb-4">Delete {selectedItemIds.length} selected item(s)? This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkDeleteDialog({ isOpen: false })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
+              <button onClick={() => { setBulkDeleteDialog({ isOpen: false }); handleBulkDelete(); }} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>
             </div>
           </div>
         </div>

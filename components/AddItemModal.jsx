@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation } from 'lucide-react';
+import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation, Trash2 } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
 import { RatingOverlay } from './Elements';
 import SmartImage from './secondary/SmartImage';
@@ -20,7 +20,7 @@ import {
   getCurrencyDisplay,
   getCurrencyFromCountryName
 } from '../lib/currencyUtils';
-import { createPost } from '../lib/supabase';
+import { createPost, deleteItemAndRelated } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import FirstInWorldBanner from './gamification/FirstInWorldBanner';
 
@@ -1202,6 +1202,8 @@ const AddItemModal = ({
   // Refs for scrolling to validation errors
   const productNameRef = useRef(null);
   const listsRef = useRef(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const isEditingExisting = Boolean(item?.id);
 
   return (
     <div 
@@ -2007,7 +2009,7 @@ const AddItemModal = ({
                   </>
                 )}
               </button>
-              
+
               <div className="text-right relative">
                 {isEditingPrice ? (
                   <div className="flex items-center justify-end gap-2">
@@ -2040,7 +2042,7 @@ const AddItemModal = ({
                     onClick={handlePriceEdit}
                     className="cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors text-right"
                   >
-                    <div className="text-lg font-semibold text-gray-900">
+                    <div className={`text-lg ${editPrice ? 'font-semibold text-gray-900' : 'font-medium text-gray-400'}`}>
                       {editPrice ? `${editPrice} ${getCurrencyDisplay(currency)}` : 'Add price'}
                     </div>
                   </div>
@@ -2137,6 +2139,91 @@ const AddItemModal = ({
                 )}
               </div>
             </div>
+
+            {/* Slide-to-delete below actions */}
+            {isEditingExisting && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-500">Swipe to delete</span>
+                  <span className="text-xs text-gray-400">This cannot be undone</span>
+                </div>
+                <div className="w-full bg-stone-100 rounded-2xl p-1 select-none" style={{ backgroundColor: '#F1F1EF' }}>
+                  <div className="relative w-full h-12 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                    {/* Red progress overlay for swipe feedback */}
+                    <div id="swipeProgress" className="absolute inset-y-0 left-0 bg-red-100" style={{ width: '0%' }} />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <span className="text-sm font-medium text-red-600">Swipe to delete</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      defaultValue="0"
+                      onChange={async (e) => {
+                    const val = Number(e.target.value);
+                        // Update progress overlay width as the user swipes
+                        const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
+                        if (progressEl) progressEl.style.width = `${val}%`;
+                    if (val >= 100 && !isDeleting) {
+                      const ok = window.confirm('Delete this item?');
+                      if (!ok) {
+                        e.target.value = 0;
+                            if (progressEl) progressEl.style.width = '0%';
+                        return;
+                      }
+                      try {
+                        setIsDeleting(true);
+                        const { error } = await deleteItemAndRelated(item.id);
+                        if (error) {
+                          console.error('Failed to delete item:', error);
+                          alert('Failed to delete item. Please try again.');
+                          e.target.value = 0;
+                              if (progressEl) progressEl.style.width = '0%';
+                          setIsDeleting(false);
+                          return;
+                        }
+                        onClose();
+                      } catch (error) {
+                        console.error('Error deleting item:', JSON.stringify({
+                          message: error.message,
+                          name: error.name,
+                          details: error.details,
+                          hint: error.hint,
+                          code: error.code,
+                          fullError: error
+                        }, null, 2));
+                        alert('Failed to delete item. Please try again.');
+                      } finally {
+                        setIsDeleting(false);
+                        e.target.value = 0;
+                            if (progressEl) progressEl.style.width = '0%';
+                      }
+                    }
+                      }}
+                       onMouseUp={(e) => {
+                         if (isDeleting) return;
+                         const val = Number(e.currentTarget.value);
+                         if (val < 100) {
+                           e.currentTarget.value = 0;
+                           const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
+                           if (progressEl) progressEl.style.width = '0%';
+                         }
+                       }}
+                       onTouchEnd={(e) => {
+                         if (isDeleting) return;
+                         const val = Number(e.currentTarget.value);
+                         if (val < 100) {
+                           e.currentTarget.value = 0;
+                           const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
+                           if (progressEl) progressEl.style.width = '0%';
+                         }
+                       }}
+                      className="w-full h-12 opacity-0"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

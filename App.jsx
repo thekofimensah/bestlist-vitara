@@ -1178,6 +1178,8 @@ const App = () => {
             <ProfileView 
               onBack={() => navigateToScreen('home')}
               isRefreshing={refreshing}
+              onEditItem={handleEditItem}
+              onNavigateToUser={handleNavigateToUser}
             />
           </PullToRefresh>
         );

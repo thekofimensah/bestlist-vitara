@@ -224,4 +224,13 @@ So when the drag to refresh functionality appears, every element on the page sho
 
 
 
-I want
+I want the location search to be better, sort by population or something, and also I want the place name to look at an api to pull restauratn or supermarket names as well. Some google api probably
+
+
+Don't 
+
+map showing pins of all
+
+While the user is away if they get an achivement, they should see it as a notification from  the achivements button, not the notificatons one
+
+Publicuerprofile, commentsa nd likes aren't loading, sleecting on recent postrw isn't possible and it's also messy a bit. Also scroll not loading all

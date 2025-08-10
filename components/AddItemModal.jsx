@@ -250,7 +250,9 @@ const AddItemModal = ({
   };
 
   const [showCreateListDialog, setShowCreateListDialog] = useState(false);
-  const [newListName, setNewListName] = useState('');
+  // New list composer state (Best only)
+  const [newListSubject, setNewListSubject] = useState('');
+  const [newListLocation, setNewListLocation] = useState('');
   const [selectedLists, setSelectedLists] = useState(() => {
     if (initialState && initialState.selectedLists) return initialState.selectedLists;
     if (item && item.list_id) return [item.list_id];
@@ -850,33 +852,35 @@ const AddItemModal = ({
   };
 
   const handleCreateList = async () => {
-    if (newListName.trim() && onCreateList) {
-      setCreateListError(null);
-      try {
-        console.log('🔧 AddItemModal: Creating list with name:', newListName.trim());
-        const newList = await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
-        console.log('🔧 AddItemModal: Got result from onCreateList:', newList);
-        
-        if (newList && newList.id) {
-          console.log('✅ AddItemModal: List created successfully, selecting it');
-          setSelectedLists([newList.id]);
-          setNewListName('');
-          setShowCreateListDialog(false);
-        } else {
-          console.error('❌ AddItemModal: List creation failed - no ID returned');
-          setCreateListError('Could not create list. Please try again.');
-        }
-      } catch (error) {
-        console.error('❌ AddItemModal: Error creating list:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-        setCreateListError(error.message || 'An unexpected error occurred.');
+    const subject = newListSubject.trim();
+    if (!subject || !onCreateList) return;
+    setCreateListError(null);
+    try {
+      const location = newListLocation.trim();
+      const prefix = 'Best';
+      const name = location ? `${prefix} ${subject} in ${location}` : `${prefix} ${subject}`;
+      console.log('🔧 AddItemModal: Creating list with name:', name);
+      const newList = await onCreateList(name, '#1F6D5A');
+      console.log('🔧 AddItemModal: Got result from onCreateList:', newList);
+      if (newList && newList.id) {
+        setSelectedLists([newList.id]);
+        setShowCreateListDialog(false);
+        setNewListSubject('');
+        setNewListLocation('');
+      } else {
+        console.error('❌ AddItemModal: List creation failed - no ID returned');
+        setCreateListError('Could not create list. Please try again.');
       }
+    } catch (error) {
+      console.error('❌ AddItemModal: Error creating list:', JSON.stringify({
+        message: error.message,
+        name: error.name,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
+      setCreateListError(error.message || 'An unexpected error occurred.');
     }
   };
 
@@ -2334,31 +2338,55 @@ const AddItemModal = ({
 
       {/* Simple Create List Dialog */}
       {showCreateListDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-20 flex items-center justify-center p-6 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New List</h3>
-            <input
-              type="text"
-              value={newListName}
-              onChange={(e) => setNewListName(e.target.value)}
-              placeholder="e.g., Single Origin Chocolates"
-              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateList()}
-              autoComplete="off"
-              autoCorrect="on"
-              autoCapitalize="words"
-              spellCheck="true"
-            />
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Create List</h3>
+            {/* Clean input design with integrated "Best" prefix */}
+            <div className="space-y-4">
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-base text-gray-700 bg-white pr-1">
+                  Best
+                </div>
+                <input
+                  type="text"
+                  value={newListSubject}
+                  onChange={(e) => setNewListSubject(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newListSubject.trim()) handleCreateList(); }}
+                  placeholder="What are you ranking?"
+                  className="w-full pl-14 pr-4 py-3 border-2 border-teal-100 rounded-2xl focus:outline-none focus:border-teal-400 focus:bg-teal-50/30 text-base font-medium transition-all duration-200"
+                  autoFocus
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={newListLocation}
+                  onChange={(e) => setNewListLocation(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newListSubject.trim()) handleCreateList(); }}
+                  placeholder="Add location (optional)"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-gray-300 text-sm text-gray-600 italic bg-gray-50/50"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+                  Optional
+                </div>
+              </div>
+            </div>
             {createListError && (
-              <p className="text-red-500 text-sm mb-4">{createListError}</p>
+              <p className="text-red-500 text-sm mt-3">{createListError}</p>
             )}
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-4">
               <button
                 onClick={() => {
                   setShowCreateListDialog(false);
-                  setNewListName('');
                   setCreateListError(null);
+                  setNewListSubject('');
+                  setNewListLocation('');
                 }}
                 className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium"
               >
@@ -2366,7 +2394,7 @@ const AddItemModal = ({
               </button>
               <button
                 onClick={handleCreateList}
-                disabled={!newListName.trim()}
+                disabled={!newListSubject.trim()}
                 className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
                 style={{ backgroundColor: '#1F6D5A' }}
               >

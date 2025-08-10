@@ -17,6 +17,17 @@ export const useNotifications = (userId) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
+  // Achievement-related notification types that should NOT appear in the bell
+  const ACHIEVEMENT_TYPES = new Set([
+    'achievement',
+    'achievement_awarded',
+    'first_achievement',
+    'first_action',
+    'first_follow_achievement',
+    'global_first',
+    'global_first_achievement'
+  ]);
+
   useEffect(() => {
     if (!userId) {
       logToAndroid('🔔 No userId provided to useNotifications');
@@ -40,6 +51,11 @@ export const useNotifications = (userId) => {
           filter: `user_id=eq.${userId}`
         }, (payload) => {
           logToAndroid('🔔 Received new notification:', payload.new);
+          // Ignore achievement-related notifications in the bell
+          if (payload?.new?.type && ACHIEVEMENT_TYPES.has(payload.new.type)) {
+            logToAndroid('🔔 Ignoring achievement-type notification for bell:', payload.new.type);
+            return;
+          }
           setNotifications(prev => {
             logToAndroid('🔔 Adding notification to existing:', prev.length, 'notifications');
             return [payload.new, ...prev];
@@ -89,8 +105,12 @@ export const useNotifications = (userId) => {
       logToAndroid('🔔 Raw notifications data:', notificationsData);
 
       if (notificationsData && notificationsData.length > 0) {
+        // Filter out achievement-related types so they show only under Achievements
+        const filtered = notificationsData.filter(n => !ACHIEVEMENT_TYPES.has(n?.type));
+        logToAndroid('🔔 Filtered notifications count (excluding achievements):', filtered.length);
+
         // Get unique actor IDs
-        const actorIds = [...new Set(notificationsData.map(n => n.actor_id))];
+        const actorIds = [...new Set(filtered.map(n => n.actor_id))];
         logToAndroid('🔔 Actor IDs to fetch:', actorIds);
 
         // Fetch profiles for all actors
@@ -113,7 +133,7 @@ export const useNotifications = (userId) => {
         });
 
         // Combine notifications with profile data
-        const enrichedNotifications = notificationsData.map(notification => ({
+        const enrichedNotifications = filtered.map(notification => ({
           ...notification,
           profiles: profilesMap[notification.actor_id] || null
         }));

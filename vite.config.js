@@ -52,6 +52,10 @@ export default defineConfig({
     tailwindcss()
   ],
   build: {
+    // Generate sourcemaps so runtime errors map back to source during debugging
+    sourcemap: true,
+    // Disable minification for clearer stack traces while we diagnose the runtime error
+    minify: false,
     // No rollupOptions.external!
   }
 }) 

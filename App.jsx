@@ -77,7 +77,7 @@ const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) 
         </div>
         
         {/* App Name */}
-        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Yumery</h1>
+        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
         <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
         
         {/* Progress Bar */}
@@ -124,6 +124,14 @@ const App = () => {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [recentAchievements, setRecentAchievements] = useState([]);
   const { getUserAchievements } = useAchievements();
+  // Pending achievements hook (must be declared before any effects that reference it)
+  const {
+    pendingAchievements,
+    loading: achievementsLoading,
+    showPendingAchievements,
+    loadPendingAchievements,
+    markAsNotified
+  } = usePendingAchievements(user?.id);
 
   // Load recent achievements when user opens the dropdown or on user change
   useEffect(() => {
@@ -136,6 +144,18 @@ const App = () => {
       load();
     }
   }, [achievementsOpen, user?.id]);
+
+  // When opening Achievements, mark any pending achievements as seen/notified
+  useEffect(() => {
+    if (!achievementsOpen) return;
+    if (!pendingAchievements || pendingAchievements.length === 0) return;
+    const ids = pendingAchievements.map(a => a.achievement_id).filter(Boolean);
+    if (ids.length > 0) {
+      setTimeout(() => {
+        try { markAsNotified(ids); } catch {}
+      }, 300);
+    }
+  }, [achievementsOpen, pendingAchievements, markAsNotified]);
   const { trackUserSession, isTracking } = useUserTracking();
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
@@ -154,13 +174,7 @@ const App = () => {
   // Cache loading keys to avoid repeated Object.keys calls
   const loadingKeys = ['auth', 'lists', 'feed', 'stats', 'achievements', 'userTracking'];
   
-  // Pending achievements hook
-  const { 
-    pendingAchievements, 
-    loading: achievementsLoading, 
-    showPendingAchievements, 
-    loadPendingAchievements 
-  } = usePendingAchievements(user?.id);
+  
   
   // User stats hook 
   const { stats: userStats, loading: statsLoading } = useUserStats(user?.id);
@@ -436,13 +450,21 @@ const App = () => {
     toggleOpen();
   };
 
-  const handleNavigateToPost = (postId) => {
+  const handleNavigateToPost = (postId, type) => {
     // Close the notifications dropdown
     if (isOpen) toggleOpen();
     
     // Navigate to post detail view
     setSelectedPostId(postId);
     setCurrentScreen('post-detail');
+    
+    // If comment notification, schedule auto-scroll to comments after view mounts
+    if (type === 'comment') {
+      setTimeout(() => {
+        const el = document.getElementById('comments-section');
+        el?.scrollIntoView({ behavior: 'smooth' });
+      }, 500);
+    }
     
     console.log('🔔 Navigating to post:', postId);
   };
@@ -486,10 +508,15 @@ const App = () => {
           return;
         }
 
-        // Default: exit app from home/lists
-        CapacitorApp.exitApp();
+        // Default: never exit app; navigate to home if not already there
+        if (currentScreen !== 'home') {
+          navigateToScreen('home');
+          return;
+        }
+        // Already at home: ignore back press (no exit)
+        return;
       } catch (e) {
-        try { CapacitorApp.exitApp(); } catch (_) {}
+        // Swallow errors to avoid exiting the app
       }
     };
 
@@ -1456,7 +1483,7 @@ const App = () => {
             <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
               <span className="text-white text-xs font-bold">b</span>
             </div>
-            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>Yumery</h1>
+            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
           </div>
           <div className="flex items-center gap-3">
             {currentScreen === 'profile' ? (
@@ -1480,10 +1507,18 @@ const App = () => {
                 </button>
                 <button
                   onClick={() => setAchievementsOpen((v) => !v)}
-                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
                   aria-label="Achievements"
                 >
                   <Trophy className="w-4 h-4 text-gray-700" />
+                  {pendingAchievements && pendingAchievements.length > 0 && (
+                    <div className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-teal-500 rounded-full flex items-center justify-center">
+                      <span className="text-[10px] font-medium text-white">
+                        {Math.min(9, pendingAchievements.length)}
+                        {pendingAchievements.length > 9 ? '+' : ''}
+                      </span>
+                    </div>
+                  )}
                 </button>
                 <div className="relative">
                   <button 
@@ -1589,7 +1624,7 @@ const App = () => {
 
       {/* Search Modal */}
       {showSearch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-8 p-4 z-50">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-20 flex items-start justify-center pt-8 p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md h-[85vh] flex flex-col overflow-hidden">
             {/* Search Header */}
             <div className="p-6 pb-4 flex-shrink-0">

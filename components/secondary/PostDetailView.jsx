@@ -63,7 +63,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
         .select('user_id')
         .eq('post_id', postId)
         .eq('user_id', currentUser?.id)
-        .single();
+        .maybeSingle();
 
       // Combine all the data
       const combinedData = {

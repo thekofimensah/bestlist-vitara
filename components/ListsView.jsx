@@ -223,7 +223,9 @@ const ListRow = ({
 
 const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
-  const [newListName, setNewListName] = useState('');
+  // New list composer state (Best only)
+  const [newListSubject, setNewListSubject] = useState('');
+  const [newListLocation, setNewListLocation] = useState('');
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [reorderedLists, setReorderedLists] = useState(lists);
   const [shareModal, setShareModal] = useState({ isOpen: false, list: null });
@@ -413,11 +415,15 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   };
 
   const handleCreateList = async () => {
-    if (newListName.trim() && onCreateList) {
-      await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
-      setNewListName('');
-      setShowNewListDialog(false);
-    }
+    const subject = newListSubject.trim();
+    if (!subject || !onCreateList) return;
+    const location = newListLocation.trim();
+    const prefix = 'Best';
+    const name = location ? `${prefix} ${subject} in ${location}` : `${prefix} ${subject}`;
+    await onCreateList(name, '#1F6D5A');
+    setShowNewListDialog(false);
+    setNewListSubject('');
+    setNewListLocation('');
   };
 
   const handleEnterReorderMode = () => {
@@ -621,22 +627,53 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
       {/* New List Dialog */}
       {showNewListDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-20 flex items-center justify-center p-6 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New List</h3>
-            <input
-              type="text"
-              value={newListName}
-              onChange={(e) => setNewListName(e.target.value)}
-              placeholder="e.g., Single Origin Chocolates"
-              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
-              autoFocus
-            />
-            <div className="flex gap-3">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Create List</h3>
+            <div className="space-y-4">
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-base text-gray-700 bg-white pr-1">
+                  Best
+                </div>
+                <input
+                  type="text"
+                  value={newListSubject}
+                  onChange={(e) => setNewListSubject(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newListSubject.trim()) handleCreateList(); }}
+                  placeholder="What are you ranking?"
+                  className="w-full pl-14 pr-4 py-3 border-2 border-teal-100 rounded-2xl focus:outline-none focus:border-teal-400 focus:bg-teal-50/30 text-base font-medium transition-all duration-200"
+                  autoFocus
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-base text-gray-700 bg-white pr-1">
+                  in ...
+                </div>
+                <input
+                  type="text"
+                  value={newListLocation}
+                  onChange={(e) => setNewListLocation(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newListSubject.trim()) handleCreateList(); }}
+                  placeholder="Location"
+                  className="w-full pl-14 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-gray-300 text-sm text-gray-600 italic bg-gray-50/50"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+                  Optional
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4">
               <button
                 onClick={() => {
                   setShowNewListDialog(false);
-                  setNewListName('');
+                  setNewListSubject('');
+                  setNewListLocation('');
                 }}
                 className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium"
               >
@@ -644,7 +681,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
               </button>
               <button
                 onClick={handleCreateList}
-                disabled={!newListName.trim()}
+                disabled={!newListSubject.trim()}
                 className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
                 style={{ backgroundColor: '#1F6D5A' }}
               >
@@ -724,7 +761,11 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete List?</h3>
-            <p className="text-gray-600 mb-4">Are you sure you want to delete "{deleteDialog.list?.name}"? All items in this list will be permanently removed.</p>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to delete "{deleteDialog.list?.name}"?
+              <br />
+              All items in this list will be permanently removed.
+            </p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteDialog({ isOpen: false, list: null })} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium">Cancel</button>
               <button onClick={handleDeleteList} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium">Delete</button>

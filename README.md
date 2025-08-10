@@ -208,27 +208,16 @@ Share to insta (it woudl be cool if you could upload a whole list)
 Crop still not draggging from corners
 
 
-Android native back not working from within list
 
 
-The price should default to the currency of the current location (and it can also be changed) If they change it, then use that currency for now on, but if they click on the currency, they can change to a different one. 
-
-
-
-
-
-
-Need to resize image, screenshotted images are too long for the stars to work. But do this only when we do the redesign of that screen
 
 Expected behaviors:
-So when the drag to refresh functionality appears, every element on the page should be refreshed.
 
 
 
 I want the location search to be better, sort by population or something, and also I want the place name to look at an api to pull restauratn or supermarket names as well. Some google api probably
 
 
-Don't 
 
 map showing pins of all
 

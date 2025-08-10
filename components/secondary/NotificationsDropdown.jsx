@@ -48,7 +48,7 @@ const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
     
     // Navigate to post if it's a like or comment notification
     if (notification.type === 'like' || notification.type === 'comment') {
-      onNavigateToPost(notification.reference_id);
+      onNavigateToPost(notification.reference_id, notification.type);
     }
   };
 
@@ -79,7 +79,7 @@ const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
       exit={{ opacity: 0, y: -10 }}
       transition={{ layout: { duration: 0.2 } }}
     >
-      {/* Simple white card (removed gradient background) */}
+      {/* Full-width row with divider */}
       <motion.div
         layout
         animate={controls}
@@ -87,9 +87,8 @@ const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.2}
         dragMomentum={true}
-        whileTap={{ scale: 0.98 }}
         onDragEnd={handleDragEnd}
-        className="rounded-xl bg-white p-3 flex items-center gap-3 cursor-pointer border border-gray-100 shadow-sm"
+        className="px-4 py-3 flex items-center gap-3 cursor-pointer border-b border-gray-100"
         onClick={handleClick}
       >
         <motion.div className="flex items-center gap-3 w-full" layout>

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 const PullToRefresh = ({ 
   children, 
   onRefresh, 
-  threshold = 160,
+  threshold = 90,
   disabled = false,
   className = '',
 }) => {

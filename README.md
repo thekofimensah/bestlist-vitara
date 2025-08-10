@@ -234,6 +234,5 @@ map showing pins of all
 
 While the user is away if they get an achivement, they should see it as a notification from  the achivements button, not the notificatons one
 
-Publicuerprofile, commentsa nd likes aren't loading, sleecting on recent postrw isn't possible and it's also messy a bit. Also scroll not loading all
 
 fix the search by users to search by correct field

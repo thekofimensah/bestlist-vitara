@@ -205,6 +205,7 @@ const App = () => {
   const [feedPosts, setFeedPosts] = useState([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
   const [feedError, setFeedError] = useState(null);
+  const [lastFeedLoadedAt, setLastFeedLoadedAt] = useState(0);
 
   const handleSignOut = async () => {
     try {
@@ -402,12 +403,13 @@ const App = () => {
 
   const handleNavigateToUser = (username) => {
     setSelectedUsername(username);
+    setPreviousScreen(currentScreen);
     setCurrentScreen('user-profile');
   };
 
   const handleBackFromUserProfile = () => {
     setSelectedUsername(null);
-    setCurrentScreen('home'); // Go back to feed
+    setCurrentScreen(previousScreen || 'home');
   };
 
   const handleSearch = () => {
@@ -455,6 +457,54 @@ const App = () => {
     setSelectedPostId(null);
     setCurrentScreen('home');
   };
+
+  // Handle native Android back button globally
+  useEffect(() => {
+    const onBack = () => {
+      try {
+        // Close search if open
+        if (showSearch) {
+          setShowSearch(false);
+          return;
+        }
+
+        // Route by current screen
+        if (currentScreen === 'post-detail') {
+          handleBackFromPost();
+          return;
+        }
+        if (currentScreen === 'list-detail') {
+          handleBackFromList();
+          return;
+        }
+        if (currentScreen === 'user-profile') {
+          handleBackFromUserProfile();
+          return;
+        }
+        if (currentScreen === 'profile') {
+          navigateToScreen('home');
+          return;
+        }
+
+        // Default: exit app from home/lists
+        CapacitorApp.exitApp();
+      } catch (e) {
+        try { CapacitorApp.exitApp(); } catch (_) {}
+      }
+    };
+
+    let backListenerHandle;
+    const add = async () => {
+      try {
+        backListenerHandle = await CapacitorApp.addListener('backButton', onBack);
+      } catch (_) {}
+    };
+    add();
+
+    return () => {
+      try { backListenerHandle && backListenerHandle.remove && backListenerHandle.remove(); } catch (_) {}
+    };
+  }, [currentScreen, showSearch]);
 
   useEffect(() => {
     if (hasInitialized.current) return;
@@ -653,6 +703,12 @@ const App = () => {
         if (!session?.user) {
           setAppLoading(false);
         }
+
+        // Refresh feed cache on sign-in events
+        if (event === 'SIGNED_IN') {
+          setLastFeedLoadedAt(0);
+          loadFeedData('following', true);
+        }
       }
     );
     return () => subscription?.unsubscribe();
@@ -677,10 +733,13 @@ const App = () => {
   };
 
   // Load feed data, now living in the main App component
-  const loadFeedData = async (feedType = 'for_you') => {
-    // Do not reload if we already have posts, unless it's a manual refresh
-    if (feedPosts.length > 0 && !refreshing) {
-      console.log('✅ Feed already loaded, skipping reload.');
+  const loadFeedData = async (feedType = 'for_you', forceReload = false) => {
+    // Session-scoped cache: skip reload if within 5 minutes and not explicitly refreshing
+    const now = Date.now();
+    const fiveMinutesMs = 5 * 60 * 1000;
+    const cacheValid = lastFeedLoadedAt && (now - lastFeedLoadedAt < fiveMinutesMs);
+    if (!forceReload && cacheValid && feedPosts.length > 0 && !refreshing) {
+      console.log('✅ Feed cache valid (≤ 5 min), skipping reload.');
       return;
     }
 
@@ -715,6 +774,7 @@ const App = () => {
             })
           );
           setFeedPosts(postsWithCommentCounts);
+          setLastFeedLoadedAt(Date.now());
         }
       }
     } catch (error) {
@@ -736,16 +796,11 @@ const App = () => {
     }
   };
 
-  // Handle tab change and reload feed with appropriate type
+  // Handle tab change without forcing feed refresh; feed refresh is pull-to-refresh or 5-min TTL
   const handleTabChange = async (feedType) => {
     console.log('🔄 Tab changed to:', feedType);
-    // Clear current posts to show loading state
-    setFeedPosts([]);
-    // Force reload by setting refreshing temporarily
-    const wasRefreshing = refreshing;
-    setRefreshing(true);
-    await loadFeedData(feedType);
-    setRefreshing(wasRefreshing);
+    // Do not clear or force reload; optional: prefetch respecting cache
+    await loadFeedData(feedType, false);
   };
 
   // Feed loading is now handled in the main initialization useEffect
@@ -808,7 +863,7 @@ const App = () => {
                 // Refresh lists with retry
                 await retryNetworkRequest(() => refreshLists(false));
                 
-                // Refresh feed data with retry
+                // Refresh feed respecting cache window
                 await retryNetworkRequest(() => loadFeedData('following'));
               }
               

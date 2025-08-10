@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Calendar, Users, Heart, MessageCircle, UserPlus, UserMinus } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Heart, MessageCircle, UserPlus, UserMinus, Star, User } from 'lucide-react';
 import { getUserProfile, getUserPosts, followUser, unfollowUser, getUserFollowers, getUserFollowing, supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import SmartImage from './SmartImage';
+import { App as CapacitorApp } from '@capacitor/app';
 
-const UserProfile = ({ username, onBack, onNavigateToUser }) => {
+const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImageTap, onEditItem }) => {
   const { user: currentUser } = useAuth();
   const [userProfile, setUserProfile] = useState(null);
   const [userPosts, setUserPosts] = useState([]);
@@ -15,6 +16,11 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sentinelRef = useRef(null);
+  const [postsCount, setPostsCount] = useState(0);
 
   // Load user profile data
   useEffect(() => {
@@ -66,6 +72,18 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
           const isFollowingUser = !!followStatusResult.data && !followStatusResult.error;
           setIsFollowing(isFollowingUser);
         }
+
+        // Load total public posts count accurately
+        try {
+          const postsCountRes = await supabase
+            .from('posts')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('is_public', true);
+          setPostsCount(postsCountRes?.count || 0);
+        } catch (_) {
+          setPostsCount(0);
+        }
         
       } catch (error) {
         console.error('❌ Error in loadUserProfile:', error?.message || 'Unknown error');
@@ -81,12 +99,33 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
       }
     };
 
+    const enrichPosts = async (posts) => {
+      try {
+        const enriched = await Promise.all(
+          (posts || []).map(async (p) => {
+            const [likeRes, commentRes] = await Promise.all([
+              supabase.from('likes').select('*', { count: 'exact', head: true }).eq('post_id', p.id),
+              supabase.from('comments').select('*', { count: 'exact', head: true }).eq('post_id', p.id)
+            ]);
+            return {
+              ...p,
+              like_count: likeRes?.count || 0,
+              comment_count: commentRes?.count || 0
+            };
+          })
+        );
+        return enriched;
+      } catch {
+        return posts || [];
+      }
+    };
+
     const loadUserPosts = async () => {
       try {
         setPostsLoading(true);
         console.log('🔍 Loading posts for username:', username);
-        
-        const { data: posts, error } = await getUserPosts(username, 20, 0);
+        const pageSize = 8;
+        const { data: posts, error } = await getUserPosts(username, pageSize, 0);
         
         if (error) {
           console.error('❌ Error loading user posts:', error?.message || 'Unknown error');
@@ -100,7 +139,10 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
           return;
         }
         
-        setUserPosts(posts || []);
+        const enriched = await enrichPosts(posts || []);
+        setUserPosts(enriched);
+        setOffset(enriched.length);
+        setHasMore((posts?.length || 0) === pageSize);
         
               } catch (error) {
           console.error('❌ Error in loadUserPosts:', error?.message || 'Unknown error');
@@ -154,14 +196,54 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
     }
   };
 
+  // Infinite scroll for posts
+  useEffect(() => {
+    if (!hasMore || postsLoading) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(async (entries) => {
+      const first = entries[0];
+      if (first.isIntersecting && !loadingMore) {
+        try {
+          setLoadingMore(true);
+          const pageSize = 8;
+          const { data } = await getUserPosts(username, pageSize, offset);
+          const newItems = data || [];
+          // Enrich with counts
+          const enriched = await Promise.all(
+            newItems.map(async (p) => {
+              const [likeRes, commentRes] = await Promise.all([
+                supabase.from('likes').select('*', { count: 'exact', head: true }).eq('post_id', p.id),
+                supabase.from('comments').select('*', { count: 'exact', head: true }).eq('post_id', p.id)
+              ]);
+              return { ...p, like_count: likeRes?.count || 0, comment_count: commentRes?.count || 0 };
+            })
+          );
+          setUserPosts((prev) => [...prev, ...enriched]);
+          setOffset((prev) => prev + newItems.length);
+          if (newItems.length < pageSize) setHasMore(false);
+        } finally {
+          setLoadingMore(false);
+        }
+      }
+    }, { root: null, rootMargin: '200px', threshold: 0 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, postsLoading, loadingMore, offset, username]);
+
   const formatPostForDisplay = (post) => {
     return {
       id: post.id,
       user: {
-              name: post.profiles?.username || 'User',
-      avatar: post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'
+        name: post.profiles?.username || 'User',
+        avatar:
+          post.profiles?.avatar_url ||
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E",
       },
-      image: post.items?.image_url || post.lists?.items?.[0]?.image_url || 'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg',
+      image:
+        post.items?.image_url ||
+        post.lists?.items?.[0]?.image_url ||
+        'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg',
       title: post.items?.name || post.lists?.name || 'Untitled',
       description: post.content || post.items?.notes || 'No description',
       rating: post.items?.rating || 3,
@@ -169,9 +251,39 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
       comments: post.comment_count || 0,
       location: post.location || post.items?.location || '',
       created_at: post.created_at,
-      user_liked: post.user_liked || false
+      user_liked: post.user_liked || false,
     };
   };
+
+  const handlePostClick = (post) => {
+    if (!post) return;
+    if (typeof onImageTap === 'function') {
+      onImageTap(post.id);
+      return;
+    }
+    if (typeof onSelectPost === 'function') {
+      onSelectPost(post);
+      return;
+    }
+    if (typeof onEditItem === 'function') {
+      onEditItem(post.items, post.lists);
+    }
+  };
+
+  // Native Android back swipe/button -> go back
+  useEffect(() => {
+    let handle;
+    const add = async () => {
+      try {
+        handle = await CapacitorApp.addListener('backButton', () => {
+          if (typeof onBack === 'function') onBack();
+        });
+      } catch (_) {}
+    };
+    add();
+    return () => { try { handle && handle.remove && handle.remove(); } catch (_) {} };
+  }, [onBack]);
+
 
   if (loading) {
     return (
@@ -201,7 +313,7 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
           </button>
           <div className="text-center py-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-2">User not found</h2>
-            <p className="text-gray-600">The user @{username} could not be found.</p>
+            <p className="text-gray-600">The user {username} could not be found.</p>
           </div>
         </div>
       </div>
@@ -220,7 +332,7 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
           </button>
           <div className="flex-1">
             <h1 className="text-lg font-semibold text-gray-900">
-              @{userProfile.username}
+              {userProfile.username}
             </h1>
           </div>
         </div>
@@ -248,18 +360,26 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
               )}
             </div>
 
-            {/* Profile Info */}
+            {/* Profile Info (username replaced by avatar here) */}
             <div className="flex-1">
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">
-                {userProfile.display_name || `@${userProfile.username}`}
-              </h2>
-              <p className="text-gray-600 text-sm mb-3">
-                @{userProfile.username}
-              </p>
-              
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-100">
+                  {userProfile.avatar_url ? (
+                    <img src={userProfile.avatar_url} alt={userProfile.username} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <User className="w-4 h-4 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  {userProfile.display_name || userProfile.username}
+                </h2>
+              </div>
+
               {/* Stats */}
               <div className="flex items-center gap-4 text-sm text-gray-600">
-                <span><strong>{userPosts.length}</strong> posts</span>
+                <span><strong>{postsCount}</strong> posts</span>
                 <span><strong>{followersCount}</strong> followers</span>
                 <span><strong>{followingCount}</strong> following</span>
               </div>
@@ -295,11 +415,11 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
           </div>
 
           {/* Bio */}
-          {userProfile.bio && (
+          {/* {userProfile.bio && (
             <p className="text-gray-700 text-sm leading-relaxed mb-4">
               {userProfile.bio}
             </p>
-          )}
+          )} */}
 
           {/* Join Date */}
           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -311,7 +431,7 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
           </div>
         </div>
 
-        {/* Posts Section */}
+        {/* Posts Section (list style, minimal changes) */}
         <div className="bg-white rounded-2xl shadow-sm" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
           <div className="p-4 border-b border-gray-100">
             <h3 className="text-lg font-semibold text-gray-900">Recent Posts</h3>
@@ -338,22 +458,29 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
               {userPosts.map((post) => {
                 const formattedPost = formatPostForDisplay(post);
                 return (
-                  <div key={post.id} className="flex gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                    <SmartImage 
-                      src={formattedPost.image} 
+                  <button
+                    key={post.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePostClick(post);
+                    }}
+                    className="w-full text-left flex gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    <SmartImage
+                      src={formattedPost.image}
                       alt={formattedPost.title}
                       className="w-16 h-16 object-cover rounded-lg"
                       useThumbnail={true}
                       size="small"
                       lazyLoad={true}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePostClick(post);
+                      }}
                     />
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-gray-900 truncate">
-                        {formattedPost.title}
-                      </h4>
-                      <p className="text-sm text-gray-600 line-clamp-2 mb-2">
-                        {formattedPost.description}
-                      </p>
+                      <h4 className="font-medium text-gray-900 truncate">{formattedPost.title}</h4>
+                      <p className="text-sm text-gray-600 line-clamp-2 mb-2">{formattedPost.description}</p>
                       <div className="flex items-center gap-4 text-xs text-gray-500">
                         <div className="flex items-center gap-1">
                           <Heart className="w-3 h-3" />
@@ -369,14 +496,16 @@ const UserProfile = ({ username, onBack, onNavigateToUser }) => {
                             <span className="truncate">{formattedPost.location}</span>
                           </div>
                         )}
-                        <span className="ml-auto">
-                          {new Date(formattedPost.created_at).toLocaleDateString()}
-                        </span>
+                        <span className="ml-auto">{new Date(formattedPost.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
+              {hasMore && <div ref={sentinelRef} className="h-8" />}
+              {loadingMore && (
+                <div className="text-center text-sm text-gray-500 py-2">Loading…</div>
+              )}
             </div>
           )}
         </div>

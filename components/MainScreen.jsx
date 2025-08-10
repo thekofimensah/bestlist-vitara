@@ -404,6 +404,9 @@ const MainScreen = React.forwardRef(({
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const feedRef = useRef(null);
+  const cameraContainerRef = useRef(null);
+  const firstImageRef = useRef(null);
+  const hasAdjustedRef = useRef(false);
   const streamRef = useRef(null);
   
   // Achievement hooks
@@ -530,7 +533,80 @@ const MainScreen = React.forwardRef(({
   };
 
   // Fixed camera height; allow the entire page to scroll so the camera fully scrolls away
-  const cameraHeight = 60; // vh
+  // Dynamic camera height (px) to ensure a small peek of the first feed image is visible
+  const [cameraHeightPx, setCameraHeightPx] = useState(null);
+  const computeInitialCameraHeight = () => {
+    const vh = window.innerHeight || 800;
+    // Cap at 50% height, allow more feed visible when space is small
+    const minPx = Math.max(vh * 0.25, 220);
+    const maxPx = Math.max(vh * 0.5, minPx);
+    const initial = Math.min(vh * 0.5, maxPx);
+    return initial;
+  };
+
+  useEffect(() => {
+    // Compute once on mount
+    setCameraHeightPx(computeInitialCameraHeight());
+
+    // Adjust on orientation changes only (avoids Android resize thrash)
+    const handleOrientation = () => {
+      hasAdjustedRef.current = false;
+      setCameraHeightPx(computeInitialCameraHeight());
+      requestAnimationFrame(() => setTimeout(() => adjustCameraForPeek(true), 0));
+    };
+    try {
+      if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) {
+        window.screen.orientation.addEventListener('change', handleOrientation);
+        return () => window.screen.orientation.removeEventListener('change', handleOrientation);
+      }
+    } catch (_) {}
+    // Fallback
+    window.addEventListener('orientationchange', handleOrientation);
+    return () => window.removeEventListener('orientationchange', handleOrientation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const adjustCameraForPeek = (force = false) => {
+    try {
+      if (!firstImageRef.current || cameraHeightPx == null) return;
+      if (!force && hasAdjustedRef.current) return;
+      const bottomNavHeight = 56; // approx bottom nav height (px)
+      const safeBottom = (typeof window !== 'undefined' && parseInt(getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)')) ) || 0;
+      const desiredPeek = 20; // px of the first image to show (minimum)
+      const vh = window.innerHeight || 800;
+      const minPx = Math.max(vh * 0.25, 220);
+      const maxPx = Math.max(vh * 0.5, minPx);
+      const rect = firstImageRef.current.getBoundingClientRect();
+      const target = vh - bottomNavHeight - safeBottom - desiredPeek;
+      const delta = rect.top - target; // positive => image too low (hidden)
+      if (Math.abs(delta) < 4) { hasAdjustedRef.current = true; return; }
+      let newHeight = cameraHeightPx - delta;
+      if (!Number.isFinite(newHeight)) return;
+      newHeight = Math.max(minPx, Math.min(maxPx, newHeight));
+      if (Math.abs(newHeight - cameraHeightPx) >= 1) {
+        setCameraHeightPx(newHeight);
+        hasAdjustedRef.current = true;
+      }
+    } catch (_) {
+      // noop - be resilient
+    }
+  };
+
+  // After feed loads or camera height changes, ensure minimal peek is visible
+  useEffect(() => {
+    // Defer until layout settled, adjust only once per orientation/mount
+    if (!hasAdjustedRef.current) {
+      const id = requestAnimationFrame(() => {
+        setTimeout(() => {
+          adjustCameraForPeek();
+          // Retry once more shortly after in case layout settles late (Android)
+          if (!hasAdjustedRef.current) setTimeout(() => adjustCameraForPeek(true), 80);
+        }, 0);
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedPosts, isLoadingFeed, cameraHeightPx]);
 
   // const tabs = ['For You', 'Following']; // Commented out - using Following only for now
   const tabs = ['Following']; // Only Following tab for now
@@ -1278,8 +1354,9 @@ const MainScreen = React.forwardRef(({
 
       {/* Camera Section */}
       <div 
+        ref={cameraContainerRef}
         className={`relative transition-all duration-300 ease-out`}
-        style={{ height: `${cameraHeight}vh` }}
+        style={{ height: cameraHeightPx != null ? `${cameraHeightPx}px` : '60vh' }}
       >
         {/* Camera Feed */}
         <div className="w-full h-full bg-black rounded-2xl overflow-hidden mx-4 mt-4" style={{ width: 'calc(100% - 32px)' }}>
@@ -1439,7 +1516,7 @@ const MainScreen = React.forwardRef(({
             )}
 
             {/* Real Feed Posts */}
-            {!isLoadingFeed && feedPosts.map((post) => (
+            {!isLoadingFeed && feedPosts.map((post, index) => (
               <PostCard
                 key={post.id}
                 post={post}
@@ -1448,6 +1525,7 @@ const MainScreen = React.forwardRef(({
                 onCommentTap={handleCommentTap}
                 onShareTap={handleShareTap}
                 onImageTap={onImageTap}
+                imageRef={index === 0 ? firstImageRef : undefined}
                 onLikeChange={(postId, liked) => {
                   // Update the local feedPosts state when a post is liked/unliked
                   setFeedPosts(prev => prev.map(p => 

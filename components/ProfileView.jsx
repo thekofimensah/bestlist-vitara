@@ -329,7 +329,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
 
   /* -------- Profile (mimic screenshot layout, our style) -------- */
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#FFFFFF' }}>
+    <div className="min-h-screen overflow-x-hidden" style={{ backgroundColor: '#FFFFFF' }}>
       <div className="px-4 pb-8 pt-6 space-y-6">
         {/* Header row (best-practice alignment) */}
         <div className="p-1">
@@ -355,8 +355,8 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             </div>
 
             {/* Counts row (right col, second row) */}
-            <div className="col-start-2 mt-2 flex justify-end">
-              <div className="grid grid-cols-3 gap-12 min-w-[280px] justify-items-center text-center">
+            <div className="col-start-2 mt-2 flex justify-center">
+              <div className="grid grid-cols-3 gap-6 w-full max-w-[280px] justify-items-center text-center">
                 <div>
                   <div className="text-2xl font-bold leading-none">{postsCount}</div>
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight">Posts</div>

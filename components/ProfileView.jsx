@@ -335,7 +335,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         <div className="p-1">
           <div className="grid grid-cols-[auto,1fr] gap-4 items-start">
             {/* Avatar spans both rows and is vertically centered */}
-            <div className="row-span-2 self-start w-20 h-20 rounded-full overflow-hidden bg-gray-100 cursor-pointer" onClick={handleAvatarClick}>
+            <div className="row-span-2 self-start w-24 h-24 rounded-full overflow-hidden bg-gray-100 cursor-pointer" onClick={handleAvatarClick}>
               {(avatarUrl || userProfile?.avatar_url) ? (
                 <img src={avatarUrl || userProfile?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
               ) : (
@@ -347,7 +347,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarFileChange} />
 
             {/* Username + email (right col, first row) */}
-            <div className="min-w-0">
+            <div className="min-w-0 flex flex-col justify-start">
               <div className="text-base font-semibold text-gray-900 truncate">
                 {userProfile?.display_name || userProfile?.username || user?.email?.split('@')[0] || 'User'}
               </div>
@@ -355,17 +355,17 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             </div>
 
             {/* Counts row (right col, second row) */}
-            <div className="col-start-2 mt-2 flex justify-center">
-              <div className="grid grid-cols-3 gap-6 w-full max-w-[280px] justify-items-center text-center">
+            <div className="col-start-2 mt-2">
+              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-start items-start text-left">
                 <div>
-                  <div className="text-2xl font-bold leading-none">{postsCount}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight">Posts</div>
+                  <div className="text-2xl font-bold leading-none text-left">{postsCount}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-left">Posts</div>
                 </div>
-                <button className="text-center" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
+                <button className="text-left" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
                   <div className="text-2xl font-bold leading-none text-gray-900">{followersCount}</div>
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight">Followers</div>
                 </button>
-                <button className="text-center" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
+                <button className="text-left" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
                   <div className="text-2xl font-bold leading-none text-gray-900">{followingCount}</div>
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight">Following</div>
                 </button>

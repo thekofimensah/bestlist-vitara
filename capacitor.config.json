@@ -17,7 +17,7 @@
   },
   "plugins": {
     "App": {
-      "urlScheme": "breadcrumbs"
+      "urlScheme": "bestlist"
     },
     "Keyboard": {
       "resize": "native",

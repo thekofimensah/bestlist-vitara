@@ -153,6 +153,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
   };
 
   const isOwner = currentUser?.id === post?.user_id;
+  const displayLocation = post?.items?.place_name || post?.location || post?.items?.location || '';
 
   if (loading) {
     return (
@@ -234,34 +235,35 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
           </div>
 
           {/* Product Name */}
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">{post.items?.name}</h1>
+          <h1 className="text-base font-semibold text-gray-900 mb-3">{post.items?.name}</h1>
 
-          {/* Rating */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star
-                  key={star}
-                  className={`w-5 h-5 ${
-                    star <= (post.items?.rating || 0)
-                      ? 'text-yellow-400 fill-yellow-400'
-                      : 'text-gray-300'
-                  }`}
-                />
-              ))}
+          {/* Rating + Location aligned on same row */}
+          <div className="flex items-center mb-4">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-5 h-5 ${
+                      star <= (post.items?.rating || 0)
+                        ? 'text-yellow-400 fill-yellow-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-base font-semibold text-gray-900">
+                {post.items?.rating}
+              </span>
             </div>
-            <span className="text-lg font-medium text-gray-900">
-              {post.items?.rating}/5
-            </span>
+
+            {displayLocation && (
+              <div className="ml-auto flex items-center gap-1 min-w-0">
+                <MapPin className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                <span className="text-sm text-gray-600 whitespace-nowrap truncate">{displayLocation}</span>
+              </div>
+            )}
           </div>
-
-          {/* Location */}
-          {post.location && (
-            <div className="flex items-center gap-2 mb-4">
-              <MapPin className="w-4 h-4 text-gray-500" />
-              <span className="text-gray-600">{post.location}</span>
-            </div>
-          )}
 
           {/* Notes */}
           {post.items?.notes && (
@@ -280,7 +282,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
                 disabled={isLiking}
               >
                 <Heart
-                  className={`w-6 h-6 transition-all ${
+                  className={`w-5 h-5 transition-all ${
                     liked
                       ? 'text-red-500 fill-red-500'
                       : 'text-gray-500 group-hover:text-red-500'
@@ -295,7 +297,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
                 onClick={() => document.getElementById('comments-section')?.scrollIntoView({ behavior: 'smooth' })}
                 className="flex items-center gap-2 group"
               >
-                <MessageSquare className="w-6 h-6 text-gray-500 group-hover:text-blue-500" />
+                <MessageSquare className="w-5 h-5 text-gray-500 group-hover:text-blue-500" />
                 <span className="font-medium text-gray-700">{comments.length}</span>
               </button>
             </div>

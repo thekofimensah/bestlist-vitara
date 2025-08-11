@@ -225,3 +225,9 @@ While the user is away if they get an achivement, they should see it as a notifi
 
 
 fix the search by users to search by correct field
+
+Save other users' posts
+
+share doesn't create a proper link that can be clicked
+
+Whatsapp actual image on the share

@@ -307,6 +307,7 @@ const AddItemModal = ({
   const [locationSearch, setLocationSearch] = useState('');
   const [locationResults, setLocationResults] = useState([]);
   const [showLocationSearch, setShowLocationSearch] = useState(false);
+  const locationDropdownRef = useRef(null);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [recentLocations, setRecentLocations] = useState(() => {
     try {
@@ -402,9 +403,14 @@ const AddItemModal = ({
   const placeInputRef = useRef(null);
   const googleAutocompleteRef = useRef(null);
   const googleScriptLoadingRef = useRef(false);
+  const placeDropdownRef = useRef(null);
+  const [showPlaceSearch, setShowPlaceSearch] = useState(false);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [placeResults, setPlaceResults] = useState([]);
   const [selectedPlaceCoords, setSelectedPlaceCoords] = useState(null);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [currentCoords, setCurrentCoords] = useState(null);
   const [rarity, setRarity] = useState(1); // 1=Common, 2=Uncommon, 3=Rare
   const [showListDropdown, setShowListDropdown] = useState(false);
   const listDropdownRef = useRef(null);
@@ -422,6 +428,114 @@ const AddItemModal = ({
       }, 100);
     }
   }, [showListDropdown]);
+
+  // Auto-scroll location dropdown into view when opened
+  useEffect(() => {
+    if (showLocationSearch) {
+      setTimeout(() => {
+        locationDropdownRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+      }, 50);
+    }
+  }, [showLocationSearch]);
+
+  // Close location dropdown on click-away
+  useEffect(() => {
+    if (!showLocationSearch) return;
+    const handleClickAway = (e) => {
+      if (!locationDropdownRef.current) return;
+      if (!locationDropdownRef.current.contains(e.target)) {
+        setShowLocationSearch(false);
+        setLocationSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickAway);
+    document.addEventListener('touchstart', handleClickAway, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickAway);
+      document.removeEventListener('touchstart', handleClickAway);
+    };
+  }, [showLocationSearch]);
+
+  // Compute distance between two lat/lon points (meters)
+  const haversine = (lat1, lon1, lat2, lon2) => {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  };
+
+  // Debounced place search (restaurants, supermarkets, etc.) using Nominatim
+  useEffect(() => {
+    if (!showPlaceSearch) return;
+    const q = (place || '').trim();
+    if (q.length < 2) {
+      setPlaceResults([]);
+      return;
+    }
+    const allowedClasses = new Set(['amenity', 'shop']);
+    const allowedTypes = new Set([
+      'restaurant', 'cafe', 'bar', 'fast_food', 'pub', 'food_court',
+      'supermarket', 'convenience', 'bakery', 'grocery', 'mall', 'marketplace'
+    ]);
+
+    const t = setTimeout(async () => {
+      setIsSearchingPlaces(true);
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&q=${encodeURIComponent(q)}`;
+        const resp = await fetch(url);
+        const results = await resp.json();
+        let filtered = (results || []).filter(r => {
+          const cls = r.class || '';
+          const type = r.type || '';
+          return allowedClasses.has(cls) || allowedTypes.has(type);
+        });
+        if (currentCoords && currentCoords.lat && currentCoords.lon) {
+          filtered = filtered
+            .map(r => ({
+              ...r,
+              _distance: haversine(currentCoords.lat, currentCoords.lon, Number(r.lat), Number(r.lon))
+            }))
+            .sort((a, b) => (a._distance || Infinity) - (b._distance || Infinity));
+        }
+        setPlaceResults(filtered.map(r => ({
+          name: (r.display_name || '').split(',')[0],
+          display: r.display_name,
+          lat: Number(r.lat),
+          lon: Number(r.lon),
+          city: r.address?.city || r.address?.town || r.address?.village || '',
+          country: r.address?.country || ''
+        })));
+      } catch (_) {
+        setPlaceResults([]);
+      } finally {
+        setIsSearchingPlaces(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [place, showPlaceSearch, currentCoords]);
+
+  // Close place dropdown on click-away
+  useEffect(() => {
+    if (!showPlaceSearch) return;
+    const handleClickAway = (e) => {
+      if (!placeDropdownRef.current) return;
+      if (!placeDropdownRef.current.contains(e.target)) {
+        setShowPlaceSearch(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickAway);
+    document.addEventListener('touchstart', handleClickAway, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickAway);
+      document.removeEventListener('touchstart', handleClickAway);
+    };
+  }, [showPlaceSearch]);
 
   const [activeTags, setActiveTags] = useState([]);
   const [customTag, setCustomTag] = useState('');
@@ -1123,6 +1237,7 @@ const AddItemModal = ({
             const country = geo.address.country || '';
             const place = [city, country].filter(Boolean).join(', ');
             setLocation(place || coordsText);
+            setCurrentCoords({ lat: position.coords.latitude, lon: position.coords.longitude });
           } else {
             setLocation(coordsText);
           }
@@ -1136,6 +1251,7 @@ const AddItemModal = ({
           fullError: err
         }, null, 2));
           setLocation(coordsText);
+          setCurrentCoords({ lat: position.coords.latitude, lon: position.coords.longitude });
         }
       } else {
         throw new Error('No position data received');
@@ -1174,75 +1290,7 @@ const AddItemModal = ({
     }
   }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet]);
 
-  // Google Places Autocomplete for Place field
-  useEffect(() => {
-    const apiKey = import.meta.env?.VITE_GOOGLE_PLACES_API_KEY;
-    if (!apiKey || !placeInputRef.current) return;
-
-    const ensureScript = () => new Promise((resolve, reject) => {
-      if (window.google?.maps?.places) return resolve();
-      if (googleScriptLoadingRef.current) {
-        const check = () => {
-          if (window.google?.maps?.places) resolve();
-          else setTimeout(check, 100);
-        };
-        check();
-        return;
-      }
-      googleScriptLoadingRef.current = true;
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => resolve();
-      script.onerror = (e) => reject(e);
-      document.head.appendChild(script);
-    });
-
-    let listener = null;
-    ensureScript()
-      .then(() => {
-        if (!placeInputRef.current || !window.google?.maps?.places) return;
-        const autocomplete = new window.google.maps.places.Autocomplete(placeInputRef.current, {
-          types: ['establishment', 'geocode'],
-          fields: ['name', 'formatted_address', 'address_components', 'geometry']
-        });
-        googleAutocompleteRef.current = autocomplete;
-        listener = autocomplete.addListener('place_changed', () => {
-          const selected = autocomplete.getPlace();
-          const newPlace = selected?.name || selected?.formatted_address || '';
-          if (newPlace) setPlace(newPlace);
-          // Save coords if available
-          if (selected?.geometry?.location) {
-            const lat = selected.geometry.location.lat();
-            const lng = selected.geometry.location.lng();
-            setSelectedPlaceCoords({ lat, lng });
-          }
-          // Attempt to update location (City, Country) from address components
-          if (selected?.address_components) {
-            const comps = selected.address_components;
-            const get = (type) => comps.find(c => c.types.includes(type))?.long_name;
-            const city = get('locality') || get('postal_town') || get('administrative_area_level_2') || get('administrative_area_level_1') || '';
-            const country = get('country') || '';
-            const newLocation = [city, country].filter(Boolean).join(', ');
-            if (newLocation) {
-              setLocation(newLocation);
-              setLocationManuallySet(true);
-            }
-          }
-        });
-      })
-      .catch(() => {
-        // Silent fail; manual input still works
-      });
-
-    return () => {
-      try {
-        if (listener) listener.remove();
-      } catch {}
-      googleAutocompleteRef.current = null;
-    };
-  }, []);
+  // Removed Google Places default dropdown; using custom popup + Nominatim
 
   // Handle Android back button/gesture
   useEffect(() => {
@@ -1802,12 +1850,13 @@ const AddItemModal = ({
               </div>
               <div className="flex gap-3">
                 {/* Place name (left) */}
-                <div className="flex-1">
+                <div className="flex-1 relative" ref={placeDropdownRef}>
                   <input
                     ref={placeInputRef}
                     type="text"
                     value={place}
                     onChange={(e) => setPlace(e.target.value)}
+                    onFocus={() => setShowPlaceSearch(true)}
                     placeholder="Place name.."
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
                     autoComplete="off"
@@ -1815,10 +1864,55 @@ const AddItemModal = ({
                     autoCapitalize="words"
                     spellCheck="true"
                   />
+                  {showPlaceSearch && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-20">
+                      <div className="bg-white rounded-lg shadow-xl border border-gray-200">
+                        <div className="p-2 border-b border-gray-100 flex items-center">
+                          <span className="text-xs text-gray-500">Search places</span>
+                          {isSearchingPlaces && (
+                            <div className="ml-auto w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
+                          )}
+                        </div>
+                        <div className="max-h-48 overflow-y-auto">
+                          {placeResults.length > 0 ? (
+                            placeResults.map((r, idx) => (
+                              <button
+                                key={`place-${idx}`}
+                                onClick={() => {
+                                  setPlace(r.name);
+                                  setSelectedPlaceCoords({ lat: r.lat, lng: r.lon });
+                                  const newLocation = [r.city, r.country].filter(Boolean).join(', ');
+                                  if (newLocation) {
+                                    setLocation(newLocation);
+                                    setLocationManuallySet(true);
+                                  }
+                                  setShowPlaceSearch(false);
+                                }}
+                                className="w-full p-2 text-left hover:bg-gray-50"
+                              >
+                                <div className="text-sm font-medium text-gray-900">{r.name}</div>
+                                <div className="text-xs text-gray-500 truncate">{r.display}</div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-3 text-center text-sm text-gray-500">{(place || '').trim().length < 2 ? 'Type to search places' : 'No places found'}</div>
+                          )}
+                        </div>
+                        <div className="p-2 border-t border-gray-100">
+                          <button
+                            onClick={() => setShowPlaceSearch(false)}
+                            className="w-full px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Location with search (right) */}
-                <div className="relative min-w-[200px]">
+                <div className="relative min-w-[200px]" ref={locationDropdownRef}>
                   {showLocationSearch ? (
                     <div className="absolute right-0 top-0 w-full z-10">
                       <div className="bg-white rounded-lg shadow-xl border border-gray-200">

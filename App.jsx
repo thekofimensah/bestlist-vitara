@@ -62,7 +62,7 @@ const formatPostForDisplay = (post) => {
     user_liked: post.user_liked || false,
     item_name: post.items?.name || 'Unknown Item',
     list_name: post.lists?.name || 'Unknown List',
-    location: post.location || null
+    location: post.items?.place_name || post.location || null
   };
 };
 
@@ -467,6 +467,29 @@ const App = () => {
     }
     
     console.log('🔔 Navigating to post:', postId);
+  };
+
+  // Handle opening a shared link when not following author: route to public profile
+  const handleOpenSharedPost = async (postId) => {
+    try {
+      // We need the post's author. Fetch minimal data.
+      const { data, error } = await supabase
+        .from('posts')
+        .select('user_id')
+        .eq('id', postId)
+        .single();
+      if (error || !data?.user_id) return;
+      setSelectedUsername(null);
+      // Navigate to public profile view by username if available
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', data.user_id)
+        .single();
+      if (profile?.username) {
+        handleNavigateToUser(profile.username);
+      }
+    } catch (_) {}
   };
 
   const handleImageTap = (postId) => {

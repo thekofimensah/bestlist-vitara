@@ -6,6 +6,10 @@ import CommentsModal from './secondary/CommentsModal';
 import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
+import OptimizedPostCard from './OptimizedPostCard';
+import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
+import { FeedSkeleton } from './ui/SkeletonLoader';
+import { useOptimizedFeed } from '../hooks/useOptimizedFeed';
 
 import { useAI } from '../hooks/useAI';
 import useAchievements from '../hooks/useAchievements';
@@ -397,11 +401,11 @@ const MainScreen = React.forwardRef(({
   onRefreshFeed,
   onTabChange,
   onImageTap,
-  // Feed-related props from App.jsx
-  feedPosts,
-  isLoadingFeed,
-  feedError,
-  setFeedPosts
+  // Legacy feed props - can be removed once fully migrated
+  feedPosts: legacyFeedPosts,
+  isLoadingFeed: legacyIsLoadingFeed,
+  feedError: legacyFeedError,
+  setFeedPosts: legacySetFeedPosts
 }, ref) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -433,6 +437,20 @@ const MainScreen = React.forwardRef(({
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
+  
+  // Optimized feed with progressive loading
+  const { 
+    posts: feedPosts, 
+    loading: isLoadingFeed, 
+    loadingMore: isLoadingMoreFeed, 
+    hasMore: feedHasMore, 
+    error: feedError,
+    loadMore: loadMoreFeed, 
+    refresh: refreshFeed,
+    imageLoadStates,
+    updateImageLoadState,
+    connectionQuality
+  } = useOptimizedFeed(selectedTab === 'Following' ? 'following' : 'for_you');
   
   // Comments modal state
   const [commentsModal, setCommentsModal] = useState({ isOpen: false, post: null });
@@ -772,20 +790,19 @@ const MainScreen = React.forwardRef(({
 
   // Add a function to refresh feed data (for pull-to-refresh)
   const refreshFeedData = async () => {
-    console.log('🔄 MainScreen: Starting feed refresh...');
-    // Feed error state is now managed by the parent App component
+    console.log('🔄 MainScreen: Starting optimized feed refresh...');
     
     // Reload camera to fix any camera errors
     console.log('📷 MainScreen: Reloading camera...');
     await startCamera(facingMode);
     
-    // Refresh feed data
-    // await loadFeedData(); // This function is no longer needed
-    console.log('✅ MainScreen: Feed refresh completed');
+    // Refresh feed data with optimized hook
+    await refreshFeed();
+    console.log('✅ MainScreen: Optimized feed refresh completed');
   };
 
-  // Use the passed refresh function if available, otherwise use local one
-  const handleFeedRefresh = onRefreshFeed || refreshFeedData;
+  // Use the optimized refresh function
+  const handleFeedRefresh = refreshFeedData;
 
   // Expose refreshFeedData to parent component via ref
   useImperativeHandle(ref, () => ({
@@ -1434,12 +1451,9 @@ const MainScreen = React.forwardRef(({
         {/* Feed Content - Real social feed */}
         <div>
           <div className="space-y-4">
-            {/* Loading State */}
+            {/* Enhanced Loading State */}
             {isLoadingFeed && (
-              <div className="flex flex-col items-center justify-center py-12 px-6">
-                <LoadingSpinner size="lg" color="teal" />
-                <p className="text-gray-500 mt-4 text-sm">Loading feed...</p>
-              </div>
+              <FeedSkeleton count={3} />
             )}
 
             {/* Error State */}
@@ -1474,27 +1488,54 @@ const MainScreen = React.forwardRef(({
               </div>
             )}
 
-            {/* Real Feed Posts */}
+            {/* Optimized Feed Posts with Progressive Loading */}
             {!isLoadingFeed && feedPosts.map((post, index) => (
-              <PostCard
+              <OptimizedPostCard
                 key={post.id}
-                post={post}
+                post={{
+                  ...post,
+                  // Normalize data structure for OptimizedPostCard
+                  item_name: post.items?.name || post.item_name,
+                  image: post.items?.image_url || post.image,
+                  // No thumbnail_url in schema, using same image for now
+                  rating: post.items?.rating || post.rating,
+                  verdict: post.items?.is_stay_away ? 'AVOID' : 'KEEP',
+                  snippet: post.items?.notes || post.snippet,
+                  location: post.items?.place_name || post.location,
+                  likes: post.like_count || post.likes || 0,
+                  comments: post.comment_count || post.comments || 0,
+                  user_liked: post.user_liked || false
+                }}
+                priority={index < 2 ? 'critical' : index < 5 ? 'high' : 'normal'}
+                imageLoadState={imageLoadStates[post.id]}
                 onTap={handlePostTap}
                 onUserTap={onNavigateToUser}
                 onCommentTap={handleCommentTap}
                 onShareTap={handleShareTap}
                 onImageTap={onImageTap}
-                imageRef={index === 0 ? firstImageRef : undefined}
                 onLikeChange={(postId, liked) => {
-                  // Update the local feedPosts state when a post is liked/unliked
-                  setFeedPosts(prev => prev.map(p => 
-                    p.id === postId 
-                      ? { ...p, user_liked: liked, likes: liked ? p.likes + 1 : p.likes - 1 }
-                      : p
-                  ));
+                  // Note: In optimized version, this will be handled by the hook
+                  // For now, we maintain compatibility
+                  if (legacySetFeedPosts) {
+                    legacySetFeedPosts(prev => prev.map(p => 
+                      p.id === postId 
+                        ? { ...p, user_liked: liked, likes: liked ? p.likes + 1 : p.likes - 1 }
+                        : p
+                    ));
+                  }
                 }}
               />
             ))}
+            
+            {/* Infinite Scroll Trigger */}
+            {feedHasMore && (
+              <InfiniteScrollTrigger
+                onIntersect={loadMoreFeed}
+                loading={isLoadingMoreFeed}
+                enabled={!isLoadingFeed}
+                rootMargin="150px"
+              />
+            )}
             
             {/* Bottom padding for last post */}
             <div className="pb-6"></div>

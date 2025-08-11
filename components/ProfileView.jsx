@@ -11,6 +11,10 @@ import PrivacyPolicy from './secondary/PrivacyPolicy.jsx';
 import TermsOfService from './secondary/TermsOfService';
 import useAchievements from '../hooks/useAchievements';
 import SmartImage from './secondary/SmartImage';
+import ProgressiveImage from './secondary/SmartImage'; // Will replace with ProgressiveImage later
+import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
+import { ProfileGridSkeleton, AchievementsSkeleton } from './ui/SkeletonLoader';
+import { useProfilePosts } from '../hooks/useOptimizedFeed';
 import { uploadImageToStorage } from '../lib/imageStorage';
 
 /* Smaller, quieter stat pill used in "Additional Info" */
@@ -43,16 +47,20 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const [userAchievements, setUserAchievements] = useState([]);
   const [achievementsLoading, setAchievementsLoading] = useState(true);
 
-  const [posts, setPosts] = useState([]);
-  const [postsLoading, setPostsLoading] = useState(true);
+  // Optimized posts loading
+  const { 
+    posts, 
+    loading: postsLoading, 
+    loadingMore, 
+    hasMore, 
+    totalCount,
+    loadMore, 
+    refresh: refreshPosts 
+  } = useProfilePosts(user?.id);
+  
   const [postsCount, setPostsCount] = useState(0);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const sentinelRef = React.useRef(null);
 
   // Followers/Following list views
   const [showFollowers, setShowFollowers] = useState(false);
@@ -122,7 +130,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     avgRating: stats?.avgRating || 0,
   };
 
-  /* Load achievements, counts and initial posts */
+  /* Load achievements and counts */
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -135,7 +143,6 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
       }
 
       try {
-        setPostsLoading(true);
         if (user?.id) {
           const [followersRes, followingRes, postsCountRes] = await Promise.all([
             getUserFollowers(user.id),
@@ -148,52 +155,16 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             setFollowingCount(followingRes.data?.length || 0);
             setPostsCount(postsCountRes?.count || 0);
           }
-
-          const pageSize = 8;
-          const { data } = await getUserPosts(user.id, pageSize, 0);
-          if (alive) {
-            setPosts(data || []);
-            setOffset((data?.length || 0));
-            setHasMore((data?.length || 0) === pageSize);
-          }
         }
       } catch (e) {
-        if (alive) {
-          setPosts([]);
-          setHasMore(false);
-        }
-      } finally {
-        if (alive) setPostsLoading(false);
+        console.error('Error loading profile counts:', e);
       }
     };
     load();
     return () => { alive = false; };
   }, [user?.id, getUserAchievements]);
 
-  /* Infinite scroll */
-  useEffect(() => {
-    if (!hasMore || postsLoading) return;
-    const el = sentinelRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(async (entries) => {
-      const first = entries[0];
-      if (first.isIntersecting && !loadingMore) {
-        try {
-          setLoadingMore(true);
-          const pageSize = 8;
-          const { data } = await getUserPosts(user.id, pageSize, offset);
-          const newItems = data || [];
-          setPosts((prev) => [...prev, ...newItems]);
-          setOffset((prev) => prev + newItems.length);
-          if (newItems.length < pageSize) setHasMore(false);
-        } finally {
-          setLoadingMore(false);
-        }
-      }
-    }, { root: null, rootMargin: '200px', threshold: 0 });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [hasMore, postsLoading, loadingMore, offset, user?.id]);
+  // Infinite scroll is now handled by useProfilePosts hook
 
   if (showPrivacyPolicy) return <PrivacyPolicy onBack={() => setShowPrivacyPolicy(false)} />;
   if (showTermsOfService) return <TermsOfService onBack={() => setShowTermsOfService(false)} />;
@@ -380,11 +351,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             <h3 className="text-sm font-semibold text-gray-900">Achievements</h3>
           </div>
           {achievementsLoading ? (
-            <div className="grid grid-cols-5 gap-2">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="h-14 rounded-xl bg-gray-100 animate-pulse" />
-              ))}
-            </div>
+            <AchievementsSkeleton count={10} />
           ) : (
             <>
               {userAchievements.length > 0 ? (
@@ -422,17 +389,10 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
           </div>
 
           {postsLoading ? (
-            <div className="grid grid-cols-2 gap-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-2xl p-2 shadow-sm">
-                  <div className="w-full aspect-square bg-gray-100 rounded-xl animate-pulse" />
-                  <div className="h-3 bg-gray-100 rounded mt-2" />
-                </div>
-              ))}
-            </div>
+            <ProfileGridSkeleton count={6} />
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {posts.map((post) => (
+              {posts.map((post, index) => (
                 <div key={post.id}>
                   <div
                     className="relative cursor-pointer"
@@ -447,7 +407,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       className="w-full aspect-square object-cover rounded-xl"
                       useThumbnail={true}
                       size="medium"
-                      lazyLoad={true}
+                      lazyLoad={index > 5} // First 6 images load immediately
                     />
                   </div>
 
@@ -473,12 +433,19 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                 </div>
               ))}
 
-              {/* Infinite-scroll sentinel */}
-              {hasMore && <div ref={sentinelRef} className="col-span-2 h-8" />}
-              {loadingMore && (
-                <div className="col-span-2 text-center text-sm text-gray-500 py-2">Loading…</div>
+              {/* Optimized Infinite Scroll */}
+              {hasMore && (
+                <div className="col-span-2">
+                  <InfiniteScrollTrigger
+                    onIntersect={loadMore}
+                    loading={loadingMore}
+                    enabled={!postsLoading}
+                    rootMargin="200px"
+                  />
+                </div>
               )}
-              {posts.length === 0 && (
+              
+              {posts.length === 0 && !postsLoading && (
                 <div className="col-span-2 text-sm text-gray-500">No recent photos yet</div>
               )}
             </div>

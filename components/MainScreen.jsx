@@ -1229,7 +1229,7 @@ const MainScreen = React.forwardRef(({
         <div>
           <div className="space-y-4">
             {/* Loading State */}
-            {isLoadingFeed && (
+            {isLoadingFeed && !textLoaded && (
               <FeedSkeleton />
             )}
 
@@ -1266,7 +1266,7 @@ const MainScreen = React.forwardRef(({
             )}
 
             {/* Real Feed Posts - Show text immediately, load images progressively */}
-            {(textLoaded || !isLoadingFeed) && feedPosts.map((post, index) => {
+            {textLoaded && feedPosts.map((post, index) => {
               // Normalize post data for OptimizedPostCard (prefer HTTPS storage URL over Base64)
               const preferredUrl =
                 (post.items?.image_url && post.items.image_url.startsWith('http'))

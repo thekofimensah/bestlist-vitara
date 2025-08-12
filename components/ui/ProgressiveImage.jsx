@@ -154,23 +154,15 @@ const ProgressiveImage = ({
           return;
         }
 
-        // Fast-path for Supabase public storage URLs (fixes webview/CORS quirks)
+        // Supabase public storage URLs: let the DOM <img> load it and use onLoad/onError
+        // We still lazy-load via IntersectionObserver, but we don't mark as loaded here.
         if (targetUrl.includes('/storage/v1/object/public/photos/')) {
+          setLoadState('loading');
           setCurrentSrc(targetUrl);
-          setLoadState('loaded');
-          onLoadStateChange?.(postId, 'loaded');
           return;
         }
 
-        // For other HTTPS URLs, use progressive loading
-        // Step 1: Load thumbnail first if available
-        if (actualThumbnailUrl && actualThumbnailUrl !== targetUrl) {
-          setLoadState('loading');
-          await loadImage(actualThumbnailUrl, priority === 'critical');
-          setLoadState('thumbnail');
-        }
-
-        // Step 2: Load full resolution
+        // Always load the full resolution image (no thumbnail step)
         if (targetUrl) {
           setLoadState('loading');
           await loadImage(targetUrl, priority === 'critical' || priority === 'high');
@@ -243,6 +235,19 @@ const ProgressiveImage = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.2 }}
+          onLoad={() => {
+            if (!ImageCache.has(currentSrc)) {
+              ImageCache.set(currentSrc, true);
+            }
+            setLoadState('loaded');
+            onLoad?.(currentSrc);
+            onLoadStateChange?.(postId, 'loaded');
+          }}
+          onError={() => {
+            setLoadState('error');
+            onError?.(currentSrc);
+            onLoadStateChange?.(postId, 'error');
+          }}
           {...props}
         />
       )}

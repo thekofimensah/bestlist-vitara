@@ -245,3 +245,8 @@ when I close the app, I get tons of   File: https://localhost/assets/index-DC8hr
 2025-08-11 16:01:26.031 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
 2025-08-11 16:01:26.044 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
 2025-08-11 16:01:26.057 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+
+
+"just now" for posts when it should say how many mins or hours
+
+Sign on when slow inernet, it does loading screen then login then it logs in and goes to the feed

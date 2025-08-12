@@ -11,6 +11,7 @@
     "setup-updates": "node scripts/setup-updates.js"
   },
   "dependencies": {
+    "@capacitor/network": "5.0.5",
     "@capacitor/android": "5.0.5",
     "@capacitor/app": "5.0.5",
     "@capacitor/camera": "5.0.5",

@@ -90,11 +90,22 @@ const OptimizedPostCard = memo(({
   onCommentTap, 
   onShareTap, 
   onImageTap,
+  updateImageLoadState,
   skeletonOnly = false
 }) => {
   const [liked, setLiked] = useState(post?.user_liked || false);
   const [likeCount, setLikeCount] = useState(post?.likes || 0);
   const [isLiking, setIsLiking] = useState(false);
+
+  // Debug: Log post data to understand image URLs (only for first few posts)
+  if (Math.random() < 0.1) { // Only log 10% of posts to reduce noise
+    console.log('🐛 [OptimizedPostCard] Post data sample:', post?.id?.substring(0, 8), JSON.stringify({
+      userAvatar: post?.user?.avatar ? 'HAS_AVATAR' : 'NO_AVATAR',
+      postImage: post?.image ? (post?.image.startsWith('data:') ? 'BASE64_IMAGE' : 'URL_IMAGE') : 'NO_IMAGE',
+      hasUserData: !!post?.user,
+      hasItemsData: !!post?.items
+    }));
+  }
 
   // Show skeleton while loading
   if (skeletonOnly || !post) {
@@ -157,15 +168,17 @@ const OptimizedPostCard = memo(({
       {/* Header - Loads immediately */}
       <div className="flex items-center gap-3 px-4 pt-4 mb-3">
         <button onClick={handleUserTap} className="flex-shrink-0">
-          <ProgressiveImage
-            thumbnailUrl={post.user?.avatar}
-            fullUrl={post.user?.avatar}
-            alt={post.user?.name}
-            className="w-8 h-8 rounded-full object-cover"
-            priority="high"
-            lazyLoad={false}
-            size="thumbnail"
-          />
+                  <ProgressiveImage
+          thumbnailUrl={post.user?.avatar}
+          fullUrl={post.user?.avatar}
+          alt={post.user?.name}
+          className="w-8 h-8 rounded-full object-cover"
+          priority="high"
+          lazyLoad={false}
+          size="thumbnail"
+          postId={`${post.id}-avatar`}
+          onLoadStateChange={updateImageLoadState}
+        />
         </button>
         
         <div className="flex-1 min-w-0">
@@ -182,6 +195,29 @@ const OptimizedPostCard = memo(({
           <StarRating rating={post.rating} />
           <VerdictBadge verdict={post.verdict} />
         </div>
+      </div>
+
+      {/* Image - Loads progressively with priority */}
+      <div 
+        className="relative mb-3 cursor-pointer"
+        onDoubleClick={handleDoubleTap}
+        onClick={(e) => {
+          e.stopPropagation();
+          onImageTap?.(post.id);
+        }}
+      >
+        <ProgressiveImage
+          thumbnailUrl={post.image}
+          fullUrl={post.image}
+          alt="Food item"
+          className="w-full aspect-square object-cover"
+          priority={priority}
+          lazyLoad={priority === 'normal' || priority === 'low'}
+          useThumbnail={true}
+          size="medium"
+          postId={post.id}
+          onLoadStateChange={updateImageLoadState}
+        />
       </div>
 
       {/* Title + Share (loads immediately) */}
@@ -216,27 +252,6 @@ const OptimizedPostCard = memo(({
           )}
         </div>
       )}
-
-      {/* Image - Loads progressively with priority */}
-      <div 
-        className="relative mb-3 cursor-pointer"
-        onDoubleClick={handleDoubleTap}
-        onClick={(e) => {
-          e.stopPropagation();
-          onImageTap?.(post.id);
-        }}
-      >
-        <ProgressiveImage
-          thumbnailUrl={post.image}
-          fullUrl={post.image}
-          alt="Food item"
-          className="w-full aspect-square object-cover"
-          priority={priority}
-          lazyLoad={priority === 'normal' || priority === 'low'}
-          useThumbnail={true}
-          size="medium"
-        />
-      </div>
 
       {/* Actions */}
       <div className="flex items-center justify-between px-4 py-2">

@@ -5,11 +5,9 @@ import AddItemModal from './AddItemModal';
 import CommentsModal from './secondary/CommentsModal';
 import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
-import SmartImage from './secondary/SmartImage';
 import OptimizedPostCard from './OptimizedPostCard';
 import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
 import { FeedSkeleton } from './ui/SkeletonLoader';
-import { useOptimizedFeed } from '../hooks/useOptimizedFeed';
 
 import { useAI } from '../hooks/useAI';
 import useAchievements from '../hooks/useAchievements';
@@ -165,231 +163,7 @@ const VerdictBadge = ({ verdict, size = 'sm' }) => {
   );
 };
 
-const PostCard = ({ post, onTap, onLikeChange, onUserTap, onCommentTap, onShareTap, onImageTap, recentComment }) => {
-  const [liked, setLiked] = useState(post.user_liked);
-  const [likeCount, setLikeCount] = useState(post.likes);
-  const [isLiking, setIsLiking] = useState(false);
-  const [showFullCaption, setShowFullCaption] = useState(false);
-
-  const handleLike = async (e) => {
-    e.stopPropagation();
-    
-    if (isLiking) return; // Prevent double-clicks
-    
-    try {
-      setIsLiking(true);
-      const newLikedState = !liked;
-      
-      // Optimistic update
-      setLiked(newLikedState);
-      setLikeCount(prev => newLikedState ? prev + 1 : prev - 1);
-      
-      // Call API
-      if (newLikedState) {
-        await likePost(post.id);
-      } else {
-        await unlikePost(post.id);
-      }
-      
-      // Notify parent component
-      if (onLikeChange) {
-        onLikeChange(post.id, newLikedState);
-      }
-      
-    } catch (error) {
-      console.error('Like/unlike error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-      // Revert optimistic update on error
-      setLiked(!liked);
-      setLikeCount(prev => liked ? prev + 1 : prev - 1);
-    } finally {
-      setIsLiking(false);
-    }
-  };
-
-  const handleUserTap = (e) => {
-    e.stopPropagation();
-    if (onUserTap && post.user?.name) {
-      onUserTap(post.user.name);
-    }
-  };
-
-  const handleDoubleTap = (e) => {
-    e.preventDefault();
-    setLiked(true);
-  };
-
-  return (
-    <div className="bg-white mb-4 shadow-sm overflow-hidden" onClick={onTap}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-4 mb-3">
-        <button onClick={handleUserTap} className="flex-shrink-0">
-          <img
-            src={post.user?.avatar}
-            alt={post.user?.name}
-            className="w-8 h-8 rounded-full object-cover"
-          />
-        </button>
-        <div className="flex-1 min-w-0">
-          <button 
-            onClick={handleUserTap}
-            className="text-sm font-medium text-gray-900 hover:text-teal-700 transition-colors text-left"
-          >
-            {post.user?.name}
-          </button>
-          <div className="text-xs text-gray-500">{post.timestamp}</div>
-        </div>
-        <div className="flex items-center gap-2 h-4">
-          <StarRating rating={post.rating} />
-          <VerdictBadge verdict={post.verdict} />
-        </div>
-      </div>
-
-      {/* Image - Edge to Edge */}
-      <div 
-        className="relative mb-3 cursor-pointer"
-        onDoubleClick={handleDoubleTap}
-        onClick={(e) => {
-          e.stopPropagation();
-          onImageTap && onImageTap(post.id);
-        }}
-      >
-        <SmartImage
-          src={post.image}
-          alt="Food item"
-          className="w-full aspect-square object-cover"
-          style={{ filter: getInstagramClassicFilter() }}
-          useThumbnail={true}
-          size="medium"
-          lazyLoad={true}
-        />
-      </div>
-
-      {/* Title + Share (same row) */}
-      <div className="px-4 mt-2 flex items-start justify-between">
-        <div className="text-base font-semibold text-gray-900 mr-3">
-          {post.item_name}
-        </div>
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onShareTap && onShareTap(post);
-          }}
-          className="text-gray-500 hover:text-gray-700 transition-colors"
-          aria-label="Share"
-        >
-          <Share className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Description (left) + Location (right) */}
-      {(post.snippet || post.location) && (
-        <div className="px-4 mt-1 flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            {post.snippet && (
-              <p className="text-sm text-gray-700 line-clamp-2">{post.snippet}</p>
-            )}
-          </div>
-          {post.location && (
-            <div className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
-              {post.location}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tags
-      {post.tags.length > 0 && (
-        <div className="flex gap-1 mb-2 overflow-x-auto">
-          {post.tags.slice(0, 3).map((tag, index) => (
-            <span
-              key={index}
-              className="px-2 py-1 bg-stone-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap"
-              style={{ backgroundColor: '#F1F1EF' }}
-            >
-              {tag}
-            </span>
-          ))}
-          {post.tags.length > 3 && (
-            <span className="px-2 py-1 bg-stone-100 text-gray-600 rounded-full text-xs font-medium">
-              +{post.tags.length - 3}
-            </span>
-          )}
-        </div>
-      )} */}
-
-      {/* Actions */}
-      <div className="flex items-center justify-between px-4 py-2">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleLike}
-            className={`flex items-center gap-1 text-sm ${
-              liked ? 'text-red-500' : 'text-gray-500'
-            } hover:text-red-500 transition-colors`}
-          >
-            <Heart className={`w-5 h-5 ${liked ? 'fill-current' : ''}`} />
-          </button>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onCommentTap && onCommentTap(post);
-            }}
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <MessageCircle className="w-5 h-5" />
-          </button>
-        </div>
-        <div />
-      </div>
-
-      {/* Location now shown alongside description above */}
-
-      {/* Likes count */}
-      {likeCount > 0 && (
-        <div className="px-4">
-          <p className="text-sm font-medium text-gray-900 mb-1">
-            {likeCount} {likeCount === 1 ? 'like' : 'likes'}
-          </p>
-        </div>
-      )}
-
-      {/* Comments */}
-      <div className="px-4 pb-3">
-        {/* Comments */}
-        {post.comments > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCommentTap && onCommentTap(post);
-            }}
-            className="text-sm text-gray-500 mb-2 block"
-          >
-            View all {post.comments} comments
-          </button>
-        )}
-
-        {/* Most recent comment */}
-        {recentComment ? (
-          <div className="text-sm mb-2">
-            <span className="font-medium text-gray-900">{recentComment.username}</span>{' '}
-            <span className="text-gray-700">{recentComment.content}</span>
-          </div>
-        ) : null}
-
-        {/* Timestamp */}
-        <div className="text-xs text-gray-400 tracking-wide">
-          {post.timestamp}
-        </div>
-      </div>
-    </div>
-  );
-};
+// Old PostCard component removed - now using OptimizedPostCard
 
 const MainScreen = React.forwardRef(({ 
   lists, 
@@ -401,11 +175,16 @@ const MainScreen = React.forwardRef(({
   onRefreshFeed,
   onTabChange,
   onImageTap,
-  // Legacy feed props - can be removed once fully migrated
-  feedPosts: legacyFeedPosts,
-  isLoadingFeed: legacyIsLoadingFeed,
-  feedError: legacyFeedError,
-  setFeedPosts: legacySetFeedPosts
+  // Feed-related props from App.jsx
+  feedPosts,
+  isLoadingFeed,
+  isLoadingMore,
+  feedError,
+  onLoadMore,
+  hasMore,
+  updateImageLoadState,
+  textLoaded,
+  imagesLoaded
 }, ref) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -431,26 +210,13 @@ const MainScreen = React.forwardRef(({
   const [videoReady, setVideoReady] = useState(false);
   const [error, setError] = useState(null);
   const [wasSaved, setWasSaved] = useState(false);
+  const wasSavedRef = useRef(false); // Immediate reference that doesn't wait for state updates
   // Removed nested scroll orchestration – use a single page scroll
   // const [selectedTab, setSelectedTab] = useState('For You'); // Commented out - using Following only for now
   const [selectedTab, setSelectedTab] = useState('Following');
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
-  
-  // Optimized feed with progressive loading
-  const { 
-    posts: feedPosts, 
-    loading: isLoadingFeed, 
-    loadingMore: isLoadingMoreFeed, 
-    hasMore: feedHasMore, 
-    error: feedError,
-    loadMore: loadMoreFeed, 
-    refresh: refreshFeed,
-    imageLoadStates,
-    updateImageLoadState,
-    connectionQuality
-  } = useOptimizedFeed(selectedTab === 'Following' ? 'following' : 'for_you');
   
   // Comments modal state
   const [commentsModal, setCommentsModal] = useState({ isOpen: false, post: null });
@@ -790,19 +556,20 @@ const MainScreen = React.forwardRef(({
 
   // Add a function to refresh feed data (for pull-to-refresh)
   const refreshFeedData = async () => {
-    console.log('🔄 MainScreen: Starting optimized feed refresh...');
+    console.log('🔄 MainScreen: Starting feed refresh...');
+    // Feed error state is now managed by the parent App component
     
     // Reload camera to fix any camera errors
     console.log('📷 MainScreen: Reloading camera...');
     await startCamera(facingMode);
     
-    // Refresh feed data with optimized hook
-    await refreshFeed();
-    console.log('✅ MainScreen: Optimized feed refresh completed');
+    // Refresh feed data
+    // await loadFeedData(); // This function is no longer needed
+    console.log('✅ MainScreen: Feed refresh completed');
   };
 
-  // Use the optimized refresh function
-  const handleFeedRefresh = refreshFeedData;
+  // Use the passed refresh function if available, otherwise use local one
+  const handleFeedRefresh = onRefreshFeed || refreshFeedData;
 
   // Expose refreshFeedData to parent component via ref
   useImperativeHandle(ref, () => ({
@@ -1017,21 +784,41 @@ const MainScreen = React.forwardRef(({
   };
 
   // Handle closing modals
-  const handleModalClose = async (reason) => {
-    if (capturedImage && !wasSaved) {
+  const handleModalClose = async (reason, itemWasSaved = null) => {
+    // Use explicit parameter, ref (immediate), or state (fallback) 
+    const actualWasSaved = itemWasSaved !== null ? itemWasSaved : wasSavedRef.current;
+    
+    console.log('🚪 [Modal] Closing modal:', JSON.stringify({
+      reason,
+      hasCapturedImage: !!capturedImage,
+      wasSaved,
+      wasSavedRef: wasSavedRef.current,
+      itemWasSaved,
+      actualWasSaved,
+      hasStoragePath: !!capturedImage?.storagePath
+    }));
+    
+    if (capturedImage && !actualWasSaved) {
+      console.log('🗑️ [Cleanup] Item not saved, cleaning up files...');
       // Clean up uploaded file if it exists
       if (capturedImage.storagePath) {
+        console.log('🗑️ [Cleanup] Deleting storage file:', capturedImage.storagePath);
         await deletePhotoEverywhere(capturedImage.storagePath);
       }
-      
-      // Do not delete DB achievements on modal close; just clear local queue
-      if (aiTriggeredAchievements.length > 0) {
-        setAiTriggeredAchievements([]);
-      }
+    } else if (capturedImage && actualWasSaved) {
+      console.log('✅ [Modal] Item was saved, keeping files');
     }
+    
+    // Do not delete DB achievements on modal close; just clear local queue
+    if (aiTriggeredAchievements.length > 0) {
+      setAiTriggeredAchievements([]);
+    }
+    
     setShowModal(false);
     setCapturedImage(null);
+    // Reset both state and ref AFTER cleanup decisions are made
     setWasSaved(false);
+    wasSavedRef.current = false;
     
     // Show AI error notification if needed
     if (reason === 'ai_error') {
@@ -1048,7 +835,10 @@ const MainScreen = React.forwardRef(({
   };
 
   const handleSave = async (...args) => {
+    // Set both state and ref immediately to prevent cleanup during save process
     setWasSaved(true);
+    wasSavedRef.current = true;
+    console.log('💾 [Save] Setting wasSaved=true (both state and ref) to prevent file cleanup');
     const savedItem = await onAddItem(...args);
     
     // Clear AI-triggered achievements since user saved the item
@@ -1057,8 +847,9 @@ const MainScreen = React.forwardRef(({
       setAiTriggeredAchievements([]);
     }
     
-    setShowModal(false);
-    setCapturedImage(null);
+    // Don't close modal here - let AddItemModal handle closing via onClose()
+    // This prevents state conflicts with the cleanup logic
+    console.log('💾 [Save] Save completed, modal will close via onClose()');
     return savedItem; // Return the saved item for post creation
   };
 
@@ -1280,22 +1071,8 @@ const MainScreen = React.forwardRef(({
   };
 
   const handleCommentAdded = async (postId) => {
-    // Update the comment count for the specific post when a new comment is added
-    try {
-      const { count } = await getPostCommentCount(postId);
-      setFeedPosts(prev => prev.map(p => 
-        p.id === postId ? { ...p, comments: count } : p
-      ));
-    } catch (error) {
-      console.error('❌ Error updating comment count:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-    }
+    // Comment count updates are now handled by the optimized feed hook
+    console.log('💬 Comment added to post:', postId);
   };
 
   const handleShareTap = (post) => {
@@ -1451,9 +1228,9 @@ const MainScreen = React.forwardRef(({
         {/* Feed Content - Real social feed */}
         <div>
           <div className="space-y-4">
-            {/* Enhanced Loading State */}
+            {/* Loading State */}
             {isLoadingFeed && (
-              <FeedSkeleton count={3} />
+              <FeedSkeleton />
             )}
 
             {/* Error State */}
@@ -1488,54 +1265,54 @@ const MainScreen = React.forwardRef(({
               </div>
             )}
 
-            {/* Optimized Feed Posts with Progressive Loading */}
-            {!isLoadingFeed && feedPosts.map((post, index) => (
-              <OptimizedPostCard
-                key={post.id}
-                post={{
-                  ...post,
-                  // Normalize data structure for OptimizedPostCard
-                  item_name: post.items?.name || post.item_name,
-                  image: post.items?.image_url || post.image,
-                  // No thumbnail_url in schema, using same image for now
-                  rating: post.items?.rating || post.rating,
-                  verdict: post.items?.is_stay_away ? 'AVOID' : 'KEEP',
-                  snippet: post.items?.notes || post.snippet,
-                  location: post.items?.place_name || post.location,
-                  likes: post.like_count || post.likes || 0,
-                  comments: post.comment_count || post.comments || 0,
-                  user_liked: post.user_liked || false
-                }}
-                priority={index < 2 ? 'critical' : index < 5 ? 'high' : 'normal'}
-                imageLoadState={imageLoadStates[post.id]}
-                onTap={handlePostTap}
-                onUserTap={onNavigateToUser}
-                onCommentTap={handleCommentTap}
-                onShareTap={handleShareTap}
-                onImageTap={onImageTap}
-                onLikeChange={(postId, liked) => {
-                  // Note: In optimized version, this will be handled by the hook
-                  // For now, we maintain compatibility
-                  if (legacySetFeedPosts) {
-                    legacySetFeedPosts(prev => prev.map(p => 
-                      p.id === postId 
-                        ? { ...p, user_liked: liked, likes: liked ? p.likes + 1 : p.likes - 1 }
-                        : p
-                    ));
-                  }
-                }}
-              />
-            ))}
+            {/* Real Feed Posts - Show text immediately, load images progressively */}
+            {(textLoaded || !isLoadingFeed) && feedPosts.map((post, index) => {
+              // Normalize post data for OptimizedPostCard (prefer HTTPS storage URL over Base64)
+              const preferredUrl =
+                (post.items?.image_url && post.items.image_url.startsWith('http'))
+                  ? post.items.image_url
+                  : (post.image && post.image.startsWith('http'))
+                    ? post.image
+                    : (post.items?.image_url || post.image);
+
+              const normalizedPost = {
+                ...post,
+                image: preferredUrl,
+                thumbnail_image: preferredUrl, // Same URL since no dedicated thumbnail
+              };
+              
+              return (
+                <OptimizedPostCard
+                  key={post.id}
+                  post={normalizedPost}
+                  priority={index < 3 ? 'high' : 'normal'} // First 3 posts get high priority
+                  onTap={handlePostTap}
+                  onUserTap={onNavigateToUser}
+                  onCommentTap={handleCommentTap}
+                  onShareTap={handleShareTap}
+                  onImageTap={onImageTap}
+                  updateImageLoadState={updateImageLoadState}
+                  onLikeChange={(postId, liked) => {
+                    // Like updates are now handled by the optimized feed hook
+                    console.log('❤️ Like status changed for post:', postId, 'liked:', liked);
+                  }}
+                />
+              );
+            })}
             
-            {/* Infinite Scroll Trigger */}
-            {feedHasMore && (
-              <InfiniteScrollTrigger
-                onIntersect={loadMoreFeed}
-                loading={isLoadingMoreFeed}
-                enabled={!isLoadingFeed}
-                rootMargin="150px"
-              />
+            {/* Loading more skeleton posts */}
+            {isLoadingMore && (
+              <div className="space-y-4">
+                <FeedSkeleton count={3} />
+              </div>
             )}
+            
+            {/* Infinite scroll trigger */}
+            <InfiniteScrollTrigger
+              onLoadMore={onLoadMore}
+              loading={isLoadingMore}
+              hasMore={hasMore}
+            />
             
             {/* Bottom padding for last post */}
             <div className="pb-6"></div>

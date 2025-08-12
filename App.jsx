@@ -14,6 +14,7 @@ import UserProfile from './components/secondary/PublicUserProfile.jsx';
 import PullToRefresh from './ui/PullToRefresh';
 import { enableNativeKeyboardEnhancements } from './lib/enableNativeKeyboard';
 import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser, getSessionOptimized } from './lib/supabase';
+import { useOptimizedFeed } from './hooks/useOptimizedFeed';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
 import { NotificationsDropdown } from './components/secondary/NotificationsDropdown';
@@ -215,11 +216,47 @@ const App = () => {
   const mainScreenRef = useRef(null);
   const hasInitialized = useRef(false);
 
-  // Feed-related state, now living in the main App component
-  const [feedPosts, setFeedPosts] = useState([]);
-  const [isLoadingFeed, setIsLoadingFeed] = useState(false);
-  const [feedError, setFeedError] = useState(null);
-  const [lastFeedLoadedAt, setLastFeedLoadedAt] = useState(0);
+  // Use optimized feed hook
+  const {
+    posts: feedPosts,
+    loading: isLoadingFeed,
+    loadingMore: isLoadingMore,
+    error: feedError,
+    loadMore,
+    refresh: refreshFeed,
+    hasMore,
+    connectionQuality,
+    updateImageLoadState,
+    textLoaded,
+    imagesLoaded
+  } = useOptimizedFeed('following');
+
+  // Log only critical changes
+  useEffect(() => {
+    if (!isLoadingFeed && feedPosts?.length > 0) {
+      console.log('✅ [App] Feed data received:', JSON.stringify({
+        feedPostsCount: feedPosts.length,
+        timestamp: performance.now().toFixed(2) + 'ms'
+      }));
+    }
+  }, [isLoadingFeed, feedPosts?.length]);
+
+  // Feed loading progress ref (defined at component level to avoid closure issues)
+  const feedResolveRef = useRef(null);
+
+  // Watch for feed loading completion
+  useEffect(() => {
+    if (!isLoadingFeed && feedResolveRef.current) {
+      setLoadingProgress(prev => {
+        const newProgress = { ...prev, feed: true };
+        console.log('📊 [App] Feed loading completed via effect:', JSON.stringify(newProgress));
+        return newProgress;
+      });
+      console.log('✅ [App] Feed loaded via effect');
+      feedResolveRef.current();
+      feedResolveRef.current = null;
+    }
+  }, [isLoadingFeed]);
 
   const handleSignOut = async () => {
     try {
@@ -233,7 +270,7 @@ const App = () => {
       setSelectedItem(null);
       setEditingItem(null);
       setEditingList(null);
-      setFeedPosts([]); // Reset feed on sign out
+      // Feed state is now managed by useOptimizedFeed hook
     } catch (error) {
       console.error('Error signing out:', {
         message: error.message,
@@ -591,15 +628,22 @@ const App = () => {
           promises.push(
             new Promise((resolve) => {
               const checkListsAvailable = () => {
-                console.log('🔍 [App] Checking if lists are available:', lists?.length || 0);
+                // Only log every 10 checks to reduce noise
+                const checkCount = checkListsAvailable.count || 0;
+                checkListsAvailable.count = checkCount + 1;
+                
+                if (checkCount % 10 === 0) {
+                  console.log('🔍 [App] Checking if lists are available:', lists?.length || 0, '(attempt', checkCount + ')');
+                }
+                
                 if (lists && lists.length >= 0) { // Lists are available when array exists
                   setLoadingProgress(prev => {
                     const newProgress = { ...prev, lists: true };
                     console.log('✅ [App] Setting lists to loaded');
-                    console.log('📊 [App] New loading progress:', newProgress);
+                    console.log('📊 [App] New loading progress:', JSON.stringify(newProgress));
                     return newProgress;
                   });
-                  console.log('✅ [App] Lists loaded');
+                  console.log('✅ [App] Lists loaded after', checkCount, 'checks');
                   resolve();
                 } else {
                   setTimeout(checkListsAvailable, 100);
@@ -609,43 +653,44 @@ const App = () => {
             })
           );
 
-          // Feed data
+          // Feed data - use ref to avoid stale closure
           promises.push(
-            (async () => {
-              try {
-                console.log('🍽️ [App] Loading feed...');
-                setLoadingProgress(prev => ({ ...prev, feed: false }));
-                await loadFeedData('following');
+            new Promise((resolve) => {
+              feedResolveRef.current = resolve;
+              // Initial check in case feed is already loaded
+              if (!isLoadingFeed) {
                 setLoadingProgress(prev => {
                   const newProgress = { ...prev, feed: true };
-                  console.log('📊 [App] New loading progress:', newProgress);
+                  console.log('📊 [App] Feed loading progress:', JSON.stringify(newProgress));
                   return newProgress;
                 });
-                console.log('✅ [App] Feed loaded');
-              } catch (error) {
-                console.error('❌ [App] Feed loading failed:', error);
-                setLoadingProgress(prev => {
-                  const newProgress = { ...prev, feed: true };
-                  console.log('📊 [App] New loading progress:', newProgress);
-                  return newProgress;
-                });
+                console.log('✅ [App] Feed already loaded');
+                resolve();
+                feedResolveRef.current = null;
               }
-            })()
+            })
           );
 
           // User stats - wait for stats to be available
           promises.push(
             new Promise((resolve) => {
               const checkStatsAvailable = () => {
-                console.log('🔍 [App] Checking if stats are available:', userStats ? 'yes' : 'no');
+                // Only log every 10 checks to reduce noise
+                const checkCount = checkStatsAvailable.count || 0;
+                checkStatsAvailable.count = checkCount + 1;
+                
+                if (checkCount % 10 === 0) {
+                  console.log('🔍 [App] Checking if stats are available:', userStats ? 'yes' : 'no', '(attempt', checkCount + ')');
+                }
+                
                 if (userStats) { // Stats are available when object exists
                   setLoadingProgress(prev => {
                     const newProgress = { ...prev, stats: true };
                     console.log('✅ [App] Setting stats to loaded');
-                    console.log('📊 [App] New loading progress:', newProgress);
+                    console.log('📊 [App] New loading progress:', JSON.stringify(newProgress));
                     return newProgress;
                   });
-                  console.log('✅ [App] Stats loaded');
+                  console.log('✅ [App] Stats loaded after', checkCount, 'checks');
                   resolve();
                 } else {
                   setTimeout(checkStatsAvailable, 100);
@@ -756,8 +801,8 @@ const App = () => {
 
         // Refresh feed cache on sign-in events
         if (event === 'SIGNED_IN') {
-          setLastFeedLoadedAt(0);
-          loadFeedData('following', true);
+          // Feed refresh is now handled by useOptimizedFeed hook
+          refreshFeed().catch(console.error);
         }
       }
     );
@@ -782,75 +827,32 @@ const App = () => {
     }
   };
 
-  // Load feed data, now living in the main App component
-  const loadFeedData = async (feedType = 'for_you', forceReload = false) => {
-    // Session-scoped cache: skip reload if within 5 minutes and not explicitly refreshing
-    const now = Date.now();
-    const fiveMinutesMs = 5 * 60 * 1000;
-    const cacheValid = lastFeedLoadedAt && (now - lastFeedLoadedAt < fiveMinutesMs);
-    if (!forceReload && cacheValid && feedPosts.length > 0 && !refreshing) {
-      console.log('✅ Feed cache valid (≤ 5 min), skipping reload.');
-      return;
-    }
+  // Old loadFeedData function removed - now using useOptimizedFeed hook
 
-    try {
-      setIsLoadingFeed(true);
-      setFeedError(null);
-      
-      console.log('🔍 Loading feed data for:', feedType);
-      
-      const { data: rawPosts, error } = await getFeedPosts(feedType, 20, 0);
-      
-      if (error) {
-        console.error('❌ Feed loading error:', error?.message || 'Unknown error');
-        setFeedError(error.message || 'Failed to load feed');
-        // On refresh, do not clear posts on error. Keep stale data.
-        if (!refreshing) {
-          setFeedPosts([]);
-        }
-      } else {
-        if (!rawPosts || rawPosts.length === 0) {
-          setFeedPosts([]);
-        } else {
-          const formattedPosts = rawPosts.map(formatPostForDisplay);
-          const postsWithCommentCounts = await Promise.all(
-            formattedPosts.map(async (post) => {
-              try {
-                const { count } = await getPostCommentCount(post.id);
-                return { ...post, comments: count };
-              } catch {
-                return post;
-              }
-            })
-          );
-          setFeedPosts(postsWithCommentCounts);
-          setLastFeedLoadedAt(Date.now());
-        }
-      }
-    } catch (error) {
-      console.error('❌ Feed loading exception:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-      setFeedError(error.message || 'Failed to load feed');
-      // On refresh, do not clear posts on error. Keep stale data.
-      if (!refreshing) {
-        setFeedPosts([]);
-      }
-    } finally {
-      setIsLoadingFeed(false);
-    }
-  };
-
-  // Handle tab change without forcing feed refresh; feed refresh is pull-to-refresh or 5-min TTL
+  // Handle tab change - optimized feed hook handles the data
   const handleTabChange = async (feedType) => {
     console.log('🔄 Tab changed to:', feedType);
-    // Do not clear or force reload; optional: prefetch respecting cache
-    await loadFeedData(feedType, false);
+    // Feed data is now managed by the optimized hook
+  };
+
+  // Feed refresh is now handled by the optimized hook
+  const handleFeedRefresh = async () => {
+    console.log('🔄 [App] Starting feed refresh...');
+    await refreshFeed();
+    console.log('✅ [App] Feed refresh completed');
+  };
+
+  // Handle item deletion from lists - refresh feed to stay in sync
+  const handleItemDeleted = async (deletedItemIds) => {
+    console.log('🗑️ [App] Items deleted from lists, refreshing feed:', deletedItemIds);
+    
+    // Refresh the feed to remove deleted items
+    await refreshFeed();
+    
+    // Also refresh lists to ensure consistency
+    await refreshLists();
+    
+    console.log('✅ [App] Feed and lists refreshed after item deletion');
   };
 
   // Feed loading is now handled in the main initialization useEffect
@@ -913,8 +915,8 @@ const App = () => {
                 // Refresh lists with retry
                 await retryNetworkRequest(() => refreshLists(false));
                 
-                // Refresh feed respecting cache window
-                await retryNetworkRequest(() => loadFeedData('following'));
+                // Refresh feed using optimized hook
+                await refreshFeed();
               }
               
               // Restart camera if on main screen
@@ -1092,8 +1094,7 @@ const App = () => {
       // It is critical to await the data loading before setting refreshing to false
       await Promise.all([
         refreshLists(false),
-        // loadFeedData() // Commented out - using following by default for now
-        loadFeedData('following') // Default to following feed
+        refreshFeed() // Use optimized feed refresh
       ]);
       
     } catch (error) {
@@ -1111,14 +1112,7 @@ const App = () => {
     }
   };
 
-  // Feed refresh function for MainScreen
-  const handleFeedRefresh = async () => {
-    console.log('🔄 App: Feed refresh triggered');
-    // Call MainScreen's refresh function directly
-    if (mainScreenRef.current && mainScreenRef.current.refreshFeedData) {
-      await mainScreenRef.current.refreshFeedData();
-    }
-  };
+  // Feed refresh function removed - using the optimized version above
 
   const handleListsRefresh = async () => {
     setRefreshing(true);
@@ -1233,6 +1227,7 @@ const App = () => {
             onDeleteList={deleteList}
             onUpdateList={updateList}
             onNavigateToCamera={() => navigateToScreen('home')}
+            onItemDeleted={handleItemDeleted}
           />
         </PullToRefresh>
       );
@@ -1256,8 +1251,13 @@ const App = () => {
               // Pass feed data down as props
               feedPosts={feedPosts}
               isLoadingFeed={isLoadingFeed}
+              isLoadingMore={isLoadingMore}
               feedError={feedError}
-              setFeedPosts={setFeedPosts}
+              onLoadMore={loadMore}
+              hasMore={hasMore}
+              updateImageLoadState={updateImageLoadState}
+              textLoaded={textLoaded}
+              imagesLoaded={imagesLoaded}
             />
           </PullToRefresh>
         );
@@ -1274,11 +1274,7 @@ const App = () => {
               isRefreshing={refreshing}
               onDeleteList={deleteList}
               onUpdateList={updateList}
-              // Pass feed data down as props
-              feedPosts={feedPosts}
-              isLoadingFeed={isLoadingFeed}
-              feedError={feedError}
-              setFeedPosts={setFeedPosts}
+              onItemDeleted={handleItemDeleted}
             />
           </PullToRefresh>
         );
@@ -1315,11 +1311,9 @@ const App = () => {
               onNavigateToUser={handleNavigateToUser}
               onRefreshFeed={handleFeedRefresh}
               onTabChange={handleTabChange}
-              // Pass feed data down as props
-              feedPosts={feedPosts}
-              isLoadingFeed={isLoadingFeed}
-              feedError={feedError}
-              setFeedPosts={setFeedPosts}
+              updateImageLoadState={updateImageLoadState}
+              textLoaded={textLoaded}
+              imagesLoaded={imagesLoaded}
             />
           </PullToRefresh>
         );

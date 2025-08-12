@@ -113,7 +113,8 @@ const ShowItemsInListView = ({
   refreshList,
   onDeleteList,
   onUpdateList,
-  onNavigateToCamera
+  onNavigateToCamera,
+  onItemDeleted
 }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -222,14 +223,30 @@ const ShowItemsInListView = ({
   const handleDeleteSelected = async () => {
     try {
       const errors = [];
+      const deletedItemIds = [];
+      
       for (const itemId of selectedItems) {
         const { error } = await deleteItemAndRelated(itemId);
-        if (error) errors.push({ itemId, error });
+        if (error) {
+          errors.push({ itemId, error });
+        } else {
+          deletedItemIds.push(itemId);
+        }
       }
+      
       setSelectedItems([]);
+      
+      // Refresh local list
       if (refreshList) {
         refreshList();
       }
+      
+      // Notify parent for feed refresh
+      if (deletedItemIds.length > 0 && onItemDeleted) {
+        console.log('🗑️ [ShowItemsInListView] Notifying parent of deleted items:', deletedItemIds);
+        onItemDeleted(deletedItemIds);
+      }
+      
       if (errors.length > 0) {
         console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
         const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';
@@ -258,14 +275,23 @@ const ShowItemsInListView = ({
     try {
       const confirmDelete = window.confirm('Remove this item from the list?');
       if (!confirmDelete) return;
+      
       const { error } = await deleteItemAndRelated(item.id);
       if (error) {
         console.error('Failed to remove item:', error);
         alert('Failed to remove item. Please try again.');
         return;
       }
+      
+      // Refresh local list
       if (refreshList) {
         refreshList();
+      }
+      
+      // Notify parent for feed refresh
+      if (onItemDeleted) {
+        console.log('🗑️ [ShowItemsInListView] Notifying parent of deleted item:', item.id);
+        onItemDeleted([item.id]);
       }
     } catch (error) {
       console.error('Error removing item:', JSON.stringify({

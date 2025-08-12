@@ -2,8 +2,10 @@ import React, { useRef, useEffect } from 'react';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 
 const InfiniteScrollTrigger = ({ 
-  onIntersect, 
+  onLoadMore, // Support both names for backward compatibility
+  onIntersect,
   loading = false, 
+  hasMore = true,
   rootMargin = '100px',
   threshold = 0.1,
   enabled = true,
@@ -14,7 +16,8 @@ const InfiniteScrollTrigger = ({
   const observerRef = useRef(null);
 
   useEffect(() => {
-    if (!enabled || !onIntersect) return;
+    const callback = onLoadMore || onIntersect;
+    if (!enabled || !callback || !hasMore) return;
 
     const element = elementRef.current;
     if (!element) return;
@@ -22,8 +25,8 @@ const InfiniteScrollTrigger = ({
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        if (entry.isIntersecting && !loading) {
-          onIntersect();
+        if (entry.isIntersecting && !loading && hasMore) {
+          callback();
         }
       },
       {
@@ -38,7 +41,16 @@ const InfiniteScrollTrigger = ({
     return () => {
       observerRef.current?.disconnect();
     };
-  }, [onIntersect, loading, enabled, rootMargin, threshold]);
+  }, [onLoadMore, onIntersect, loading, enabled, hasMore, rootMargin, threshold]);
+
+  // Don't render the trigger if there's no more content
+  if (!hasMore && !loading) {
+    return (
+      <div className="text-center py-4 text-sm text-gray-400">
+        No more posts to load
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -50,7 +62,7 @@ const InfiniteScrollTrigger = ({
       ) : (
         children || (
           <div className="text-sm text-gray-500">
-            {enabled ? 'Loading more...' : ''}
+            {hasMore && enabled ? 'Loading more...' : ''}
           </div>
         )
       )}

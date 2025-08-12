@@ -221,7 +221,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   // New list composer state (Best only)
   const [newListSubject, setNewListSubject] = useState('');
@@ -314,16 +314,30 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     if (!selectionEnabled || selectedItemIds.length === 0) return;
     try {
       const errors = [];
+      const deletedItemIds = [];
+      
       for (const id of selectedItemIds) {
         const { error } = await deleteItemAndRelated(id);
-        if (error) errors.push({ id, error });
+        if (error) {
+          errors.push({ id, error });
+        } else {
+          deletedItemIds.push(id);
+        }
       }
+      
       // Optimistic update of data in view
       setReorderedLists(prev => prev.map(l => ({
         ...l,
         items: (l.items || []).filter(it => !selectedItemIds.includes(it.id)),
         stayAways: (l.stayAways || []).filter(it => !selectedItemIds.includes(it.id))
       })));
+      
+      // Notify parent that items were deleted (for feed refresh)
+      if (deletedItemIds.length > 0 && onItemDeleted) {
+        console.log('🗑️ [ListsView] Notifying parent of deleted items:', deletedItemIds);
+        onItemDeleted(deletedItemIds);
+      }
+      
       if (errors.length > 0) {
         console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
         const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';

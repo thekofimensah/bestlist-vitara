@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { trackAIRequest } from '../lib/performanceTracking';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -355,7 +356,18 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
     };
     
     try {
-      const ai = await makeRequest();
+      // Track AI request performance using existing system
+      const source = imageFile.name?.includes('upload') ? 'gallery' : 'camera';
+      
+      const ai = await trackAIRequest(
+        async () => await makeRequest(),
+        imageFile.size,
+        imageFile.type || 'unknown',
+        source,
+        location
+      );
+      
+      setResult(ai);
       console.log('✅ [AI] Final status: success');
       return ai;
     } catch (err) {

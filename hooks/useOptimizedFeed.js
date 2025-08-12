@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getFeedPosts } from '../lib/supabase';
+import { getOptimizedFeedPosts, getOptimizedFeedPostsLoadMore, getOptimizedUserPosts } from '../lib/supabase';
+import { trackFeedRequest, trackFeedPhase, trackImageLoadingPhase } from '../lib/performanceTracking';
 
-// Connection quality detection
+// Connection quality detection (browser-only fallback)
 const getConnectionQuality = () => {
   if (!navigator.connection) return 'unknown';
   
@@ -18,9 +19,9 @@ const getLoadingConfig = (connectionQuality) => {
   switch (connectionQuality) {
     case 'fast':
       return {
-        batchSize: 12,
+        batchSize: 8,
         enablePreload: true,
-        maxConcurrentImages: 6,
+        maxConcurrentImages: 4,
         rootMargin: '200px'
       };
     case 'good':
@@ -55,20 +56,71 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   const [error, setError] = useState(null);
   const [offset, setOffset] = useState(0);
   const [imageLoadStates, setImageLoadStates] = useState({});
+  const [textLoaded, setTextLoaded] = useState(false);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+  // Network quality (starts with browser fallback, then upgraded via Capacitor Network if available)
+  const [connectionQuality, setConnectionQuality] = useState(getConnectionQuality());
   
-  const connectionQuality = getConnectionQuality();
   const config = getLoadingConfig(connectionQuality);
   const batchSize = options.batchSize || config.batchSize;
   
   const loadingRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // Update image load state
+  // Update image load state and check if all images are loaded
   const updateImageLoadState = useCallback((postId, state) => {
-    setImageLoadStates(prev => ({
-      ...prev,
-      [postId]: state
-    }));
+    setImageLoadStates(prev => {
+      const newStates = {
+        ...prev,
+        [postId]: state
+      };
+      
+      // Check if all images are loaded
+      const allStates = Object.values(newStates);
+      const loadedCount = allStates.filter(s => s === 'loaded').length;
+      const errorCount = allStates.filter(s => s === 'error').length;
+      const totalImages = allStates.length;
+      
+      // If all images are either loaded or errored, consider image phase complete
+      if (loadedCount + errorCount === totalImages && totalImages > 0 && !imagesLoaded) {
+        setImagesLoaded(true);
+        trackImageLoadingPhase('feed', 'complete', totalImages);
+        trackFeedPhase('feed', 'images_loaded', { 
+          imageCount: totalImages,
+          loadedCount,
+          errorCount 
+        });
+      }
+      
+      return newStates;
+    });
+  }, [imagesLoaded]);
+
+  // Upgrade network quality detection using Capacitor Network if available
+  useEffect(() => {
+    let cancelled = false;
+    const upgradeFromCapacitor = async () => {
+      try {
+        // Avoid bundling error if plugin not installed
+        const cap = window.Capacitor || window.CapacitorPlugins || null;
+        if (!cap) return;
+        const { Network } = await import('@capacitor/network');
+        const status = await Network.getStatus();
+        // status.connectionType: 'wifi' | 'cellular' | 'none' | 'unknown'
+        // No effectiveType; classify conservatively
+        let quality = 'unknown';
+        if (status.connectionType === 'wifi') quality = 'fast';
+        else if (status.connectionType === 'cellular') quality = 'good';
+        else if (status.connectionType === 'none') quality = 'very-slow';
+        if (!cancelled && quality && quality !== connectionQuality) {
+          setConnectionQuality(quality);
+        }
+      } catch (_) {
+        // ignore
+      }
+    };
+    upgradeFromCapacitor();
+    return () => { cancelled = true; };
   }, []);
 
   // Load initial feed
@@ -80,13 +132,16 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       setLoading(true);
       setError(null);
       
-      console.log(`🔄 Loading initial ${feedType} feed (batch: ${batchSize})`);
-      const startTime = performance.now();
+      // Track the optimized feed request
+      const result = await trackFeedRequest(
+        'feed',
+        'initial_load',
+        () => getOptimizedFeedPosts(feedType, batchSize, 0),
+        batchSize,
+        0
+      );
       
-      const { data, error: feedError } = await getFeedPosts(feedType, batchSize, 0);
-      
-      const loadTime = performance.now() - startTime;
-      console.log(`✅ Feed loaded in ${loadTime.toFixed(2)}ms`);
+      const { data, error: feedError } = result;
       
       if (!mountedRef.current) return;
       
@@ -96,16 +151,35 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       }
       
       const newPosts = data || [];
+      
+      // 🎯 TEXT PHASE: Data is loaded, text can be displayed immediately
+      trackFeedPhase('feed', 'text_loaded', { 
+        postCount: newPosts.length,
+        hasText: newPosts.every(p => p.item_name || p.snippet)
+      });
+      
       setPosts(newPosts);
       setOffset(newPosts.length);
       setHasMore(newPosts.length === batchSize);
+      setTextLoaded(true);
       
-      // Initialize image load states
+
+      
+      // Initialize image load states and start image loading phase
       const initialImageStates = {};
       newPosts.forEach(post => {
         initialImageStates[post.id] = 'idle';
       });
       setImageLoadStates(initialImageStates);
+      
+      // 🖼️ IMAGE PHASE: Start tracking image loading
+      const imagesWithUrls = newPosts.filter(p => p.image).length;
+      if (imagesWithUrls > 0) {
+        trackImageLoadingPhase('feed', 'start', imagesWithUrls);
+      } else {
+        setImagesLoaded(true);
+        trackFeedPhase('feed', 'images_loaded', { imageCount: 0, reason: 'no_images' });
+      }
       
     } catch (err) {
       console.error('Feed loading error:', err);
@@ -116,6 +190,10 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       if (mountedRef.current) {
         setLoading(false);
         loadingRef.current = false;
+        
+
+      } else {
+        console.log('⚠️ [useOptimizedFeed] Component unmounted, skipping setLoading(false)');
       }
     }
   }, [feedType, batchSize]);
@@ -128,9 +206,16 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       loadingRef.current = true;
       setLoadingMore(true);
       
-      console.log(`🔄 Loading more ${feedType} posts (offset: ${offset})`);
+      // Track the optimized load more request
+      const result = await trackFeedRequest(
+        'feed',
+        'load_more',
+        () => getOptimizedFeedPostsLoadMore(feedType, batchSize, offset),
+        batchSize,
+        offset
+      );
       
-      const { data, error: feedError } = await getFeedPosts(feedType, batchSize, offset);
+      const { data, error: feedError } = result;
       
       if (!mountedRef.current) return;
       
@@ -168,13 +253,81 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
     }
   }, [feedType, batchSize, offset, hasMore, loadingMore]);
 
-  // Refresh feed
+  // Refresh feed (separate from initial load for proper tracking)
   const refresh = useCallback(async () => {
-    setOffset(0);
-    setPosts([]);
-    setImageLoadStates({});
-    await loadInitialFeed();
-  }, [loadInitialFeed]);
+    if (loadingRef.current) return;
+    
+    try {
+      loadingRef.current = true;
+      setLoading(true);
+      setError(null);
+      
+      // Reset states
+      setOffset(0);
+      setPosts([]);
+      setImageLoadStates({});
+      setTextLoaded(false);
+      setImagesLoaded(false);
+      
+      // Track the refresh request (different from initial_load)
+      const result = await trackFeedRequest(
+        'feed',
+        'refresh', // ← This is the key difference
+        () => getOptimizedFeedPosts(feedType, batchSize, 0),
+        batchSize,
+        0
+      );
+      
+      const { data, error: feedError } = result;
+      
+      if (!mountedRef.current) return;
+      
+      if (feedError) {
+        setError(feedError);
+        return;
+      }
+      
+      const newPosts = data || [];
+      
+      // TEXT PHASE: Data is loaded
+      trackFeedPhase('feed', 'text_loaded', { 
+        postCount: newPosts.length,
+        hasText: newPosts.every(p => p.item_name || p.snippet)
+      });
+      
+      setPosts(newPosts);
+      setOffset(newPosts.length);
+      setHasMore(newPosts.length === batchSize);
+      setTextLoaded(true);
+      
+      // Initialize image load states
+      const initialImageStates = {};
+      newPosts.forEach(post => {
+        initialImageStates[post.id] = 'idle';
+      });
+      setImageLoadStates(initialImageStates);
+      
+      // IMAGE PHASE: Start tracking image loading
+      const imagesWithUrls = newPosts.filter(p => p.image).length;
+      if (imagesWithUrls > 0) {
+        trackImageLoadingPhase('feed', 'start', imagesWithUrls);
+      } else {
+        setImagesLoaded(true);
+        trackFeedPhase('feed', 'images_loaded', { imageCount: 0, reason: 'no_images' });
+      }
+      
+    } catch (err) {
+      console.error('Feed refresh error:', err);
+      if (mountedRef.current) {
+        setError(err.message);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        loadingRef.current = false;
+      }
+    }
+  }, [feedType, batchSize]);
 
   // Load initial feed on mount and type change
   useEffect(() => {
@@ -185,6 +338,17 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       mountedRef.current = false;
     };
   }, [loadInitialFeed]);
+
+  // Only log critical state changes 
+  useEffect(() => {
+    if (!loading && posts?.length > 0) {
+      console.log('✅ [useOptimizedFeed] Feed loaded successfully:', JSON.stringify({
+        postsCount: posts.length,
+        hasMore,
+        timestamp: performance.now().toFixed(2) + 'ms'
+      }));
+    }
+  }, [loading, posts?.length, hasMore]);
 
   return {
     posts,
@@ -197,7 +361,9 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
     imageLoadStates,
     updateImageLoadState,
     connectionQuality,
-    config
+    config,
+    textLoaded,
+    imagesLoaded
   };
 };
 
@@ -223,9 +389,16 @@ export const useProfilePosts = (userId) => {
       loadingRef.current = true;
       setLoading(true);
       
-      // Import getUserPosts dynamically to avoid circular imports
-      const { getUserPosts } = await import('../lib/supabase');
-      const { data } = await getUserPosts(userId, batchSize, 0);
+      // Track the profile request
+      const result = await trackFeedRequest(
+        'profile',
+        'initial_load',
+        () => getOptimizedUserPosts(userId, batchSize, 0),
+        batchSize,
+        0
+      );
+      
+      const { data } = result;
       
       if (!mountedRef.current) return;
       
@@ -251,8 +424,16 @@ export const useProfilePosts = (userId) => {
       loadingRef.current = true;
       setLoadingMore(true);
       
-      const { getUserPosts } = await import('../lib/supabase');
-      const { data } = await getUserPosts(userId, batchSize, offset);
+      // Track the profile load more request
+      const result = await trackFeedRequest(
+        'profile',
+        'load_more',
+        () => getOptimizedUserPosts(userId, batchSize, offset),
+        batchSize,
+        offset
+      );
+      
+      const { data } = result;
       
       if (!mountedRef.current) return;
       

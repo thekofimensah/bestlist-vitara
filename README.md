@@ -231,3 +231,17 @@ Save other users' posts
 share doesn't create a proper link that can be clicked
 
 Whatsapp actual image on the share
+
+
+refreesh is trying to do it, even if not pulliung from the top, so when going upwards on the feed you'll see it 
+
+Listsview should allow tos ort by ranking or by recent.. default recent
+
+when I close the app, I get tons of   File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:25.966 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:25.982 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:26.003 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:26.019 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:26.031 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:26.044 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch
+2025-08-11 16:01:26.057 13328-13328 Capacitor/Console       com.test.bestlist                    E  File: https://localhost/assets/index-DC8hrxjT.js - Line 34285 - Msg: TypeError: Failed to fetch

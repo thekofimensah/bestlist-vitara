@@ -190,6 +190,17 @@ const AddItemModal = ({
 }) => {
   
   const [currentImage, setCurrentImage] = useState(image); // image shown & saved
+  
+  // Update currentImage when storage URL becomes available
+  useEffect(() => {
+    if (image && image !== currentImage) {
+      // If we receive a new storage URL (HTTPS), update to use it
+      if (image.startsWith('https://') && currentImage && currentImage.startsWith('data:')) {
+        console.log('🔄 [AddItemModal] Switching from Base64 to storage URL:', image.substring(0, 50) + '...');
+        setCurrentImage(image);
+      }
+    }
+  }, [image, currentImage]);
   const [isCropping, setIsCropping] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);

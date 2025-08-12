@@ -10,8 +10,7 @@ import useUserStats from '../hooks/useUserStats';
 import PrivacyPolicy from './secondary/PrivacyPolicy.jsx';
 import TermsOfService from './secondary/TermsOfService';
 import useAchievements from '../hooks/useAchievements';
-import SmartImage from './secondary/SmartImage';
-import ProgressiveImage from './secondary/SmartImage'; // Will replace with ProgressiveImage later
+import ProgressiveImage from './ui/ProgressiveImage';
 import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
 import { ProfileGridSkeleton, AchievementsSkeleton } from './ui/SkeletonLoader';
 import { useProfilePosts } from '../hooks/useOptimizedFeed';
@@ -392,6 +391,15 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             <ProfileGridSkeleton count={6} />
           ) : (
             <div className="grid grid-cols-2 gap-3">
+              {posts.length > 0 && console.log('🔍 [ProfileView] Posts sample:', JSON.stringify({
+                postsCount: posts.length,
+                firstPost: posts[0] ? {
+                  id: posts[0].id,
+                  hasItems: !!posts[0].items,
+                  itemsImageUrl: posts[0].items?.image_url ? (posts[0].items.image_url.startsWith('https://') ? 'HTTPS_URL' : 'BASE64_OR_OTHER') : 'NO_URL',
+                  hasLists: !!posts[0].lists
+                } : null
+              }))}
               {posts.map((post, index) => (
                 <div key={post.id}>
                   <div
@@ -401,13 +409,22 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       onEditItem && onEditItem(post.items, post.lists);
                     }}
                   >
-                    <SmartImage
-                      src={post.items?.image_url}
+                    <ProgressiveImage
+                      thumbnailUrl={post.items?.image_url}
+                      fullUrl={post.items?.image_url}
                       alt={post.items?.name || 'Item'}
                       className="w-full aspect-square object-cover rounded-xl"
-                      useThumbnail={true}
-                      size="medium"
-                      lazyLoad={index > 5} // First 6 images load immediately
+                      priority={index < 6 ? 'high' : 'normal'} // First 6 images get high priority
+                      viewType="profile"
+                      onLoadStateChange={(loadState) => {
+                        // Debug log for ProfileView images
+                        if (Math.random() < 0.1) { // 10% frequency to avoid spam
+                          console.log(`🖼️ [ProfileView] Image load state: ${post.items?.id?.substring(0, 8)} ${JSON.stringify({
+                            loadState,
+                            imageUrl: post.items?.image_url ? (post.items.image_url.startsWith('https://') ? 'HTTPS_URL' : 'BASE64_OR_OTHER') : 'NO_URL'
+                          })}`);
+                        }
+                      }}
                     />
                   </div>
 

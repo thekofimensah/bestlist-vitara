@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// Simple in-memory cache to avoid refetch on navigation
+// Map<userId, stats>
+const statsCache = new Map();
+
 const useUserStats = (userId) => {
   const [stats, setStats] = useState({
     photosTaken: 0,
@@ -74,6 +78,16 @@ const useUserStats = (userId) => {
 
         console.log('✅ [useUserStats] Stats loaded successfully');
 
+        // Update cache
+        statsCache.set(userId, {
+          photosTaken: (error ? (data?.photos_taken || 0) : (data?.photos_taken || 0)),
+          listsCreated: (error ? (data?.lists_created || 0) : (data?.lists_created || 0)),
+          uniqueIngredients: (error ? (data?.unique_ingredients || 0) : (data?.unique_ingredients || 0)),
+          likesReceived: (error ? (data?.likes_received || 0) : (data?.likes_received || 0)),
+          totalItems: (error ? (data?.total_items || 0) : (data?.total_items || 0)),
+          avgRating: parseFloat(error ? (data?.avg_rating || 0) : (data?.avg_rating || 0))
+        });
+
       } catch (err) {
         console.error('🚨 [useUserStats] Error fetching stats:', {
           message: err.message,
@@ -86,8 +100,15 @@ const useUserStats = (userId) => {
       }
     };
 
-    // Initial fetch
-    fetchStats();
+    // Serve from cache immediately if available; still set up subscription
+    const cached = statsCache.get(userId);
+    if (cached) {
+      setStats(cached);
+      setLoading(false);
+    } else {
+      // Initial fetch only if no cache
+      fetchStats();
+    }
 
     // Set up real-time subscription for automatic updates
     const setupRealtimeSubscription = () => {
@@ -108,6 +129,15 @@ const useUserStats = (userId) => {
             
             if (payload.new) {
               setStats({
+                photosTaken: payload.new.photos_taken || 0,
+                listsCreated: payload.new.lists_created || 0,
+                uniqueIngredients: payload.new.unique_ingredients || 0,
+                likesReceived: payload.new.likes_received || 0,
+                totalItems: payload.new.total_items || 0,
+                avgRating: parseFloat(payload.new.avg_rating) || 0
+              });
+              // Update cache
+              statsCache.set(userId, {
                 photosTaken: payload.new.photos_taken || 0,
                 listsCreated: payload.new.lists_created || 0,
                 uniqueIngredients: payload.new.unique_ingredients || 0,

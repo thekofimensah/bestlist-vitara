@@ -250,3 +250,10 @@ when I close the app, I get tons of   File: https://localhost/assets/index-DC8hr
 "just now" for posts when it should say how many mins or hours
 
 Sign on when slow inernet, it does loading screen then login then it logs in and goes to the feed
+
+Change api keys to extend trials
+
+
+Okay, I want you to fix several small bugs that I found. So first of all, on the main screen, when I'm scrolling up on the feed, it's being registered as a pull-to-refresh, and that shouldn't be. The pull-to-refresh should really only activate when the user is at the top of the screen and does a pull-down. So fix that. I want to add to lists view the ability to sort the items inside of the list looking at by, like, recent or by ranking. Currently it's doing it by ranking, and I like the default to be by recent with the ability to change. Use default UI standards to make that clear to the user how to make that adjustment. Next, when I close the app, I get lots of these error messages, and I think, and I'm actually sending that to my error logs. When the app closes, it shouldn't send error messages like this. Also there should be a more graceful way of handling failed to fetch issues rather than sending 1000 logs Fix that. On the feed, many posts will be listed as the image was taken just now when actually it should only show just now if it's less than one minute ago. If it's greater than one minute, then it should show the actual time in hours, days, etc. Next, when I sign in with slow internet, there's a weird progression of logins that happen, which doesn't make sense to me. It does the loading screen, and then the login screen appears, and then wait, wait, wait, wait, and then it goes to the feed. And I'm not sure why that happens. That should never be the order. So, I think the caching of the user sign-in needs to be done in a more effective way, and also that order should never happen. So, troubleshoot that and fix that.
+
+I want the image in the additemmodule to fit to size, currently it's a blown up version

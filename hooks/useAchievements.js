@@ -4,6 +4,10 @@ import { useAuth } from './useAuth';
 import useUserStats from './useUserStats';
 import { useGlobalAchievements } from './useGlobalAchievements.jsx';
 
+// In-memory cache for user achievements to avoid refetch on navigation
+// Map<userId, Array>
+const userAchievementsCache = new Map();
+
 const useAchievements = () => {
   const { user } = useAuth();
   const { stats } = useUserStats(user?.id);
@@ -47,6 +51,10 @@ const useAchievements = () => {
   const getUserAchievements = useCallback(async (userId = user?.id) => {
     if (!userId) return [];
 
+    // Serve from cache if available
+    const cached = userAchievementsCache.get(userId);
+    if (cached && cached.length > 0) return cached;
+
     try {
       const { data, error } = await supabase
         .from('user_achievements')
@@ -65,7 +73,9 @@ const useAchievements = () => {
         .order('earned_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      const list = data || [];
+      userAchievementsCache.set(userId, list);
+      return list;
     } catch (error) {
       console.error('Error fetching user achievements:', JSON.stringify({
           message: error.message,

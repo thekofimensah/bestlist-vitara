@@ -601,9 +601,9 @@ const MainScreen = React.forwardRef(({
       
       console.log('📸 [Camera] Original image size:', file.size, 'bytes');
       
-      // Compress image immediately for modal display
+      // Single compression: compress once and use the same file for preview and upload
       const compressed = await imageCompression(file, {
-        maxSizeMB: 0.4,
+        maxSizeMB: 0.5,
         maxWidthOrHeight: 1280,
         useWebWorker: true,
         fileType: 'image/webp',
@@ -637,7 +637,7 @@ const MainScreen = React.forwardRef(({
           }
           
           // Upload to Supabase Storage
-          const uploadResult = await uploadImageToStorage(file, user.id);
+          const uploadResult = await uploadImageToStorage(compressed, user.id);
           
           if (uploadResult.error) {
             throw new Error(`Image upload failed: ${uploadResult.error.message}`);
@@ -680,7 +680,7 @@ const MainScreen = React.forwardRef(({
 
           // Start AI processing using the original captured file
           console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-          const aiResult = await analyzeImage(file, deviceLocation);
+          const aiResult = await analyzeImage(compressed, deviceLocation);
           
           // Create photo metadata
           const photoMetadata = {
@@ -866,9 +866,9 @@ const MainScreen = React.forwardRef(({
         try {
           console.log('📸 [Gallery] Original file size:', file.size, 'bytes');
           
-          // Compress image immediately for modal display
+          // Single compression: compress once and use the same file for preview and upload
           const compressed = await imageCompression(file, {
-            maxSizeMB: 0.4,
+            maxSizeMB: 0.5,
             maxWidthOrHeight: 1280,
             useWebWorker: true,
             fileType: 'image/webp',
@@ -900,7 +900,7 @@ const MainScreen = React.forwardRef(({
               }
               
               // Upload to Supabase Storage
-              const uploadResult = await uploadImageToStorage(file, user.id);
+              const uploadResult = await uploadImageToStorage(compressed, user.id);
               
               if (uploadResult.error) {
                 throw new Error(`Image upload failed: ${uploadResult.error.message}`);
@@ -940,7 +940,7 @@ const MainScreen = React.forwardRef(({
               }
 
               console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-              const aiResult = await analyzeImage(file, deviceLocation);
+              const aiResult = await analyzeImage(compressed, deviceLocation);
               
               // Create photo metadata for gallery image
               const photoMetadata = {

@@ -5,6 +5,9 @@ import AddItemModal from '../AddItemModal';
 import ShareModal from './ShareModal';
 import SmartImage from './SmartImage';
 import { deleteItemAndRelated } from '../../lib/supabase';
+import { removeProfilePostsByItemIds } from '../../hooks/useOptimizedFeed';
+import { removeCachedImage } from '../../lib/localImageCache';
+import { supabase } from '../../lib/supabase';
 
 const VerdictBadge = ({ verdict }) => {
   const getVerdictStyle = () => {
@@ -231,6 +234,11 @@ const ShowItemsInListView = ({
           errors.push({ itemId, error });
         } else {
           deletedItemIds.push(itemId);
+          // Remove locally cached image for this item if present
+          try {
+            const item = allItems.find(i => i.id === itemId);
+            if (item?.image_url) await removeCachedImage(item.image_url);
+          } catch (_) {}
         }
       }
       
@@ -246,6 +254,16 @@ const ShowItemsInListView = ({
         console.log('🗑️ [ShowItemsInListView] Notifying parent of deleted items:', deletedItemIds);
         onItemDeleted(deletedItemIds);
       }
+      
+      // Also remove posts from profile cache for current user
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && deletedItemIds.length > 0) {
+          removeProfilePostsByItemIds(user.id, deletedItemIds);
+        }
+      } catch (_) {}
+
+      
       
       if (errors.length > 0) {
         console.error('Some deletions failed:', JSON.stringify(errors, null, 2));

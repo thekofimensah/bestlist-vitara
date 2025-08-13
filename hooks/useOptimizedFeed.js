@@ -2,6 +2,56 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getOptimizedFeedPosts, getOptimizedFeedPostsLoadMore, getOptimizedUserPosts } from '../lib/supabase';
 import { trackFeedRequest, trackFeedPhase, trackImageLoadingPhase } from '../lib/performanceTracking';
 
+// Simple in-memory cache for profile posts to avoid refetching on navigation
+// Map<userId, { posts: any[], hasMore: boolean, offset: number, lastUpdated: number }>
+const profilePostsCache = new Map();
+// Simple offline detector (Capacitor-aware would be nicer, but this is safe & synchronous)
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+
+// Helper to deduplicate by id
+const dedupeById = (posts) => {
+  const seen = new Set();
+  const result = [];
+  for (const p of posts) {
+    const id = p?.id;
+    if (id == null || seen.has(id)) continue;
+    seen.add(id);
+    result.push(p);
+  }
+  return result;
+};
+
+// Public API to allow other parts of the app to prepend a newly created post
+export const prependProfilePost = (userId, post) => {
+  if (!userId || !post) return;
+  const cached = profilePostsCache.get(userId) || { posts: [], hasMore: true, offset: 0, lastUpdated: 0 };
+  // Prepend and dedupe
+  const updated = dedupeById([post, ...cached.posts]);
+  const newCache = {
+    ...cached,
+    posts: updated,
+    offset: Math.max(updated.length, cached.offset),
+    lastUpdated: Date.now()
+  };
+  profilePostsCache.set(userId, newCache);
+};
+
+// Remove posts from cache by item IDs (used on deletion)
+export const removeProfilePostsByItemIds = (userId, itemIds = []) => {
+  if (!userId || !Array.isArray(itemIds) || itemIds.length === 0) return;
+  const cached = profilePostsCache.get(userId);
+  if (!cached || !cached.posts) return;
+  const toRemove = new Set(itemIds);
+  const filtered = cached.posts.filter(p => !p?.items?.id || !toRemove.has(p.items.id));
+  profilePostsCache.set(userId, {
+    ...cached,
+    posts: filtered,
+    offset: Math.min(cached.offset, filtered.length),
+    lastUpdated: Date.now()
+  });
+};
+
 // Connection quality detection (browser-only fallback)
 const getConnectionQuality = () => {
   if (!navigator.connection) return 'unknown';
@@ -33,16 +83,16 @@ const getLoadingConfig = (connectionQuality) => {
       };
     case 'slow':
       return {
-        batchSize: 5,
+        batchSize: 4,
         enablePreload: false,
         maxConcurrentImages: 2,
         rootMargin: '100px'
       };
     default:
       return {
-        batchSize: 3,
+        batchSize: 4,
         enablePreload: false,
-        maxConcurrentImages: 1,
+        maxConcurrentImages: 2,
         rootMargin: '50px'
       };
   }
@@ -385,9 +435,51 @@ export const useProfilePosts = (userId) => {
   const loadInitialPosts = useCallback(async () => {
     if (!userId || loadingRef.current) return;
     
+    // Serve from cache immediately if available (no network)
+    const cached = profilePostsCache.get(userId);
+    if (cached && cached.posts && cached.posts.length > 0) {
+      setPosts(cached.posts);
+      setOffset(cached.offset || cached.posts.length);
+      setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
+      setLoading(false);
+      // SWR: revalidate silently in background without clearing existing posts
+      if (!isOffline()) {
+        trackFeedRequest(
+          'profile',
+          'revalidate',
+          () => getOptimizedUserPosts(userId, batchSize, 0),
+          batchSize,
+          0
+        ).then(({ data }) => {
+          if (!mountedRef.current) return;
+          if (Array.isArray(data) && data.length > 0) {
+            setPosts(prev => {
+              const merged = dedupeById([...data, ...prev]);
+              profilePostsCache.set(userId, {
+                posts: merged,
+                hasMore: merged.length >= prev.length ? (merged.length === batchSize) : true,
+                offset: merged.length,
+                lastUpdated: Date.now()
+              });
+              setOffset(merged.length);
+              setHasMore(merged.length === batchSize || prev.length > batchSize);
+              return merged;
+            });
+          }
+        }).catch(() => {});
+      }
+      return; // Render cached immediately
+    }
+    
     try {
       loadingRef.current = true;
       setLoading(true);
+      if (isOffline()) {
+        // Offline: no fetch, just show what we have (likely none if cache empty)
+        setLoading(false);
+        loadingRef.current = false;
+        return;
+      }
       
       // Track the profile request
       const result = await trackFeedRequest(
@@ -407,6 +499,14 @@ export const useProfilePosts = (userId) => {
       setOffset(newPosts.length);
       setHasMore(newPosts.length === batchSize);
       
+      // Update cache
+      profilePostsCache.set(userId, {
+        posts: newPosts,
+        hasMore: newPosts.length === batchSize,
+        offset: newPosts.length,
+        lastUpdated: Date.now()
+      });
+      
     } catch (err) {
       console.error('Profile posts loading error:', err);
     } finally {
@@ -419,6 +519,7 @@ export const useProfilePosts = (userId) => {
 
   const loadMore = useCallback(async () => {
     if (!userId || loadingRef.current || !hasMore || loadingMore) return;
+    if (isOffline()) return;
     
     try {
       loadingRef.current = true;
@@ -438,7 +539,17 @@ export const useProfilePosts = (userId) => {
       if (!mountedRef.current) return;
       
       const newPosts = data || [];
-      setPosts(prev => [...prev, ...newPosts]);
+      setPosts(prev => {
+        const merged = dedupeById([...prev, ...newPosts]);
+        // Update cache
+        profilePostsCache.set(userId, {
+          posts: merged,
+          hasMore: newPosts.length === batchSize,
+          offset: (offset + newPosts.length),
+          lastUpdated: Date.now()
+        });
+        return merged;
+      });
       setOffset(prev => prev + newPosts.length);
       setHasMore(newPosts.length === batchSize);
       
@@ -453,10 +564,49 @@ export const useProfilePosts = (userId) => {
   }, [userId, batchSize, offset, hasMore, loadingMore]);
 
   const refresh = useCallback(async () => {
-    setOffset(0);
-    setPosts([]);
-    await loadInitialPosts();
-  }, [loadInitialPosts]);
+    if (!userId || loadingRef.current) return;
+    // Allow refresh to be called in offline mode so UI path is exercised,
+    // but do not call network; keep existing posts as-is.
+    try {
+      loadingRef.current = true;
+      setLoading(true);
+      if (isOffline()) {
+        // Offline: simulate quick refresh without fetching
+        setLoading(false);
+        loadingRef.current = false;
+        return;
+      }
+      
+      const result = await trackFeedRequest(
+        'profile',
+        'refresh',
+        () => getOptimizedUserPosts(userId, batchSize, 0),
+        batchSize,
+        0
+      );
+      const { data } = result;
+      if (!mountedRef.current) return;
+      const newPosts = data || [];
+      // Do not clear; merge to avoid flicker and keep thumbnails stable
+      setPosts(prev => dedupeById([...newPosts, ...prev]));
+      setOffset(newPosts.length);
+      setHasMore(newPosts.length === batchSize);
+      // Update cache
+      profilePostsCache.set(userId, {
+        posts: dedupeById([...newPosts, ...(profilePostsCache.get(userId)?.posts || [])]),
+        hasMore: newPosts.length === batchSize,
+        offset: newPosts.length,
+        lastUpdated: Date.now()
+      });
+    } catch (err) {
+      console.error('Profile refresh error:', err);
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        loadingRef.current = false;
+      }
+    }
+  }, [userId, batchSize]);
 
   useEffect(() => {
     mountedRef.current = true;

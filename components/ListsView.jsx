@@ -5,6 +5,9 @@ import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
 import { deleteItemAndRelated } from '../lib/supabase';
+import { removeProfilePostsByItemIds } from '../hooks/useOptimizedFeed';
+import { removeCachedImage } from '../lib/localImageCache';
+import { supabase } from '../lib/supabase';
 
 
 const StarRating = ({ rating }) => {
@@ -322,6 +325,11 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           errors.push({ id, error });
         } else {
           deletedItemIds.push(id);
+          // Remove locally cached image for this item if present
+          try {
+            const item = lists.flatMap(l => [...(l.items||[]), ...(l.stayAways||[])]).find(it => it.id === id);
+            if (item?.image_url) await removeCachedImage(item.image_url);
+          } catch (_) {}
         }
       }
       
@@ -337,6 +345,14 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         console.log('🗑️ [ListsView] Notifying parent of deleted items:', deletedItemIds);
         onItemDeleted(deletedItemIds);
       }
+
+      // Remove posts from profile cache for current user
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && deletedItemIds.length > 0) {
+          removeProfilePostsByItemIds(user.id, deletedItemIds);
+        }
+      } catch (_) {}
       
       if (errors.length > 0) {
         console.error('Some deletions failed:', JSON.stringify(errors, null, 2));

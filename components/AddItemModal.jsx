@@ -21,6 +21,8 @@ import {
   getCurrencyFromCountryName
 } from '../lib/currencyUtils';
 import { createPost, deleteItemAndRelated } from '../lib/supabase';
+import { prependProfilePost } from '../hooks/useOptimizedFeed';
+import { supabase } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import FirstInWorldBanner from './gamification/FirstInWorldBanner';
 
@@ -939,8 +941,24 @@ const AddItemModal = ({
       if (isPublic && !item?.id && savedItem) {
         try {
           console.log('🔍 Creating public post for item:', savedItem.id);
-          await createPost(savedItem.id, selectedLists[0], true, location);
+          const { data: postRow, error: postError } = await createPost(savedItem.id, selectedLists[0], true, location);
+          if (postError) throw postError;
           console.log('✅ Public post created successfully');
+
+          // Prepend to profile cache for instant UI update
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const newPost = {
+              id: postRow?.id,
+              user_id: user?.id,
+              items: savedItem,
+              lists: { id: selectedLists[0], name: (lists || []).find(l => l.id === selectedLists[0])?.name || '' }
+            };
+            prependProfilePost(user?.id, newPost);
+            console.log('✅ Prepended new post to profile cache');
+          } catch (prependErr) {
+            console.log('⚠️ Failed to prepend to profile cache (non-fatal):', prependErr?.message || prependErr);
+          }
         } catch (error) {
           console.error('❌ Failed to create public post:', JSON.stringify({
           message: error.message,

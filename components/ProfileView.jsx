@@ -298,6 +298,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   }
 
   /* -------- Profile (mimic screenshot layout, our style) -------- */
+  const [useLocalCache, setUseLocalCache] = useState(true);
   return (
     <div className="min-h-screen overflow-x-hidden" style={{ backgroundColor: '#FFFFFF' }}>
       <div className="px-4 pb-8 pt-6 space-y-6">
@@ -385,6 +386,24 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-gray-900">Recent photos</h3>
+            {/* TEMP: Cache toggle + refresh */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  // If offline, just re-render (no network)
+                  try { await refreshPosts?.(); } catch (_) {}
+                }}
+                className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={() => setUseLocalCache((v) => !v)}
+                className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                {useLocalCache ? 'Using: Local' : 'Using: Remote'}
+              </button>
+            </div>
           </div>
 
           {postsLoading ? (
@@ -416,6 +435,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       className="w-full aspect-square object-cover rounded-xl"
                       priority={index < 6 ? 'high' : 'normal'} // First 6 images get high priority
                       viewType="profile"
+                      useLocalCache={useLocalCache}
                       onLoadStateChange={(loadState) => {
                         // Debug log for ProfileView images
                         if (Math.random() < 0.1) { // 10% frequency to avoid spam

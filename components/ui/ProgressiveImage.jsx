@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { getLocalFirstUrl, getCachedLocalUrl } from '../../lib/localImageCache';
 
 // Image cache to prevent re-loading images
 const ImageCache = new Map();
@@ -18,17 +19,21 @@ const ProgressiveImage = ({
   onError,
   onLoadStateChange, // New callback to track load state changes
   postId, // Post ID for tracking
+  useLocalCache = true,
   ...props
 }) => {
   const [loadState, setLoadState] = useState('idle'); // idle, thumbnail, loading, loaded, error
   const [currentSrc, setCurrentSrc] = useState(null);
   const imgRef = useRef(null);
+  const imageElRef = useRef(null);
   const observerRef = useRef(null);
   const [isIntersecting, setIsIntersecting] = useState(!lazyLoad);
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
 
   // Determine which URL to use
   const actualThumbnailUrl = useThumbnail && thumbnailUrl ? thumbnailUrl : null;
   const targetUrl = fullUrl || thumbnailUrl;
+  const [localOverrideSrc, setLocalOverrideSrc] = useState(null);
   
   // Debug: Log the URLs being passed to the component (reduced frequency)
   if (Math.random() < 0.1) { // 10% frequency to reduce noise
@@ -139,16 +144,51 @@ const ProgressiveImage = ({
     };
   }, [lazyLoad, priority]);
 
+  // Try local-first resolution for remote URLs (background cache otherwise)
+  useEffect(() => {
+    let cancelled = false;
+    const resolveLocal = async () => {
+      try {
+        if (!useLocalCache) return;
+        if (!targetUrl || targetUrl.startsWith('data:')) return;
+        // Pass undefined userId as 'common' handled inside helper
+        const local = await getLocalFirstUrl(targetUrl, undefined, (cached) => {
+          if (!cancelled) setLocalOverrideSrc(cached);
+        });
+        if (local && !cancelled) setLocalOverrideSrc(local);
+      } catch (_) {}
+    };
+    resolveLocal();
+    return () => { cancelled = true; };
+  }, [targetUrl, useLocalCache]);
+
+  // When disabling local cache, clear local override and force reload
+  useEffect(() => {
+    if (!useLocalCache) {
+      if (localOverrideSrc) setLocalOverrideSrc(null);
+      if (currentSrc && !currentSrc.startsWith('http')) {
+        setCurrentSrc(null);
+        setLoadState('idle');
+        setIsIntersecting(true);
+      }
+    } else {
+      // Re-evaluate local cache when enabled back
+      setIsIntersecting(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useLocalCache]);
+
   // Progressive loading logic
   useEffect(() => {
-    if (!isIntersecting || !targetUrl) return;
+    const effectiveUrl = localOverrideSrc || targetUrl;
+    if (!isIntersecting || !effectiveUrl) return;
 
     const loadProgressive = async () => {
       try {
         // Handle data URLs (Base64 images) - they don't need HTTP loading
-        if (targetUrl.startsWith('data:')) {
+        if (effectiveUrl.startsWith('data:') || effectiveUrl.startsWith('file:') || effectiveUrl.includes('/data/')) {
           console.log('📦 [ProgressiveImage] Data URL detected, showing immediately:', targetUrl.substring(0, 50) + '...');
-          setCurrentSrc(targetUrl);
+          setCurrentSrc(effectiveUrl);
           setLoadState('loaded');
           onLoadStateChange?.(postId, 'loaded');
           return;
@@ -156,25 +196,76 @@ const ProgressiveImage = ({
 
         // Supabase public storage URLs: let the DOM <img> load it and use onLoad/onError
         // We still lazy-load via IntersectionObserver, but we don't mark as loaded here.
-        if (targetUrl.includes('/storage/v1/object/public/photos/')) {
-          setLoadState('loading');
-          setCurrentSrc(targetUrl);
+        if ((useLocalCache && localOverrideSrc && !localOverrideSrc.startsWith('http')) || targetUrl.includes('/storage/v1/object/public/photos/')) {
+          setCurrentSrc(effectiveUrl);
+          if (effectiveUrl && (effectiveUrl.startsWith('file:') || effectiveUrl.includes('/data/') || ImageCache.has(effectiveUrl))) {
+            setLoadState('loaded');
+            onLoadStateChange?.(postId, 'loaded');
+          } else {
+            setLoadState('loading');
+          }
           return;
         }
 
         // Always load the full resolution image (no thumbnail step)
-        if (targetUrl) {
+        if (effectiveUrl) {
           setLoadState('loading');
-          await loadImage(targetUrl, priority === 'critical' || priority === 'high');
+          await loadImage(effectiveUrl, priority === 'critical' || priority === 'high');
         }
       } catch (error) {
         console.error('Progressive loading failed:', error);
-        setLoadState('error');
+        // Fallback to local file if we have one or if offline and cached exists
+        if ((useLocalCache && localOverrideSrc && !localOverrideSrc.startsWith('http'))) {
+          setCurrentSrc(localOverrideSrc);
+          setLoadState('loaded');
+          onLoadStateChange?.(postId, 'loaded');
+        } else if (offline) {
+          try {
+            const cached = await getCachedLocalUrl(targetUrl);
+            if (cached) {
+              setCurrentSrc(cached);
+              setLoadState('loaded');
+              onLoadStateChange?.(postId, 'loaded');
+            } else {
+              setLoadState('error');
+            }
+          } catch (_) {
+            setLoadState('error');
+          }
+        } else {
+          setLoadState('error');
+        }
       }
     };
 
     loadProgressive();
-  }, [isIntersecting, targetUrl, actualThumbnailUrl, loadImage, priority, onLoadStateChange, postId]);
+  }, [isIntersecting, targetUrl, localOverrideSrc, actualThumbnailUrl, loadImage, priority, onLoadStateChange, postId, useLocalCache]);
+
+  // Ensure currentSrc always reflects the preferred source when toggling cache/remote
+  useEffect(() => {
+    if (!isIntersecting) return;
+    const preferred = (useLocalCache && localOverrideSrc) ? localOverrideSrc : targetUrl;
+    if (!preferred) return;
+    if (currentSrc !== preferred) {
+      setCurrentSrc(preferred);
+      if (preferred.startsWith('file:') || preferred.includes('/data/') || ImageCache.has(preferred)) {
+        setLoadState('loaded');
+        onLoadStateChange?.(postId, 'loaded');
+      } else {
+        setLoadState('loading');
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useLocalCache, localOverrideSrc, targetUrl, isIntersecting]);
+
+  // If the browser reports the image is already complete, mark loaded (handles same-src toggles)
+  useEffect(() => {
+    if (currentSrc && imageElRef.current && imageElRef.current.complete) {
+      setLoadState('loaded');
+      onLoadStateChange?.(postId, 'loaded');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSrc]);
 
   // Cleanup
   useEffect(() => {
@@ -200,7 +291,9 @@ const ProgressiveImage = ({
       <div className="text-center text-gray-400 p-4">
         <div className="text-xs">Failed to load</div>
         <button 
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
+            setCurrentSrc(null);
             setLoadState('idle');
             setIsIntersecting(true);
           }}
@@ -228,6 +321,7 @@ const ProgressiveImage = ({
       {/* Image */}
       {currentSrc && (
         <motion.img
+          ref={imageElRef}
           src={currentSrc}
           alt={alt}
           className={className}
@@ -244,9 +338,17 @@ const ProgressiveImage = ({
             onLoadStateChange?.(postId, 'loaded');
           }}
           onError={() => {
-            setLoadState('error');
-            onError?.(currentSrc);
-            onLoadStateChange?.(postId, 'error');
+            // Fallback to local file if available
+            if (useLocalCache && localOverrideSrc && !localOverrideSrc.startsWith('http')) {
+              setCurrentSrc(localOverrideSrc);
+              setLoadState('loaded');
+              onLoad?.(localOverrideSrc);
+              onLoadStateChange?.(postId, 'loaded');
+            } else {
+              setLoadState('error');
+              onError?.(currentSrc);
+              onLoadStateChange?.(postId, 'error');
+            }
           }}
           {...props}
         />

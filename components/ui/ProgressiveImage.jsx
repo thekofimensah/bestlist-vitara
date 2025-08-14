@@ -36,14 +36,14 @@ const ProgressiveImage = ({
   const [localOverrideSrc, setLocalOverrideSrc] = useState(null);
   
   // Debug: Log the URLs being passed to the component (reduced frequency)
-  if (Math.random() < 0.1) { // 10% frequency to reduce noise
-    console.log('🖼️ [ProgressiveImage] URLs sample:', postId?.substring(0, 8), JSON.stringify({
-      thumbnailUrl: thumbnailUrl ? (thumbnailUrl.startsWith('data:') ? 'DATA_URL' : 'HTTPS_URL') : 'MISSING',
-      fullUrl: fullUrl ? (fullUrl.startsWith('data:') ? 'DATA_URL' : 'HTTPS_URL') : 'MISSING', 
-      targetUrl: targetUrl ? (targetUrl.startsWith('data:') ? 'DATA_URL' : 'HTTPS_URL') : 'MISSING',
-      priority
-    }));
-  }
+  // if (Math.random() < 0.1) { // 10% frequency to reduce noise
+  //   console.log('🖼️ [ProgressiveImage] URLs sample:', postId?.substring(0, 8), JSON.stringify({
+  //     thumbnailUrl: thumbnailUrl ? (thumbnailUrl.startsWith('data:') ? 'DATA_URL' : 'HTTPS_URL') : 'MISSING',
+  //     fullUrl: fullUrl ? (fullUrl.startsWith('data:') ? 'DATA_URL' : 'HTTPS_URL') : 'MISSING', 
+  //     targetUrl: targetUrl ? (targetUrl.startsWith('data:') ? 'DATA_URL' : 'HTTPS_URL') : 'MISSING',
+  //     priority
+  //   }));
+  // }
 
   // Get image size variations
   const getImageUrl = useCallback((url, targetSize) => {
@@ -187,7 +187,6 @@ const ProgressiveImage = ({
       try {
         // Handle data URLs (Base64 images) - they don't need HTTP loading
         if (effectiveUrl.startsWith('data:') || effectiveUrl.startsWith('file:') || effectiveUrl.includes('/data/')) {
-          console.log('📦 [ProgressiveImage] Data URL detected, showing immediately:', targetUrl.substring(0, 50) + '...');
           setCurrentSrc(effectiveUrl);
           setLoadState('loaded');
           onLoadStateChange?.(postId, 'loaded');

@@ -97,15 +97,15 @@ const OptimizedPostCard = memo(({
   const [likeCount, setLikeCount] = useState(post?.likes || 0);
   const [isLiking, setIsLiking] = useState(false);
 
-  // Debug: Log post data to understand image URLs (only for first few posts)
-  if (Math.random() < 0.1) { // Only log 10% of posts to reduce noise
-    console.log('🐛 [OptimizedPostCard] Post data sample:', post?.id?.substring(0, 8), JSON.stringify({
-      userAvatar: post?.user?.avatar ? 'HAS_AVATAR' : 'NO_AVATAR',
-      postImage: post?.image ? (post?.image.startsWith('data:') ? 'BASE64_IMAGE' : 'URL_IMAGE') : 'NO_IMAGE',
-      hasUserData: !!post?.user,
-      hasItemsData: !!post?.items
-    }));
-  }
+  // // Debug: Log post data to understand image URLs (only for first few posts)
+  // if (Math.random() < 0.1) { // Only log 10% of posts to reduce noise
+  //   console.log('🐛 [OptimizedPostCard] Post data sample:', post?.id?.substring(0, 8), JSON.stringify({
+  //     userAvatar: post?.user?.avatar ? 'HAS_AVATAR' : 'NO_AVATAR',
+  //     postImage: post?.image ? (post?.image.startsWith('data:') ? 'BASE64_IMAGE' : 'URL_IMAGE') : 'NO_IMAGE',
+  //     hasUserData: !!post?.user,
+  //     hasItemsData: !!post?.items
+  //   }));
+  // }
 
   // Show skeleton while loading
   if (skeletonOnly || !post) {

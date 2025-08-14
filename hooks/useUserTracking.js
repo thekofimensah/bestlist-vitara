@@ -182,7 +182,36 @@ const useUserTracking = () => {
       if (error) throw error;
       return { id: data.id, startedAt: data.started_at };
     } catch (e) {
-      console.error('❌ insertSession error:', e);
+      console.error('❌ insertSession error:', JSON.stringify({
+        message: e.message,
+        name: e.name,
+        details: e.details,
+        hint: e.hint,
+        code: e.code,
+        fullError: e
+      }, null, 2));
+      
+      // Log error to Supabase error_events table
+      try {
+        await supabase.from('error_events').insert({
+          error_type: 'user_tracking_session_insert',
+          error_message: JSON.stringify({
+            message: e.message,
+            name: e.name,
+            details: e.details,
+            hint: e.hint,
+            code: e.code,
+            user_id: user?.id,
+            function: 'insertSession'
+          }),
+          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+          os_version: navigator?.userAgent || null,
+          user_id: user?.id
+        });
+      } catch (logError) {
+        console.error('❌ Failed to log error to Supabase:', logError);
+      }
+      
       return null;
     }
   }, [user, getDeviceInfo]);
@@ -206,7 +235,37 @@ const useUserTracking = () => {
         .eq('user_id', user.id);
       if (error) throw error;
     } catch (e) {
-      console.error('❌ updateSessionTotals error:', e);
+      console.error('❌ updateSessionTotals error:', JSON.stringify({
+        message: e.message,
+        name: e.name,
+        details: e.details,
+        hint: e.hint,
+        code: e.code,
+        fullError: e
+      }, null, 2));
+      
+      // Log error to Supabase error_events table
+      try {
+        await supabase.from('error_events').insert({
+          error_type: 'user_tracking_session_update',
+          error_message: JSON.stringify({
+            message: e.message,
+            name: e.name,
+            details: e.details,
+            hint: e.hint,
+            code: e.code,
+            user_id: user?.id,
+            session_id: sessionIdRef.current,
+            function: 'updateSessionTotals',
+            finalize: finalize
+          }),
+          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+          os_version: navigator?.userAgent || null,
+          user_id: user?.id
+        });
+      } catch (logError) {
+        console.error('❌ Failed to log error to Supabase:', logError);
+      }
     }
   }, [user]);
 
@@ -346,7 +405,36 @@ const useUserTracking = () => {
         .single();
 
       if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('❌ Error fetching current sign in count:', fetchError);
+        console.error('❌ Error fetching current sign in count:', JSON.stringify({
+          message: fetchError.message,
+          name: fetchError.name,
+          details: fetchError.details,
+          hint: fetchError.hint,
+          code: fetchError.code,
+          fullError: fetchError
+        }, null, 2));
+        
+        // Log error to Supabase error_events table
+        try {
+          await supabase.from('error_events').insert({
+            error_type: 'user_tracking_signin_fetch',
+            error_message: JSON.stringify({
+              message: fetchError.message,
+              name: fetchError.name,
+              details: fetchError.details,
+              hint: fetchError.hint,
+              code: fetchError.code,
+              user_id: user?.id,
+              function: 'incrementSignInCount'
+            }),
+            platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+            os_version: navigator?.userAgent || null,
+            user_id: user?.id
+          });
+        } catch (logError) {
+          console.error('❌ Failed to log error to Supabase:', logError);
+        }
+        
         return;
       }
 
@@ -363,12 +451,68 @@ const useUserTracking = () => {
         .eq('id', user.id);
 
       if (error) {
-        console.error('❌ Failed to increment sign in count:', error);
+        console.error('❌ Failed to increment sign in count:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
+        
+        // Log error to Supabase error_events table
+        try {
+          await supabase.from('error_events').insert({
+            error_type: 'user_tracking_signin_update',
+            error_message: JSON.stringify({
+              message: error.message,
+              name: error.name,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
+              user_id: user?.id,
+              function: 'incrementSignInCount'
+            }),
+            platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+            os_version: navigator?.userAgent || null,
+            user_id: user?.id
+          });
+        } catch (logError) {
+          console.error('❌ Failed to log error to Supabase:', logError);
+        }
       } else {
         console.log(`📊 Sign in count: ${newCount}`);
       }
     } catch (error) {
-      console.error('❌ Error incrementing sign in count:', error);
+      console.error('❌ Error incrementing sign in count:', JSON.stringify({
+        message: error.message,
+        name: error.name,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
+      
+      // Log error to Supabase error_events table
+      try {
+        await supabase.from('error_events').insert({
+          error_type: 'user_tracking_signin_exception',
+          error_message: JSON.stringify({
+            message: error.message,
+            name: error.name,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+            user_id: user?.id,
+            function: 'incrementSignInCount'
+          }),
+          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+          os_version: navigator?.userAgent || null,
+          user_id: user?.id
+        });
+      } catch (logError) {
+        console.error('❌ Failed to log error to Supabase:', logError);
+      }
     }
   }, [user]);
 
@@ -393,7 +537,35 @@ const useUserTracking = () => {
       console.log('📊 User tracking completed');
       
     } catch (error) {
-      console.error('❌ Error tracking user session:', error);
+      console.error('❌ Error tracking user session:', JSON.stringify({
+        message: error.message,
+        name: error.name,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
+      
+      // Log error to Supabase error_events table
+      try {
+        await supabase.from('error_events').insert({
+          error_type: 'user_tracking_session_track',
+          error_message: JSON.stringify({
+            message: error.message,
+            name: error.name,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+            user_id: user?.id,
+            function: 'trackUserSession'
+          }),
+          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+          os_version: navigator?.userAgent || null,
+          user_id: user?.id
+        });
+      } catch (logError) {
+        console.error('❌ Failed to log error to Supabase:', logError);
+      }
     } finally {
       setIsTracking(false);
     }

@@ -27,6 +27,7 @@ import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
 import useUserTracking from './hooks/useUserTracking';
 import usePendingAchievements from './hooks/usePendingAchievements';
 import useUserStats from './hooks/useUserStats';
+import { updateFeedPosts } from './hooks/useOptimizedFeed';
 
 // Helper function to format post data from database (moved from MainScreen)
   const formatPostForDisplay = (post) => {
@@ -58,7 +59,7 @@ import useUserStats from './hooks/useUserStats';
   return {
     id: post.id,
     user: {
-      name: post.user?.name || post.profiles?.display_name || post.profiles?.username || 'User',
+      name: post.user?.name || post.profiles?.username || 'User',
       avatar: post.user?.avatar || post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E',
     },
     image: post.items?.image_url || '',
@@ -186,7 +187,7 @@ const App = () => {
   // User stats hook 
   const { stats: userStats, loading: statsLoading } = useUserStats(user?.id);
   const [currentScreen, setCurrentScreen] = useState('home');
-  const [previousScreen, setPreviousScreen] = useState('home');
+  const [previousScreen, setPreviousScreen] = useState(null);
   const [selectedList, setSelectedList] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -225,6 +226,25 @@ const App = () => {
   const [deepLinkData, setDeepLinkData] = useState(null);
   const mainScreenRef = useRef(null);
   const hasInitialized = useRef(false);
+
+  // We no longer need to track scroll positions since we always reset to top
+
+  // Reset scroll to top for a view
+  const resetScrollToTop = () => {
+    if (typeof window !== 'undefined') {
+      // Force immediate scroll with multiple methods for maximum compatibility
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      // Also try to scroll any scrollable containers
+      const scrollContainers = document.querySelectorAll('.overflow-auto, .overflow-y-auto');
+      scrollContainers.forEach(container => {
+        container.scrollTop = 0;
+      });
+    }
+  };
+
+
 
   // Use optimized feed hook
   const {
@@ -461,6 +481,10 @@ const App = () => {
     setCurrentScreen(screen);
     setSelectedList(null);
     setSelectedItem(null);
+    
+    // Always reset scroll to top for the new view
+    resetScrollToTop();
+    
     try {
       if (typeof window !== 'undefined' && window.history && window.history.pushState) {
         window.history.pushState({ screen }, '');
@@ -483,6 +507,7 @@ const App = () => {
     const target = userProfileOrigin || (previousScreen && previousScreen !== 'user-profile' ? previousScreen : 'home');
     setCurrentScreen(target);
     setUserProfileOrigin(null);
+    resetScrollToTop();
   };
 
   const handleSearch = () => {
@@ -561,6 +586,7 @@ const App = () => {
       setCurrentScreen(postOriginScreen);
       if (postOriginScreen === 'user-profile') setUserProfileKey((k) => k + 1);
       setPostOriginScreen(null);
+      resetScrollToTop();
       return;
     }
     // Fallback to previousScreen or home
@@ -570,6 +596,7 @@ const App = () => {
     } else {
       setCurrentScreen('home');
     }
+    resetScrollToTop();
   };
 
   // Handle native Android back button globally
@@ -931,6 +958,15 @@ const App = () => {
     console.log('✅ [App] Feed refresh completed');
   };
 
+  // Update feed posts (used by MainScreen to update comment counts immediately)
+  const handleUpdateFeedPosts = (updatedPosts) => {
+    // Update the feed posts cache directly for immediate UI updates
+    if (updatedPosts && Array.isArray(updatedPosts)) {
+      updateFeedPosts('following', updatedPosts);
+      console.log('💬 [App] Updated feed posts cache with comment count changes');
+    }
+  };
+
   // Handle item deletion from lists - refresh feed to stay in sync
   const handleItemDeleted = async (deletedItemIds) => {
     console.log('🗑️ [App] Items deleted from lists, refreshing feed:', deletedItemIds);
@@ -992,6 +1028,9 @@ const App = () => {
           if (state.isActive) {
             // App is coming back from background
             console.log('🔄 App resumed - refreshing data and camera...');
+            
+            // Reset scroll position to top when app becomes active
+            resetScrollToTop();
             
             try {
               // Refresh authentication state
@@ -1148,6 +1187,7 @@ const App = () => {
   const handleBackFromList = () => {
     setSelectedList(null);
     setCurrentScreen('lists');
+    resetScrollToTop();
   };
 
   const handleBackFromItem = () => {
@@ -1157,6 +1197,7 @@ const App = () => {
     } else {
       setCurrentScreen('lists');
     }
+    resetScrollToTop();
   };
 
   const handleCreateList = async (name, color) => {
@@ -1354,6 +1395,7 @@ const App = () => {
               updateImageLoadState={updateImageLoadState}
               textLoaded={textLoaded}
               imagesLoaded={imagesLoaded}
+              onUpdateFeedPosts={handleUpdateFeedPosts}
             />
           </PullToRefresh>
         );
@@ -1384,6 +1426,7 @@ const App = () => {
               isRefreshing={refreshing}
               onEditItem={handleEditItem}
               onNavigateToUser={handleNavigateToUser}
+              onImageTap={handleImageTap}
             />
           </PullToRefresh>
         );
@@ -1413,6 +1456,7 @@ const App = () => {
               updateImageLoadState={updateImageLoadState}
               textLoaded={textLoaded}
               imagesLoaded={imagesLoaded}
+              onUpdateFeedPosts={handleUpdateFeedPosts}
             />
           </PullToRefresh>
         );
@@ -1573,7 +1617,7 @@ const App = () => {
     <AchievementProvider>
       <ErrorBoundary name="AppRoot">
       <div 
-        className="min-h-screen bg-stone-50 relative" 
+        className="min-h-screen bg-stone-50 relative flex flex-col" 
                  style={{
           backgroundColor: '#F6F6F4',
           // Responsive design for keyboard handling
@@ -1649,29 +1693,33 @@ const App = () => {
                       </div>
                     )}
                   </button>
-                  <NotificationsDropdown
-                    notifications={notifications}
-                    unreadCount={unreadCount}
-                    isOpen={isOpen}
-                    onClose={toggleOpen}
-                    onMarkRead={markAsRead}
-                    onMarkAllRead={markAllAsRead}
-                    onNavigateToPost={handleNavigateToPost}
+                  <div className="relative z-30">
+                    <NotificationsDropdown
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      isOpen={isOpen}
+                      onClose={toggleOpen}
+                      onMarkRead={markAsRead}
+                      onMarkAllRead={markAllAsRead}
+                      onNavigateToPost={handleNavigateToPost}
+                    />
+                  </div>
+                </div>
+                <div className="relative z-30">
+                  <AchievementsDropdown
+                    isOpen={achievementsOpen}
+                    onClose={() => setAchievementsOpen(false)}
+                    achievements={recentAchievements}
                   />
                 </div>
-                <AchievementsDropdown
-                  isOpen={achievementsOpen}
-                  onClose={() => setAchievementsOpen(false)}
-                  achievements={recentAchievements}
-                />
               </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Content - Updated height for PullToRefresh */}
-      <main className="relative" style={{ height: 'calc(100vh - 140px)' }}>
+      {/* Main Content */}
+      <main className="relative flex-1">
         <ErrorBoundary name="MainContent">
           {renderScreen()}
         </ErrorBoundary>

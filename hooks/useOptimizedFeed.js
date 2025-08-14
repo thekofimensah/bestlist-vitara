@@ -40,6 +40,33 @@ export const prependProfilePost = (userId, post) => {
     lastUpdated: Date.now()
   };
   profilePostsCache.set(userId, newCache);
+  // Notify listeners (e.g., useProfilePosts) that cache changed
+  try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
+};
+
+// Public API to update feed posts (used for immediate comment count updates)
+export const updateFeedPosts = (feedType, updatedPosts) => {
+  if (!feedType || !updatedPosts || !Array.isArray(updatedPosts)) return;
+  
+  const cached = feedPostsCache.get(feedType);
+  if (cached) {
+    // Update the cache with the new posts
+    const newCache = {
+      ...cached,
+      posts: updatedPosts,
+      lastUpdated: Date.now()
+    };
+    feedPostsCache.set(feedType, newCache);
+    
+    // Notify listeners that feed posts have been updated
+    try { 
+      window.dispatchEvent(new CustomEvent('feed:posts-updated', { 
+        detail: { feedType, posts: updatedPosts } 
+      })); 
+    } catch (_) {}
+    
+    console.log('💬 [Feed Cache] Updated feed posts for:', feedType, 'Posts count:', updatedPosts.length);
+  }
 };
 
 // Remove posts from cache by item IDs (used on deletion)
@@ -463,10 +490,25 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
     mountedRef.current = true;
     loadInitialFeed();
     
+    // Listen for feed cache updates (e.g., comment count changes)
+    const handleFeedUpdate = (event) => {
+      if (event?.detail?.feedType === feedType && Array.isArray(event.detail.posts)) {
+        setPosts(event.detail.posts);
+        console.log('💬 [useOptimizedFeed] Feed posts updated via cache:', event.detail.posts.length);
+      }
+    };
+    
+    try { 
+      window.addEventListener('feed:posts-updated', handleFeedUpdate); 
+    } catch (_) {}
+    
     return () => {
       mountedRef.current = false;
+      try { 
+        window.removeEventListener('feed:posts-updated', handleFeedUpdate); 
+      } catch (_) {}
     };
-  }, [loadInitialFeed]);
+  }, [loadInitialFeed, feedType]);
 
   // Only log critical state changes 
   useEffect(() => {
@@ -690,9 +732,20 @@ export const useProfilePosts = (userId) => {
   useEffect(() => {
     mountedRef.current = true;
     loadInitialPosts();
+    const onCacheUpdate = (e) => {
+      if (!userId || e?.detail?.userId !== userId) return;
+      const cached = profilePostsCache.get(userId);
+      if (cached && Array.isArray(cached.posts)) {
+        setPosts(cached.posts);
+        setOffset(cached.offset || cached.posts.length);
+        setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
+      }
+    };
+    try { window.addEventListener('profile:posts-updated', onCacheUpdate); } catch (_) {}
     
     return () => {
       mountedRef.current = false;
+      try { window.removeEventListener('profile:posts-updated', onCacheUpdate); } catch (_) {}
     };
   }, [loadInitialPosts]);
 

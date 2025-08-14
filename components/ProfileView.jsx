@@ -30,7 +30,7 @@ const StatCard = ({ icon, value, label }) => (
     </div>
   );
   
-const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem, onNavigateToUser }, ref) => {
+const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem, onNavigateToUser, onImageTap }, ref) => {
   const { user, userProfile } = useAuth();
 
   const [loading, setLoading] = useState(false);
@@ -49,7 +49,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const [useLocalCache, setUseLocalCache] = useState(true);
   const [cachedProfile, setCachedProfile] = useState(null);
   const [primaryName, setPrimaryName] = useState(() => (
-    userProfile?.display_name || userProfile?.username || ''
+     userProfile?.username || null
   ));
 
   // Optimized posts loading
@@ -101,18 +101,19 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   }, [user?.id]);
 
   // Ensure name is immediately available from email, then cached, then remote
-  useEffect(() => {
-    if (user?.email) {
-      setPrimaryName((prev) => prev || user.email.split('@')[0]);
-    }
-  }, [user?.email]);
+  // useEffect(() => {
+  //   if (user?.email && !primaryName) {
+  //     // Only use email prefix if no name is set yet
+  //     setPrimaryName(user.email.split('@')[0]);
+  //   }
+  // }, [user?.email, primaryName]);
 
   useEffect(() => {
     const cachedName = cachedProfile?.display_name || cachedProfile?.username;
-    if (cachedName) {
-      setPrimaryName((prev) => prev || cachedName);
+    if (cachedName && !primaryName) {
+      setPrimaryName(cachedName);
     }
-  }, [cachedProfile?.display_name, cachedProfile?.username]);
+  }, [cachedProfile?.display_name, cachedProfile?.username, primaryName]);
 
   useEffect(() => {
     const remoteName = userProfile?.display_name || userProfile?.username;
@@ -360,7 +361,10 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
 
   /* -------- Profile (mimic screenshot layout, our style) -------- */
   return (
-    <div className="min-h-screen overflow-x-hidden" style={{ backgroundColor: '#FFFFFF' }}>
+    <div 
+      className="min-h-screen overflow-x-hidden" 
+      style={{ backgroundColor: '#FFFFFF' }}
+    >
       <div className="px-4 pb-8 pt-6 space-y-6">
         {/* Header row (best-practice alignment) */}
         <div className="p-1">
@@ -497,7 +501,10 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                     className="relative cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onEditItem && onEditItem(post.items, post.lists);
+                      // Navigate to post detail view
+                      if (post.id && onImageTap) {
+                        onImageTap(post.id);
+                      }
                     }}
                   >
                     <ProgressiveImage

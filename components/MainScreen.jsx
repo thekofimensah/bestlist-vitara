@@ -165,17 +165,17 @@ const VerdictBadge = ({ verdict, size = 'sm' }) => {
 
 // Old PostCard component removed - now using OptimizedPostCard
 
-const MainScreen = React.forwardRef(({ 
-  lists, 
-  loading, 
-  onAddItem, 
-  onSelectList, 
-  onCreateList, 
-  onNavigateToUser, 
+const MainScreen = React.forwardRef(({
+  lists,
+  loading,
+  onAddItem,
+  onSelectList,
+  onCreateList,
+  onNavigateToUser,
   onRefreshFeed,
   onTabChange,
   onImageTap,
-  // Feed-related props from App.jsx
+  // Pass feed data down as props
   feedPosts,
   isLoadingFeed,
   isLoadingMore,
@@ -184,7 +184,8 @@ const MainScreen = React.forwardRef(({
   hasMore,
   updateImageLoadState,
   textLoaded,
-  imagesLoaded
+  imagesLoaded,
+  onUpdateFeedPosts
 }, ref) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1084,7 +1085,23 @@ const MainScreen = React.forwardRef(({
   };
 
   const handleCommentAdded = async (postId) => {
-    // Comment count updates are now handled by the optimized feed hook
+    // Update the specific post's comment count immediately
+    if (feedPosts && onUpdateFeedPosts) {
+      const updatedPosts = feedPosts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            comment_count: (post.comment_count || 0) + 1,
+            comments: (post.comments || 0) + 1 // Also update the 'comments' field that the UI displays
+          };
+        }
+        return post;
+      });
+      
+      // Update the feed posts
+      onUpdateFeedPosts(updatedPosts);
+    }
+    
     console.log('💬 Comment added to post:', postId);
   };
 

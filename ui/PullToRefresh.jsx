@@ -146,7 +146,7 @@ const PullToRefresh = ({
   return (
     <div 
       ref={containerRef}
-      className={`relative h-full overflow-auto ${className}`}
+      className={`relative overflow-auto ${className}`}
       style={{
         WebkitOverflowScrolling: 'touch',
       }}

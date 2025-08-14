@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User } from 'lucide-react';
 import { supabase, likePost, unlikePost, getPostComments, commentOnPost } from '../../lib/supabase';
 import { getInstagramClassicFilter } from '../../lib/imageUtils';
 import SmartImage from './SmartImage';
 
-const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser }) => {
+const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser, scrollToComments = false }) => {
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
@@ -14,6 +14,23 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
   const [isLiking, setIsLiking] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [isCommenting, setIsCommenting] = useState(false);
+  const containerRef = useRef(null);
+  const commentsRef = useRef(null);
+  const hasAutoScrolledRef = useRef(false);
+
+  // Auto-scroll to comments when opened from a comment notification
+  useEffect(() => {
+    // Always register this hook to preserve hook order across renders
+    if (hasAutoScrolledRef.current) return;
+    if (!scrollToComments) return;
+    if (loading) return;
+    const el = commentsRef.current || (typeof document !== 'undefined' ? document.getElementById('comments-section') : null);
+    if (!el) return;
+    hasAutoScrolledRef.current = true;
+    setTimeout(() => {
+      try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+    }, 100);
+  }, [scrollToComments, loading]);
 
   useEffect(() => {
     console.log('🔍 PostDetailView: postId received:', postId);
@@ -25,6 +42,12 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
 
   const loadPost = async () => {
     try {
+      // If offline, show friendly message instead of generic error
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setLoading(false);
+        setPost(undefined);
+        return;
+      }
       // First, get the post data
       const { data: postData, error: postError } = await supabase
         .from('posts')
@@ -157,17 +180,84 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
+        {/* Image area skeleton */}
+        <div className="relative h-[60vh] bg-black flex items-center justify-center">
+          <div className="w-11/12 h-5/6 bg-gray-800/60 rounded-2xl animate-pulse" />
+        </div>
+        
+        {/* Content skeleton */}
+        <div className="bg-white rounded-t-3xl mt-[-24px] relative z-10">
+          <div className="p-6 pb-4">
+            {/* User info */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-gray-200 animate-pulse" />
+              <div className="flex-1">
+                <div className="h-4 w-32 bg-gray-200 rounded mb-2 animate-pulse" />
+                <div className="h-3 w-24 bg-gray-100 rounded animate-pulse" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <div className="h-5 w-1/2 bg-gray-200 rounded mb-3 animate-pulse" />
+
+            {/* Rating + Location */}
+            <div className="flex items-center mb-4 gap-4">
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-24 bg-gray-200 rounded animate-pulse" />
+              </div>
+              <div className="ml-auto h-4 w-28 bg-gray-100 rounded animate-pulse" />
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2 mb-6">
+              <div className="h-3 w-full bg-gray-100 rounded animate-pulse" />
+              <div className="h-3 w-11/12 bg-gray-100 rounded animate-pulse" />
+              <div className="h-3 w-10/12 bg-gray-100 rounded animate-pulse" />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between py-4 border-t border-gray-100">
+              <div className="flex items-center gap-6">
+                <div className="h-5 w-16 bg-gray-100 rounded animate-pulse" />
+                <div className="h-5 w-16 bg-gray-100 rounded animate-pulse" />
+              </div>
+              <div className="h-8 w-8 bg-gray-100 rounded-full animate-pulse" />
+            </div>
+          </div>
+
+          {/* Comments skeleton */}
+          <div className="border-t border-gray-100 pt-6">
+            <div className="px-6 mb-4 h-5 w-40 bg-gray-200 rounded animate-pulse" />
+            <div className="px-6 space-y-4 mb-6">
+              {[1,2,3].map(i => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="flex-1">
+                    <div className="h-3 w-1/2 bg-gray-200 rounded mb-2 animate-pulse" />
+                    <div className="h-3 w-2/3 bg-gray-100 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!post) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center" style={{ backgroundColor: '#F6F6F4' }}>
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6" style={{ backgroundColor: '#F6F6F4' }}>
         <div className="text-center">
-          <p className="text-gray-500 mb-4">Post not found</p>
+          {typeof navigator !== 'undefined' && navigator.onLine === false ? (
+            <>
+              <p className="text-gray-700 mb-2">Unable to show this post while offline</p>
+              <p className="text-gray-500 text-sm mb-4">Connect to the internet and try again.</p>
+            </>
+          ) : (
+            <p className="text-gray-500 mb-4">Post not found</p>
+          )}
           <button onClick={onBack} className="text-teal-600 hover:text-teal-700">
             Go back
           </button>
@@ -176,8 +266,10 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
     );
   }
 
+  
+
   return (
-    <div className="min-h-screen bg-black relative overflow-y-auto" style={{ paddingBottom: '80px' }}>
+    <div ref={containerRef} className="min-h-screen bg-black relative overflow-y-auto" style={{ paddingBottom: '80px' }}>
       {/* Header */}
       <div className="sticky top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/50 to-transparent">
         <div className="flex items-center justify-between p-4 pt-8">
@@ -309,7 +401,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser 
         </div>
 
         {/* Comments Section */}
-        <div id="comments-section" className="border-t border-gray-100 pt-6">
+        <div id="comments-section" ref={commentsRef} className="border-t border-gray-100 pt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 px-6">Comments ({comments.length})</h3>
           
           {/* Comments List */}

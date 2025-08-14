@@ -16,6 +16,7 @@ export const useNotifications = (userId) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const [ready, setReady] = useState(false);
 
   // Achievement-related notification types that should NOT appear in the bell
   const ACHIEVEMENT_TYPES = new Set([
@@ -31,12 +32,14 @@ export const useNotifications = (userId) => {
   useEffect(() => {
     if (!userId) {
       logToAndroid('🔔 No userId provided to useNotifications');
+      setReady(false);
       return;
     }
 
     logToAndroid('🔔 Setting up notifications for user:', userId);
     
     // Load initial notifications
+    setReady(false);
     loadNotifications();
 
     // Subscribe to new notifications (with error handling for Realtime)
@@ -99,6 +102,7 @@ export const useNotifications = (userId) => {
 
       if (notificationsError) {
         logToAndroid('🔔 Error loading notifications:', notificationsError);
+        setReady(true);
         return;
       }
 
@@ -144,10 +148,12 @@ export const useNotifications = (userId) => {
         const unreadNotifications = enrichedNotifications.filter(n => !n.read);
         logToAndroid('🔔 Unread notifications:', unreadNotifications.length);
         setUnreadCount(unreadNotifications.length);
+        setReady(true);
       } else {
         logToAndroid('🔔 No notification data returned');
         setNotifications([]);
         setUnreadCount(0);
+        setReady(true);
       }
     } catch (err) {
       logToAndroid('🔔 Exception loading notifications:', JSON.stringify({
@@ -158,6 +164,7 @@ export const useNotifications = (userId) => {
         code: err.code,
         fullError: err
       }, null, 2));
+      setReady(true);
     }
   };
 
@@ -200,6 +207,7 @@ export const useNotifications = (userId) => {
     isOpen,
     toggleOpen,
     markAsRead,
-    markAllAsRead 
+    markAllAsRead,
+    ready
   };
 };

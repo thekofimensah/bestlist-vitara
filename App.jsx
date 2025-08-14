@@ -29,17 +29,25 @@ import usePendingAchievements from './hooks/usePendingAchievements';
 import useUserStats from './hooks/useUserStats';
 
 // Helper function to format post data from database (moved from MainScreen)
-const formatPostForDisplay = (post) => {
+  const formatPostForDisplay = (post) => {
   const getTimeAgo = (dateString) => {
     if (!dateString) return '';
     const now = new Date();
     const postDate = new Date(dateString);
-    const diffInHours = Math.floor((now - postDate) / (1000 * 60 * 60));
+    const diffMs = now - postDate;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHrs = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHrs / 24);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
     
-    if (diffInHours < 1) return 'Just now';
-    if (diffInHours < 24) return `${diffInHours}h`;
-    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`;
-    return `${Math.floor(diffInHours / 168)}w`;
+    if (diffSec < 60) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m`;
+    if (diffHrs < 24) return `${diffHrs}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+    if (diffWeeks < 4) return `${diffWeeks}w`;
+    return `${diffMonths}mo`;
   };
 
   const getVerdictFromRating = (rating, isStayAway) => {
@@ -121,7 +129,7 @@ const App = () => {
     return () => teardown && teardown();
   }, []);
   const [user, setUser] = useState(null);
-  const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead } = useNotifications(user?.id);
+  const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead, ready: notificationsReady } = useNotifications(user?.id);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [recentAchievements, setRecentAchievements] = useState([]);
   const { getUserAchievements } = useAchievements();
@@ -172,8 +180,6 @@ const App = () => {
     userTracking: false
   });
   
-  // Cache loading keys to avoid repeated Object.keys calls
-  const loadingKeys = ['auth', 'lists', 'feed', 'stats', 'achievements', 'userTracking'];
   
   
   
@@ -186,6 +192,8 @@ const App = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState(null);
+  const [userProfileKey, setUserProfileKey] = useState(0);
+  const [userProfileOrigin, setUserProfileOrigin] = useState(null);
   const profileViewRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef(null);
@@ -195,6 +203,8 @@ const App = () => {
   const [userResults, setUserResults] = useState([]);
   const [followingUsers, setFollowingUsers] = useState(new Set());
   const [selectedPostId, setSelectedPostId] = useState(null);
+  const [scrollToCommentsOnOpen, setScrollToCommentsOnOpen] = useState(false);
+  const [postOriginScreen, setPostOriginScreen] = useState(null);
   const { 
     lists, 
     loading: listsLoading, 
@@ -323,7 +333,9 @@ const App = () => {
         }, null, 2));
           setUserResults([]);
         } else {
-          setUserResults(data || []);
+          // Exclude current user from results
+          const filtered = (data || []).filter((u) => u.id !== user?.id);
+          setUserResults(filtered);
         }
       }
     } catch (error) {
@@ -449,18 +461,28 @@ const App = () => {
     setCurrentScreen(screen);
     setSelectedList(null);
     setSelectedItem(null);
-    setSelectedUsername(null);
+    try {
+      if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+        window.history.pushState({ screen }, '');
+      }
+    } catch (_) {}
+    if (screen === 'user-profile') {
+      setUserProfileKey((k) => k + 1);
+    }
   };
 
   const handleNavigateToUser = (username) => {
     setSelectedUsername(username);
     setPreviousScreen(currentScreen);
-    setCurrentScreen('user-profile');
+    setUserProfileOrigin(currentScreen);
+    navigateToScreen('user-profile');
   };
 
   const handleBackFromUserProfile = () => {
     setSelectedUsername(null);
-    setCurrentScreen(previousScreen || 'home');
+    const target = userProfileOrigin || (previousScreen && previousScreen !== 'user-profile' ? previousScreen : 'home');
+    setCurrentScreen(target);
+    setUserProfileOrigin(null);
   };
 
   const handleSearch = () => {
@@ -493,15 +515,11 @@ const App = () => {
     
     // Navigate to post detail view
     setSelectedPostId(postId);
-    setCurrentScreen('post-detail');
+    setPostOriginScreen(currentScreen);
+    navigateToScreen('post-detail');
     
-    // If comment notification, schedule auto-scroll to comments after view mounts
-    if (type === 'comment') {
-      setTimeout(() => {
-        const el = document.getElementById('comments-section');
-        el?.scrollIntoView({ behavior: 'smooth' });
-      }, 500);
-    }
+    // If comment notification, request auto-scroll inside PostDetailView (one-shot)
+    setScrollToCommentsOnOpen(type === 'comment');
     
     console.log('🔔 Navigating to post:', postId);
   };
@@ -532,18 +550,37 @@ const App = () => {
   const handleImageTap = (postId) => {
     console.log('🔍 handleImageTap called with postId:', postId);
     setSelectedPostId(postId);
-    setCurrentScreen('post-detail');
+    setPostOriginScreen(currentScreen);
+    navigateToScreen('post-detail');
   };
 
   const handleBackFromPost = () => {
     setSelectedPostId(null);
-    setCurrentScreen('home');
+    // Prefer explicit origin if available
+    if (postOriginScreen) {
+      setCurrentScreen(postOriginScreen);
+      if (postOriginScreen === 'user-profile') setUserProfileKey((k) => k + 1);
+      setPostOriginScreen(null);
+      return;
+    }
+    // Fallback to previousScreen or home
+    if (previousScreen === 'profile' || previousScreen === 'lists' || previousScreen === 'user-profile') {
+      setCurrentScreen(previousScreen);
+      if (previousScreen === 'user-profile') setUserProfileKey((k) => k + 1);
+    } else {
+      setCurrentScreen('home');
+    }
   };
 
   // Handle native Android back button globally
   useEffect(() => {
     const onBack = () => {
       try {
+        // Close item editor modal first (e.g., opened from ProfileView)
+        if (editingItem) {
+          setEditingItem(null);
+          return;
+        }
         // Close search if open
         if (showSearch) {
           setShowSearch(false);
@@ -567,13 +604,18 @@ const App = () => {
           navigateToScreen('home');
           return;
         }
-
-        // Default: never exit app; navigate to home if not already there
+        // Use browser history to go back if possible
+        try {
+          if (typeof window !== 'undefined' && window.history && window.history.state) {
+            window.history.back();
+            return;
+          }
+        } catch (_) {}
+        // Fallback: navigate home
         if (currentScreen !== 'home') {
           navigateToScreen('home');
           return;
         }
-        // Already at home: ignore back press (no exit)
         return;
       } catch (e) {
         // Swallow errors to avoid exiting the app
@@ -593,6 +635,46 @@ const App = () => {
     };
   }, [currentScreen, showSearch]);
 
+  // Sync app state with browser history for native back gestures/swipes
+  useEffect(() => {
+    const onPopState = () => {
+      // Close item editor modal first
+      if (editingItem) {
+        setEditingItem(null);
+        return;
+      }
+      // Decide where to go based on currentScreen and previousScreen
+      if (currentScreen === 'post-detail') {
+        handleBackFromPost();
+        return;
+      }
+      if (currentScreen === 'item-detail') {
+        handleBackFromItem();
+        return;
+      }
+      if (currentScreen === 'list-detail') {
+        handleBackFromList();
+        return;
+      }
+      if (currentScreen === 'user-profile') {
+        handleBackFromUserProfile();
+        return;
+      }
+      if (currentScreen === 'profile') {
+        navigateToScreen('home');
+        return;
+      }
+    };
+    try { window.addEventListener('popstate', onPopState); } catch (_) {}
+    // Ensure at least one history entry exists
+    try {
+      if (typeof window !== 'undefined' && window.history && !window.history.state) {
+        window.history.replaceState({ screen: currentScreen }, '');
+      }
+    } catch (_) {}
+    return () => { try { window.removeEventListener('popstate', onPopState); } catch (_) {} };
+  }, [currentScreen, editingItem]);
+
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
@@ -604,12 +686,12 @@ const App = () => {
         // Step 1: Authentication
         console.log('🔐 [App] Loading authentication...');
         setLoadingProgress(prev => ({ ...prev, auth: false }));
-        const user = await getSessionOptimized();
-        setUser(user);
+        const existingUser = await getSessionOptimized();
+        setUser(existingUser);
         setLoadingProgress(prev => ({ ...prev, auth: true }));
         console.log('✅ [App] Authentication loaded');
 
-        if (user) {
+        if (existingUser) {
           // Step 2: User tracking (can run in parallel)
           console.log('📊 [App] Starting user tracking...');
           setLoadingProgress(prev => ({ ...prev, userTracking: false }));
@@ -732,15 +814,22 @@ const App = () => {
             })()
           );
 
+          // Notifications: do not gate app load; let dropdown fetch on demand
+
           // Wait for all data to load with timeout
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Loading timeout')), 30000); // 30 second timeout
+            setTimeout(() => reject(new Error('Loading timeout')), 8000); // 8 second timeout
           });
           
-          await Promise.race([
-            Promise.all(promises),
-            timeoutPromise
-          ]);
+          // Wait for all with timeout, but do not block app if some subsystems are slow
+          try {
+            await Promise.race([
+              Promise.all(promises),
+              timeoutPromise
+            ]);
+          } catch (e) {
+            console.log('⏰ [App] Non-fatal loading timeout - proceeding with available data');
+          }
           console.log('🎉 [App] All data loaded successfully!');
         } else {
           // No user, mark everything as loaded
@@ -898,6 +987,7 @@ const App = () => {
         // Handle app state changes
         CapacitorApp.addListener('appStateChange', async (state) => {
           console.log('📱 App state changed:', state);
+          try { window.__APP_ACTIVE__ = !!state.isActive; } catch (_) {}
           
           if (state.isActive) {
             // App is coming back from background
@@ -1038,16 +1128,21 @@ const App = () => {
   const handleEditItem = (item, list) => {
     setEditingItem(item);
     setEditingList(list);
+    try {
+      if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+        window.history.pushState({ screen: 'item-edit' }, '');
+      }
+    } catch (_) {}
   };
 
   const handleViewItemDetail = (item) => {
     setSelectedItem(item);
-    setCurrentScreen('item-detail');
+    navigateToScreen('item-detail');
   };
 
   const handleSelectList = (list) => {
     setSelectedList(list);
-    setCurrentScreen('list-detail');
+    navigateToScreen('list-detail');
   };
 
   const handleBackFromList = () => {
@@ -1192,6 +1287,7 @@ const App = () => {
           onEdit={handleEditItem}
           currentUser={user}
           onNavigateToUser={handleNavigateToUser}
+          scrollToComments={scrollToCommentsOnOpen}
         />
       );
     }
@@ -1275,6 +1371,7 @@ const App = () => {
               onDeleteList={deleteList}
               onUpdateList={updateList}
               onItemDeleted={handleItemDeleted}
+              onNavigateToCamera={() => navigateToScreen('home')}
             />
           </PullToRefresh>
         );
@@ -1293,9 +1390,11 @@ const App = () => {
       case 'user-profile':
         return (
           <UserProfile
+            key={userProfileKey}
             username={selectedUsername}
             onBack={handleBackFromUserProfile}
             onNavigateToUser={handleNavigateToUser}
+            onImageTap={handleImageTap}
           />
         );
       default:
@@ -1360,10 +1459,18 @@ const App = () => {
     );
   };
 
-  // Calculate loading progress
-  const loadingComplete = Object.values(loadingProgress).every(Boolean);
-  const completedSteps = Object.values(loadingProgress).filter(Boolean).length;
-  const totalSteps = loadingKeys.length;
+  // Calculate loading progress (condensed into 3 buckets for UX)
+  const coreReady = loadingProgress.auth && loadingProgress.userTracking;
+  const contentReady = loadingProgress.lists && loadingProgress.feed && loadingProgress.stats;
+  const extrasReady = loadingProgress.achievements; // achievements/notifications/etc.
+  const displaySteps = [
+    { key: 'core', label: 'Core setup', icon: '🔐', done: coreReady },
+    { key: 'content', label: 'Content', icon: '🍽️', done: contentReady },
+    { key: 'extras', label: 'Extras', icon: '🏆', done: extrasReady }
+  ];
+  const loadingComplete = displaySteps.every(s => s.done);
+  const completedSteps = displaySteps.filter(s => s.done).length;
+  const totalSteps = displaySteps.length;
   const progressPercentage = Math.round((completedSteps / totalSteps) * 100);
   
   // Debug loading progress
@@ -1406,47 +1513,40 @@ const App = () => {
               />
             </div>
 
-            {/* Loading Steps */}
-            <div className="space-y-3">
-              {[
-                { key: 'auth', label: 'Authentication', icon: '🔐' },
-                { key: 'lists', label: 'Your lists', icon: '📝' },
-                { key: 'feed', label: 'Feed posts', icon: '🍽️' },
-                { key: 'stats', label: 'Statistics', icon: '📊' },
-                { key: 'achievements', label: 'Achievements', icon: '🏆' },
-                { key: 'userTracking', label: 'Session setup', icon: '📱' }
-              ].map(({ key, label, icon }, index) => (
-                <motion.div
-                  key={key}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
-                    loadingProgress[key] 
-                      ? 'bg-teal-50 border border-teal-200' 
-                      : 'bg-white border border-gray-200'
-                  }`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    loadingProgress[key] 
-                      ? 'bg-teal-700 text-white' 
-                      : 'bg-gray-100 text-gray-400'
-                  }`} style={{ backgroundColor: loadingProgress[key] ? '#1F6D5A' : undefined }}>
-                    {loadingProgress[key] ? '✓' : icon}
-                  </div>
-                  <span className={`text-sm font-medium ${
-                    loadingProgress[key] ? 'text-teal-700' : 'text-gray-600'
-                  }`} style={{ color: loadingProgress[key] ? '#1F6D5A' : undefined }}>
-                    {label}
-                  </span>
-                  {!loadingProgress[key] && (
-                    <div className="ml-auto">
-                      <div className="w-4 h-4 border-2 border-gray-300 border-t-teal-700 rounded-full animate-spin"></div>
+              {/* Loading Steps (condensed to 3) */}
+              <div className="space-y-3">
+                {displaySteps.map(({ key, label, icon, done }, index) => (
+                  <motion.div
+                    key={key}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
+                      done 
+                        ? 'bg-teal-50 border border-teal-200' 
+                        : 'bg-white border border-gray-200'
+                    }`}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      done 
+                        ? 'bg-teal-700 text-white' 
+                        : 'bg-gray-100 text-gray-400'
+                    }`} style={{ backgroundColor: done ? '#1F6D5A' : undefined }}>
+                      {done ? '✓' : icon}
                     </div>
-                  )}
-                </motion.div>
-              ))}
-            </div>
+                    <span className={`text-sm font-medium ${
+                      done ? 'text-teal-700' : 'text-gray-600'
+                    }`} style={{ color: done ? '#1F6D5A' : undefined }}>
+                      {label}
+                    </span>
+                    {!done && (
+                      <div className="ml-auto">
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-teal-700 rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
           </div>
 
           {/* Subtle loading message */}
@@ -1460,8 +1560,8 @@ const App = () => {
     );
   }
 
-  // Show auth view if no user (after loading is complete)
-  if (!user) {
+  // Show auth view only when not loading and no user
+  if (!appLoading && !user) {
     return (
       <ErrorBoundary name="AuthView">
         <AuthView />
@@ -1839,13 +1939,8 @@ const App = () => {
                               className="w-10 h-10 rounded-full object-cover"
                             />
                             <div className="flex-1">
-                              <div className="font-medium text-gray-900">@{user.username}</div>
-                              {user.display_name && (
-                                <div className="text-sm text-gray-600">{user.display_name}</div>
-                              )}
-                              {user.bio && (
-                                <div className="text-xs text-gray-500 truncate">{user.bio}</div>
-                              )}
+                              <div className="font-medium text-gray-900">{user.username}</div>
+                             
                             </div>
                           </button>
                           
@@ -1896,37 +1991,8 @@ const App = () => {
                   }
                 </div>
                 <div className="mt-3 space-y-2">
-                  <div className="text-xs text-gray-400">
-                    {searchTab === 'content' ? 'Try searching for:' : 'Search by username:'}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {searchTab === 'content' 
-                      ? ['cheese', 'chocolate', 'olive oil', 'bread'].map((suggestion) => (
-                          <button
-                            key={suggestion}
-                            onClick={() => {
-                              setSearchQuery(suggestion);
-                              performSearch(suggestion);
-                            }}
-                            className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
-                          >
-                            {suggestion}
-                          </button>
-                        ))
-                      : ['foodie', 'chef', 'baker'].map((suggestion) => (
-                          <button
-                            key={suggestion}
-                            onClick={() => {
-                              setSearchQuery(suggestion);
-                              performSearch(suggestion);
-                            }}
-                            className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
-                          >
-                            @{suggestion}
-                          </button>
-                        ))
-                    }
-                  </div>
+                 
+                  
                 </div>
               </div>
             )}

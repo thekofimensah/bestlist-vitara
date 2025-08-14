@@ -290,11 +290,45 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
       <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
         <div className="pt-16 px-4">
           <div className="animate-pulse">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-20 h-20 bg-gray-200 rounded-full"></div>
-              <div className="flex-1">
-                <div className="h-6 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-32"></div>
+            {/* Header placeholder */}
+            <div className="flex items-center gap-2 mb-4">
+              <button className="w-10 h-10 flex items-center justify-center">
+                <div className="w-5 h-5 bg-gray-200 rounded" />
+              </button>
+              <div className="h-6 w-24 bg-gray-200 rounded" />
+            </div>
+
+            {/* Profile card skeleton */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm mb-6" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-20 h-20 bg-gray-200 rounded-full" />
+                <div className="flex-1">
+                  <div className="h-5 bg-gray-200 rounded w-40 mb-2" />
+                  <div className="h-4 bg-gray-200 rounded w-28" />
+                  <div className="flex items-center gap-4 mt-3">
+                    <div className="h-4 bg-gray-200 rounded w-16" />
+                    <div className="h-4 bg-gray-200 rounded w-16" />
+                    <div className="h-4 bg-gray-200 rounded w-16" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Posts list skeleton */}
+            <div className="bg-white rounded-2xl shadow-sm" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div className="p-4 border-b border-gray-100">
+                <div className="h-5 bg-gray-200 rounded w-28" />
+              </div>
+              <div className="p-4 space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="w-16 h-16 bg-gray-200 rounded-lg" />
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-200 rounded mb-2 w-1/2" />
+                      <div className="h-3 bg-gray-200 rounded w-2/3" />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -326,15 +360,10 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
     <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-4 py-4">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="w-10 h-10 flex items-center justify-center">
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} className="w-10 h-10 flex items-center justify-center" aria-label="Back">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold text-gray-900">
-              {userProfile.username}
-            </h1>
-          </div>
         </div>
       </div>
 
@@ -343,22 +372,7 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
         {/* Profile Header */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
           <div className="flex items-start gap-4 mb-4">
-            {/* Avatar */}
-            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
-              {userProfile.avatar_url ? (
-                <img 
-                  src={userProfile.avatar_url} 
-                  alt={userProfile.username}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <img 
-                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E"
-                  alt="Default avatar"
-                  className="w-10 h-10 opacity-60"
-                />
-              )}
-            </div>
+         
 
             {/* Profile Info (username replaced by avatar here) */}
             <div className="flex-1">
@@ -373,7 +387,7 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
                   )}
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900">
-                  {userProfile.display_name || userProfile.username}
+                  {userProfile.username}
                 </h2>
               </div>
 

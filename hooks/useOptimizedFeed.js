@@ -5,8 +5,13 @@ import { trackFeedRequest, trackFeedPhase, trackImageLoadingPhase } from '../lib
 // Simple in-memory cache for profile posts to avoid refetching on navigation
 // Map<userId, { posts: any[], hasMore: boolean, offset: number, lastUpdated: number }>
 const profilePostsCache = new Map();
+// In-memory cache for feed posts by feedType (e.g., 'following')
+// Map<feedType, { posts: any[], hasMore: boolean, offset: number, lastUpdated: number }>
+const feedPostsCache = new Map();
+const FEED_CACHE_MAX_POSTS = 300;
 // Simple offline detector (Capacitor-aware would be nicer, but this is safe & synchronous)
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
 
 
 // Helper to deduplicate by id
@@ -100,7 +105,8 @@ const getLoadingConfig = (connectionQuality) => {
 
 export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const initialFeedCached = feedPostsCache.get(feedType);
+  const [loading, setLoading] = useState(!(initialFeedCached && initialFeedCached.posts && initialFeedCached.posts.length > 0));
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
@@ -176,12 +182,57 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   // Load initial feed
   const loadInitialFeed = useCallback(async () => {
     if (loadingRef.current) return;
+    if (!isAppActive()) return; // avoid background fetch spam
     
     try {
       loadingRef.current = true;
+      // Serve from cache first if present
+      const cached = feedPostsCache.get(feedType);
+      if (cached && cached.posts && cached.posts.length > 0) {
+        setPosts(cached.posts);
+        setOffset(cached.offset || cached.posts.length);
+        setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
+        setTextLoaded(true);
+        setLoading(false);
+        // Revalidate in background when online
+        if (!isOffline() && isAppActive()) {
+          const result = await trackFeedRequest(
+            'feed',
+            'revalidate',
+            () => getOptimizedFeedPosts(feedType, batchSize, 0),
+            batchSize,
+            0
+          );
+          const { data, error: feedError } = result;
+          if (!mountedRef.current) return;
+          if (!feedError && Array.isArray(data)) {
+            setPosts(prev => {
+              const merged = dedupeById([...data, ...prev]).slice(0, FEED_CACHE_MAX_POSTS);
+              feedPostsCache.set(feedType, {
+                posts: merged,
+                hasMore: merged.length === batchSize || prev.length > batchSize,
+                offset: merged.length,
+                lastUpdated: Date.now()
+              });
+              setOffset(merged.length);
+              setHasMore(merged.length === batchSize || prev.length > batchSize);
+              return merged;
+            });
+          }
+        }
+        return;
+      }
+
       setLoading(true);
       setError(null);
-      
+      if (isOffline() || !isAppActive()) {
+        setLoading(false);
+        loadingRef.current = false;
+        // Notify UI we need to be online for non-cached content
+        try { window.dispatchEvent(new CustomEvent('feed:offline-required', { detail: { reason: 'initial' } })); } catch (_) {}
+        return;
+      }
+
       // Track the optimized feed request
       const result = await trackFeedRequest(
         'feed',
@@ -208,22 +259,29 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
         hasText: newPosts.every(p => p.item_name || p.snippet)
       });
       
-      setPosts(newPosts);
-      setOffset(newPosts.length);
-      setHasMore(newPosts.length === batchSize);
+      const capped = newPosts.slice(0, FEED_CACHE_MAX_POSTS);
+      setPosts(capped);
+      setOffset(capped.length);
+      setHasMore(capped.length === batchSize);
       setTextLoaded(true);
-      
 
-      
+      // Update feed cache
+      feedPostsCache.set(feedType, {
+        posts: capped,
+        hasMore: capped.length === batchSize,
+        offset: capped.length,
+        lastUpdated: Date.now()
+      });
+
       // Initialize image load states and start image loading phase
       const initialImageStates = {};
-      newPosts.forEach(post => {
+      capped.forEach(post => {
         initialImageStates[post.id] = 'idle';
       });
       setImageLoadStates(initialImageStates);
       
       // 🖼️ IMAGE PHASE: Start tracking image loading
-      const imagesWithUrls = newPosts.filter(p => p.image).length;
+      const imagesWithUrls = capped.filter(p => p.image).length;
       if (imagesWithUrls > 0) {
         trackImageLoadingPhase('feed', 'start', imagesWithUrls);
       } else {
@@ -251,6 +309,10 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   // Load more posts
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !hasMore || loadingMore) return;
+    if (isOffline() || !isAppActive()) {
+      try { window.dispatchEvent(new CustomEvent('feed:offline-required', { detail: { reason: 'load_more' } })); } catch (_) {}
+      return;
+    }
     
     try {
       loadingRef.current = true;
@@ -277,10 +339,17 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       const newPosts = data || [];
       
       setPosts(prev => {
-        // Prevent duplicates
+        // Prevent duplicates and cap cache size; purge older first
         const existingIds = new Set(prev.map(p => p.id));
         const uniqueNewPosts = newPosts.filter(p => !existingIds.has(p.id));
-        return [...prev, ...uniqueNewPosts];
+        const merged = dedupeById([...prev, ...uniqueNewPosts]).slice(0, FEED_CACHE_MAX_POSTS);
+        feedPostsCache.set(feedType, {
+          posts: merged,
+          hasMore: newPosts.length === batchSize,
+          offset: offset + newPosts.length,
+          lastUpdated: Date.now()
+        });
+        return merged;
       });
       
       setOffset(prev => prev + newPosts.length);
@@ -306,15 +375,18 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   // Refresh feed (separate from initial load for proper tracking)
   const refresh = useCallback(async () => {
     if (loadingRef.current) return;
-    
+    if (isOffline() || !isAppActive()) {
+      try { window.dispatchEvent(new CustomEvent('feed:offline-required', { detail: { reason: 'refresh' } })); } catch (_) {}
+      setLoading(false);
+      return;
+    }
     try {
       loadingRef.current = true;
       setLoading(true);
       setError(null);
       
-      // Reset states
+      // Reset states (keep showing current posts until new arrive)
       setOffset(0);
-      setPosts([]);
       setImageLoadStates({});
       setTextLoaded(false);
       setImagesLoaded(false);
@@ -345,9 +417,16 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
         hasText: newPosts.every(p => p.item_name || p.snippet)
       });
       
-      setPosts(newPosts);
-      setOffset(newPosts.length);
-      setHasMore(newPosts.length === batchSize);
+      const capped = newPosts.slice(0, FEED_CACHE_MAX_POSTS);
+      setPosts(prev => dedupeById([...capped, ...prev]).slice(0, FEED_CACHE_MAX_POSTS));
+      setOffset(capped.length);
+      setHasMore(capped.length === batchSize);
+      feedPostsCache.set(feedType, {
+        posts: dedupeById([...(feedPostsCache.get(feedType)?.posts || []), ...capped]).slice(0, FEED_CACHE_MAX_POSTS),
+        hasMore: capped.length === batchSize,
+        offset: capped.length,
+        lastUpdated: Date.now()
+      });
       setTextLoaded(true);
       
       // Initialize image load states

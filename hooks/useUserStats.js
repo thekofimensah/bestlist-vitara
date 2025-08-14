@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { saveStatsLocal, getStatsLocal } from '../lib/localUserCache';
+const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
 
 // Simple in-memory cache to avoid refetch on navigation
 // Map<userId, stats>
@@ -31,6 +33,13 @@ const useUserStats = (userId) => {
         setError(null);
 
         console.log('🔍 [useUserStats] Fetching stats for user:', userId);
+        // If offline or app inactive, serve from local cache and exit
+        if ((typeof navigator !== 'undefined' && navigator.onLine === false) || !isAppActive()) {
+          const local = await getStatsLocal(userId);
+          if (local) setStats(local);
+          setLoading(false);
+          return;
+        }
         
         // Simple, fast query - just one row from profile_stats
         const { data, error } = await supabase
@@ -74,6 +83,15 @@ const useUserStats = (userId) => {
             totalItems: data.total_items || 0,
             avgRating: parseFloat(data.avg_rating) || 0
           });
+          // Persist locally for offline use
+          await saveStatsLocal(userId, {
+            photosTaken: data.photos_taken || 0,
+            listsCreated: data.lists_created || 0,
+            uniqueIngredients: data.unique_ingredients || 0,
+            likesReceived: data.likes_received || 0,
+            totalItems: data.total_items || 0,
+            avgRating: parseFloat(data.avg_rating) || 0
+          });
         }
 
         console.log('✅ [useUserStats] Stats loaded successfully');
@@ -106,8 +124,17 @@ const useUserStats = (userId) => {
       setStats(cached);
       setLoading(false);
     } else {
-      // Initial fetch only if no cache
-      fetchStats();
+      // Try local persisted cache first (for cold start offline)
+      (async () => {
+        const local = await getStatsLocal(userId);
+        if (local) {
+          setStats(local);
+          setLoading(false);
+        } else {
+          // Initial fetch only if no cache
+          fetchStats();
+        }
+      })();
     }
 
     // Set up real-time subscription for automatic updates

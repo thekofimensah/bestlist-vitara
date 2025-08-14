@@ -216,6 +216,7 @@ const MainScreen = React.forwardRef(({
   const [selectedTab, setSelectedTab] = useState('Following');
   const [showModal, setShowModal] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
+  const [feedInlineNotice, setFeedInlineNotice] = useState(null);
   const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
   
   // Comments modal state
@@ -347,6 +348,18 @@ const MainScreen = React.forwardRef(({
     window.addEventListener('orientationchange', handleOrientation);
     return () => window.removeEventListener('orientationchange', handleOrientation);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen for offline-required events from feed hook and show inline note
+  useEffect(() => {
+    const handler = (e) => {
+      const reason = e?.detail?.reason;
+      if (reason === 'load_more') setFeedInlineNotice("Offline — can't fetch additional posts");
+      else if (reason === 'refresh') setFeedInlineNotice("Offline — can't refresh posts");
+      else if (reason === 'initial') setFeedInlineNotice("Offline — connect to load feed");
+    };
+    window.addEventListener('feed:offline-required', handler);
+    return () => window.removeEventListener('feed:offline-required', handler);
   }, []);
 
   // No post-load resizing; height remains fixed per mount/orientation
@@ -1091,7 +1104,7 @@ const MainScreen = React.forwardRef(({
 
   return (
     <div 
-      className="h-screen bg-stone-50 overflow-auto safe-area-inset" 
+      className="bg-stone-50 safe-area-inset" 
       style={{ 
         backgroundColor: '#F6F6F4',
         paddingBottom: 'env(safe-area-inset-bottom)'
@@ -1228,6 +1241,11 @@ const MainScreen = React.forwardRef(({
         {/* Feed Content - Real social feed */}
         <div>
           <div className="space-y-4">
+            {feedInlineNotice && (
+              <div className="px-6">
+                {/* empty holder to keep notice at bottom */}
+              </div>
+            )}
             {/* Loading State */}
             {isLoadingFeed && !textLoaded && (
               <FeedSkeleton />
@@ -1308,11 +1326,21 @@ const MainScreen = React.forwardRef(({
             )}
             
             {/* Infinite scroll trigger */}
-            <InfiniteScrollTrigger
-              onLoadMore={onLoadMore}
-              loading={isLoadingMore}
-              hasMore={hasMore}
-            />
+            {/* Bottom area containing load trigger and any inline offline notice */}
+            <div className="px-6">
+              {feedInlineNotice && (
+                <div className="mb-2 text-center">
+                  <div className="inline-block px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs">
+                    {feedInlineNotice}
+                  </div>
+                </div>
+              )}
+              <InfiniteScrollTrigger
+                onLoadMore={onLoadMore}
+                loading={isLoadingMore}
+                hasMore={hasMore}
+              />
+            </div>
             
             {/* Bottom padding for last post */}
             <div className="pb-6"></div>

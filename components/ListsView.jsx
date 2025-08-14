@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical, Share, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, Star, X, ArrowLeft, Grid3X3, Share, Trash2, Check } from 'lucide-react';
 import ShareModal from './secondary/ShareModal';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
@@ -115,18 +115,21 @@ const ListRow = ({
   onListMenu, 
   onListTitleTap,
   onShareList,
-  isReorderMode = false
+  isReorderMode = false,
+  sortMode = 'recent'
 }) => {
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
-  const sortedItems = allItems.sort((a, b) => {
-    // First sort by rating (highest first)
-    const ratingA = a.rating || 0;
-    const ratingB = b.rating || 0;
-    if (ratingB !== ratingA) {
-      return ratingB - ratingA;
+  const mode = list.__sortMode || sortMode;
+  const sortedItems = [...allItems].sort((a, b) => {
+    if (mode === 'ranking') {
+      const ratingA = a.rating || 0;
+      const ratingB = b.rating || 0;
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+      const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+      return dateB - dateA;
     }
-    
-    // Then sort by creation date (most recent first)
+    // Default: recent
     const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
     const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
     return dateB - dateA;
@@ -168,7 +171,7 @@ const ListRow = ({
               exit={{ opacity: 0, scale: 0.5 }}
               className="w-6 h-6 flex items-center justify-center text-gray-400 mr-2 cursor-grab active:cursor-grabbing"
             >
-              <GripVertical className="w-4 h-4" />
+              <Grid3X3 className="w-4 h-4" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -224,7 +227,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   // New list composer state (Best only)
   const [newListSubject, setNewListSubject] = useState('');
@@ -232,6 +235,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [reorderedLists, setReorderedLists] = useState(lists);
   const [shareModal, setShareModal] = useState({ isOpen: false, list: null });
+  // (Simplified) No dynamic prefix measurement needed
   const scrollContainerRef = useRef(null);
   const savedScrollPosition = useRef(0);
   const hasScrolled = useRef(false);
@@ -379,11 +383,14 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   };
 
   const handleAddItem = (listId) => {
-    // Navigate to specific list to add item
-    const targetList = lists.find(list => list.id === listId);
-    if (targetList) {
-      onSelectList(targetList);
+    // Go to main screen (camera/home) when adding a new item from overview
+    if (typeof onNavigateToCamera === 'function') {
+      onNavigateToCamera(listId);
+      return;
     }
+    // Fallback: navigate to list detail
+    const targetList = lists.find(list => list.id === listId);
+    if (targetList && typeof onSelectList === 'function') onSelectList(targetList);
   };
 
   const handleListMenu = (list, event) => {
@@ -420,6 +427,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       listId: list.id,
       x: x,
       y: y,
+      sortMode: 'recent'
     });
   };
 
@@ -448,7 +456,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     const subject = newListSubject.trim();
     if (!subject || !onCreateList) return;
     const location = newListLocation.trim();
-    const prefix = 'Best';
+    const prefix = 'The best';
     const name = location ? `${prefix} ${subject} in ${location}` : `${prefix} ${subject}`;
     await onCreateList(name, '#1F6D5A');
     setShowNewListDialog(false);
@@ -545,7 +553,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         title="Reorder lists"
                         disabled={isRefreshing}
                       >
-                        <GripVertical className="w-4 h-4" />
+                    <Grid3X3 className="w-4 h-4" />
                       </button>
                     )}
                     {selectionEnabled && (
@@ -655,47 +663,41 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         )}
       </div>
 
-      {/* New List Dialog */}
+      {/* New List Dialog (simple, matches AddItemModal) */}
       {showNewListDialog && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-20 flex items-center justify-center p-6 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Create List</h3>
             <div className="space-y-4">
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-base text-gray-700 bg-white pr-1">
-                  Best
-                </div>
+              <div className="flex items-baseline whitespace-nowrap border-2 border-teal-100 rounded-2xl focus-within:border-teal-400 focus-within:bg-teal-50/30 transition-all duration-200">
+                <span className="pl-4 pr-1 text-base text-gray-700">The best</span>
                 <input
                   type="text"
                   value={newListSubject}
-                  onChange={(e) => setNewListSubject(e.target.value)}
+                  onChange={(e) => setNewListSubject(e.target.value.toLowerCase())}
                   onKeyDown={(e) => { if (e.key === 'Enter' && newListSubject.trim()) handleCreateList(); }}
                   placeholder="What are you ranking?"
-                  className="w-full pl-14 pr-4 py-3 border-2 border-teal-100 rounded-2xl focus:outline-none focus:border-teal-400 focus:bg-teal-50/30 text-base font-medium transition-all duration-200"
+                  className="flex-1 min-w-0 pr-4 py-3 border-none outline-none bg-transparent text-base font-medium"
                   autoFocus
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
                 />
               </div>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-base text-gray-700 bg-white pr-1">
-                  in ...
-                </div>
+              <div className="flex items-baseline whitespace-nowrap border border-gray-200 rounded-xl bg-gray-50/50 focus-within:border-gray-300">
+                <span className="pl-4 pr-1 text-sm text-gray-700 italic">in</span>
                 <input
                   type="text"
                   value={newListLocation}
                   onChange={(e) => setNewListLocation(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && newListSubject.trim()) handleCreateList(); }}
-                  placeholder="Location"
-                  className="w-full pl-14 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-gray-300 text-sm text-gray-600 italic bg-gray-50/50"
+                  placeholder="location"
+                  className="flex-1 min-w-0 pr-4 py-2.5 border-none outline-none bg-transparent text-sm text-gray-600 italic"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
                 />
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
-                  Optional
-                </div>
+                <div className="pr-3 text-xs text-gray-400">Optional</div>
               </div>
             </div>
             <div className="flex gap-3 mt-4">
@@ -742,6 +744,42 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             className="fixed bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
+            {/* Sort options */}
+            {(() => {
+              const l = lists.find(l => l.id === contextMenu.listId);
+              const currentMode = (l?.__sortMode || 'recent');
+              return (
+                <>
+                  <button
+                    onClick={() => {
+                      const listToUpdate = lists.find(l => l.id === contextMenu.listId);
+                      if (!listToUpdate) return;
+                      listToUpdate.__sortMode = 'recent';
+                      setReorderedLists(prev => prev.map(l => l.id === listToUpdate.id ? { ...l, __sortMode: 'recent' } : l));
+                      setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <span className="flex-1 text-gray-900">Sort by Recent</span>
+                    {currentMode === 'recent' && <Check className="w-4 h-4 text-teal-600" />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const listToUpdate = lists.find(l => l.id === contextMenu.listId);
+                      if (!listToUpdate) return;
+                      listToUpdate.__sortMode = 'ranking';
+                      setReorderedLists(prev => prev.map(l => l.id === listToUpdate.id ? { ...l, __sortMode: 'ranking' } : l));
+                      setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <span className="flex-1 text-gray-900">Sort by Rating</span>
+                    {currentMode === 'ranking' && <Check className="w-4 h-4 text-teal-600" />}
+                  </button>
+                  <div className="h-px bg-gray-100 my-1" />
+                </>
+              );
+            })()}
             <button
               onClick={() => {
                 const listToRename = lists.find(l => l.id === contextMenu.listId);

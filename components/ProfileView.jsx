@@ -15,6 +15,7 @@ import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
 import { ProfileGridSkeleton, AchievementsSkeleton } from './ui/SkeletonLoader';
 import { useProfilePosts } from '../hooks/useOptimizedFeed';
 import { uploadImageToStorage } from '../lib/imageStorage';
+import { saveAvatarUrl, getAvatarUrl, saveBasicProfile, getBasicProfile } from '../lib/localUserCache';
 
 /* Smaller, quieter stat pill used in "Additional Info" */
 const StatCard = ({ icon, value, label }) => (
@@ -33,7 +34,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const { user, userProfile } = useAuth();
 
   const [loading, setLoading] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState(() => userProfile?.avatar_url || null);
   const [showSettings, setShowSettings] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
@@ -45,6 +46,11 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const [infoOpen, setInfoOpen] = useState(false);
   const [userAchievements, setUserAchievements] = useState([]);
   const [achievementsLoading, setAchievementsLoading] = useState(true);
+  const [useLocalCache, setUseLocalCache] = useState(true);
+  const [cachedProfile, setCachedProfile] = useState(null);
+  const [primaryName, setPrimaryName] = useState(() => (
+    userProfile?.display_name || userProfile?.username || ''
+  ));
 
   // Optimized posts loading
   const { 
@@ -57,9 +63,10 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     refresh: refreshPosts 
   } = useProfilePosts(user?.id);
   
-  const [postsCount, setPostsCount] = useState(0);
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
+  const [postsCount, setPostsCount] = useState(null);
+  const [followersCount, setFollowersCount] = useState(null);
+  const [followingCount, setFollowingCount] = useState(null);
+  const [countsLoading, setCountsLoading] = useState(true);
 
   // Followers/Following list views
   const [showFollowers, setShowFollowers] = useState(false);
@@ -79,13 +86,58 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     closeSettings: () => setShowSettings(false),
   }));
 
-  // Initialize local avatar URL from profile; don't override if we've set a new one locally
+  // Initialize basic profile and avatar from local cache for instant display
   useEffect(() => {
-    if (avatarUrl == null) {
-      setAvatarUrl(userProfile?.avatar_url || null);
-    }
+    const initBasics = async () => {
+      if (!user?.id) return;
+      const basic = await getBasicProfile(user.id);
+      if (basic) setCachedProfile(basic);
+      const localAvatar = await getAvatarUrl(user.id);
+      if (localAvatar) setAvatarUrl(localAvatar);
+      else if (avatarUrl == null) setAvatarUrl(userProfile?.avatar_url || null);
+    };
+    initBasics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile?.avatar_url]);
+  }, [user?.id]);
+
+  // Ensure name is immediately available from email, then cached, then remote
+  useEffect(() => {
+    if (user?.email) {
+      setPrimaryName((prev) => prev || user.email.split('@')[0]);
+    }
+  }, [user?.email]);
+
+  useEffect(() => {
+    const cachedName = cachedProfile?.display_name || cachedProfile?.username;
+    if (cachedName) {
+      setPrimaryName((prev) => prev || cachedName);
+    }
+  }, [cachedProfile?.display_name, cachedProfile?.username]);
+
+  useEffect(() => {
+    const remoteName = userProfile?.display_name || userProfile?.username;
+    if (remoteName && remoteName !== primaryName) {
+      setPrimaryName(remoteName);
+    }
+  }, [userProfile?.display_name, userProfile?.username]);
+
+  // If no local avatar and remote arrives later, set once without flicker
+  useEffect(() => {
+    if (!avatarUrl && userProfile?.avatar_url) {
+      setAvatarUrl(userProfile.avatar_url);
+    }
+  }, [userProfile?.avatar_url, avatarUrl]);
+
+  // Persist basics whenever profile/user changes
+  useEffect(() => {
+    if (!user?.id) return;
+    const displayName = userProfile?.display_name || null;
+    const username = userProfile?.username || null;
+    const email = user?.email || null;
+    if (displayName || username || email) {
+      saveBasicProfile(user.id, { display_name: displayName, username, email });
+    }
+  }, [user?.id, user?.email, userProfile?.display_name, userProfile?.username]);
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
@@ -103,6 +155,8 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
       ]);
       // Optimistically reflect change without full reload
       setAvatarUrl(upload.url);
+      // Cache locally for offline use
+      await saveAvatarUrl(user.id, upload.url);
       // reset input so selecting the same file again triggers change
       if (e.target) e.target.value = '';
     } catch (err) {
@@ -142,6 +196,11 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
       }
 
       try {
+        if (!user?.id) {
+          // Do not flip off skeleton until we have a user id
+          return;
+        }
+        setCountsLoading(true);
         if (user?.id) {
           const [followersRes, followingRes, postsCountRes] = await Promise.all([
             getUserFollowers(user.id),
@@ -157,6 +216,8 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         }
       } catch (e) {
         console.error('Error loading profile counts:', e);
+      } finally {
+        if (alive) setCountsLoading(false);
       }
     };
     load();
@@ -298,7 +359,6 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   }
 
   /* -------- Profile (mimic screenshot layout, our style) -------- */
-  const [useLocalCache, setUseLocalCache] = useState(true);
   return (
     <div className="min-h-screen overflow-x-hidden" style={{ backgroundColor: '#FFFFFF' }}>
       <div className="px-4 pb-8 pt-6 space-y-6">
@@ -307,8 +367,8 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
           <div className="grid grid-cols-[auto,1fr] gap-4 items-start">
             {/* Avatar spans both rows and is vertically centered */}
             <div className="row-span-2 self-start w-24 h-24 rounded-full overflow-hidden bg-gray-100 cursor-pointer" onClick={handleAvatarClick}>
-              {(avatarUrl || userProfile?.avatar_url) ? (
-                <img src={avatarUrl || userProfile?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <User className="w-8 h-8 text-gray-400" />
@@ -320,7 +380,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             {/* Username + email (right col, first row) */}
             <div className="min-w-0 flex flex-col justify-start">
               <div className="text-base font-semibold text-gray-900 truncate">
-                {userProfile?.display_name || userProfile?.username || user?.email?.split('@')[0] || 'User'}
+                {primaryName}
               </div>
               <div className="text-sm text-gray-500 truncate">{user?.email}</div>
             </div>
@@ -329,15 +389,27 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             <div className="col-start-2 mt-2">
               <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-start items-start text-left">
                 <div>
-                  <div className="text-2xl font-bold leading-none text-left">{postsCount}</div>
+                  {countsLoading || postsCount === null ? (
+                    <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
+                  ) : (
+                    <div className="text-2xl font-bold leading-none text-left">{postsCount}</div>
+                  )}
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight text-left">Posts</div>
                 </div>
                 <button className="text-left" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
-                  <div className="text-2xl font-bold leading-none text-gray-900">{followersCount}</div>
+                  {countsLoading || followersCount === null ? (
+                    <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
+                  ) : (
+                    <div className="text-2xl font-bold leading-none text-gray-900">{followersCount}</div>
+                  )}
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight">Followers</div>
                 </button>
                 <button className="text-left" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
-                  <div className="text-2xl font-bold leading-none text-gray-900">{followingCount}</div>
+                  {countsLoading || followingCount === null ? (
+                    <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
+                  ) : (
+                    <div className="text-2xl font-bold leading-none text-gray-900">{followingCount}</div>
+                  )}
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight">Following</div>
                 </button>
               </div>

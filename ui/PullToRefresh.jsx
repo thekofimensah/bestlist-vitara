@@ -33,7 +33,7 @@ const PullToRefresh = ({
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
         return;
       }
-      const isAtTop = container.scrollTop <= 5; // Small tolerance
+      const isAtTop = container.scrollTop <= 2; // Tighter tolerance to avoid false positives
       if (!isAtTop || isRefreshing || disabled) return;
 
       startY.current = e.touches[0].clientY;
@@ -50,6 +50,13 @@ const PullToRefresh = ({
         return;
       }
       if (!pullStarted.current || isRefreshing || disabled) return;
+      // If user scrolled away from top during pull, cancel
+      if (container.scrollTop > 2) {
+        pullStarted.current = false;
+        setPullDistance(0);
+        setIsPulling(false);
+        return;
+      }
 
       const currentY = e.touches[0].clientY;
       const currentX = e.touches[0].clientX;

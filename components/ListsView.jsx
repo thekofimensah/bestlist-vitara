@@ -229,6 +229,7 @@ const ListRow = ({
 
 const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
+  const [isCreatingList, setIsCreatingList] = useState(false);
   // New list composer state (Best only)
   const [newListSubject, setNewListSubject] = useState('');
   const [newListLocation, setNewListLocation] = useState('');
@@ -453,15 +454,21 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   };
 
   const handleCreateList = async () => {
+    if (isCreatingList) return;
     const subject = newListSubject.trim();
     if (!subject || !onCreateList) return;
+    setIsCreatingList(true);
     const location = newListLocation.trim();
     const prefix = 'The best';
     const name = location ? `${prefix} ${subject} in ${location}` : `${prefix} ${subject}`;
-    await onCreateList(name, '#1F6D5A');
-    setShowNewListDialog(false);
-    setNewListSubject('');
-    setNewListLocation('');
+    try {
+      await onCreateList(name, '#1F6D5A');
+      setShowNewListDialog(false);
+      setNewListSubject('');
+      setNewListLocation('');
+    } finally {
+      setIsCreatingList(false);
+    }
   };
 
   const handleEnterReorderMode = () => {
@@ -713,7 +720,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
               </button>
               <button
                 onClick={handleCreateList}
-                disabled={!newListSubject.trim()}
+                disabled={!newListSubject.trim() || isCreatingList}
                 className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
                 style={{ backgroundColor: '#1F6D5A' }}
               >
@@ -831,6 +838,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete List?</h3>
             <p className="text-gray-600 mb-4">
               Are you sure you want to delete "{deleteDialog.list?.name}"?
+              <br />
               <br />
               All items in this list will be permanently removed.
             </p>

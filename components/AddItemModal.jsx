@@ -263,6 +263,7 @@ const AddItemModal = ({
   };
 
   const [showCreateListDialog, setShowCreateListDialog] = useState(false);
+  const [isCreatingList, setIsCreatingList] = useState(false);
   // New list composer state (Best only)
   const [newListSubject, setNewListSubject] = useState('');
   const [newListLocation, setNewListLocation] = useState('');
@@ -995,9 +996,11 @@ const AddItemModal = ({
   };
 
   const handleCreateList = async () => {
+    if (isCreatingList) return;
     const subject = newListSubject.trim();
     if (!subject || !onCreateList) return;
     setCreateListError(null);
+    setIsCreatingList(true);
     try {
       const location = newListLocation.trim();
       const prefix = 'Best';
@@ -1024,6 +1027,8 @@ const AddItemModal = ({
         fullError: error
       }, null, 2));
       setCreateListError(error.message || 'An unexpected error occurred.');
+    } finally {
+      setIsCreatingList(false);
     }
   };
 
@@ -2523,11 +2528,11 @@ const AddItemModal = ({
               </button>
               <button
                 onClick={handleCreateList}
-                disabled={!newListSubject.trim()}
+                disabled={!newListSubject.trim() || isCreatingList}
                 className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
                 style={{ backgroundColor: '#1F6D5A' }}
               >
-                Create
+                {isCreatingList ? 'Creating…' : 'Create'}
               </button>
             </div>
           </div>

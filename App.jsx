@@ -1119,7 +1119,7 @@ const App = () => {
       
       // Stats will update automatically via database triggers
       
-      return result.data; // Return the saved item
+      return result; // Return the full result object including achievements
     } catch (error) {
       console.error('❌ Error in handleAddItem:', JSON.stringify({
           message: err.message,
@@ -1153,10 +1153,11 @@ const App = () => {
     try {
       // For updates, we don't need to specify listIds since we're updating by item ID
       // The item should contain its current list_id already
-      await updateItemInList([], item); // Empty array for listIds since we're updating existing item
+      const result = await updateItemInList([], item); // Empty array for listIds since we're updating existing item
       console.log('✅ Item update completed successfully');
       
       // Stats will update automatically via database triggers
+      return result; // Return the full result object
     } catch (error) {
       console.error('❌ Item update failed:', JSON.stringify({
           message: err.message,

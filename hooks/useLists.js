@@ -109,7 +109,9 @@ export const useLists = (userId) => {
             rating,
             is_stay_away,
             created_at,
-            notes
+            notes,
+            is_first_in_world,
+            first_in_world_achievement_id
           )
         `)
         .eq('user_id', userId)

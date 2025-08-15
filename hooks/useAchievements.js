@@ -375,6 +375,11 @@ const useAchievements = () => {
           .eq('ai_brand', brand)
           .not('image_url', 'is', null);
           
+        // If we are checking an item that has just been saved, exclude it from its own duplicate check.
+        if (context.itemId) {
+          query = query.not('id', 'eq', context.itemId);
+        }
+          
       } else if (criteria.scope === 'country' && context.location) {
         // For "first picture in new country" - check if THIS user has photographed in this country before
         const country = extractCountryFromLocation(context.location);

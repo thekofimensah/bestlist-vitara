@@ -31,7 +31,8 @@ export const AchievementProvider = ({ children }) => {
     const { achievement, isGlobalFirst = false } = achievementData;
     
     // Determine notification type based on rarity and context
-    const shouldShowModal = achievement.rarity === 'legendary' || isGlobalFirst;
+    // Note: Global first achievements now use the perimeter glow system in AddItemModal instead of modal
+    const shouldShowModal = achievement.rarity === 'legendary' && !isGlobalFirst;
     
     // Implement cooldown to prevent spam
     const now = Date.now();
@@ -39,7 +40,7 @@ export const AchievementProvider = ({ children }) => {
     
     if (now - lastNotificationTime < cooldownPeriod && !shouldShowModal) {
       // Queue for later or batch with existing
-      setNotifications(prev => [...prev, { ...achievementData, id: Date.now(), createdAt: now }]);
+      setNotifications(prev => [...prev, { ...achievementData, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, createdAt: now }]);
       console.log('🏆 [Achievement] Queued notification due to cooldown');
       return;
     }
@@ -47,13 +48,14 @@ export const AchievementProvider = ({ children }) => {
     setLastNotificationTime(now);
 
     if (shouldShowModal) {
-      // Show full-screen modal for legendary/global first achievements
-      setCurrentModal({ ...achievementData, id: Date.now(), createdAt: now });
+      // Show full-screen modal for legendary (non-global-first) achievements
+      setCurrentModal({ ...achievementData, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, createdAt: now });
       console.log('🏆 [Achievement] Showing modal for:', achievement.name);
     } else {
-      // Show toast notification for common achievements
-      setNotifications(prev => [...prev, { ...achievementData, id: Date.now(), createdAt: now }]);
-      console.log('🏆 [Achievement] Showing toast for:', achievement.name);
+      // Show toast notification for common achievements and global first achievements
+      // (Global first achievements also get the glow effect in AddItemModal)
+      setNotifications(prev => [...prev, { ...achievementData, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, createdAt: now }]);
+      console.log('🏆 [Achievement] Showing toast for:', achievement.name, isGlobalFirst ? '(Global First)' : '');
     }
   };
 

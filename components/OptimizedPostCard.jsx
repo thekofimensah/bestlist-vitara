@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Star, Heart, MessageCircle, Share } from 'lucide-react';
 import ProgressiveImage from './ui/ProgressiveImage';
 import { likePost, unlikePost } from '../lib/supabase';
+import FirstInWorldBadge from './gamification/FirstInWorldBadge';
 
 const StarRating = memo(({ rating, size = 'sm' }) => {
   const starSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
@@ -219,6 +220,20 @@ const OptimizedPostCard = memo(({
           postId={post.id}
           onLoadStateChange={updateImageLoadState}
         />
+        {/* First in World Badge for feed posts */}
+        {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
+          <FirstInWorldBadge 
+            achievement={{
+              id: post.items.first_in_world_achievement_id || 'first_in_world',
+              name: 'First in World',
+              rarity: 'legendary',
+              icon: '🌍'
+            }}
+            size="medium"
+            variant="floating"
+            animate={true}
+          />
+        )}
       </div>
 
       {/* Title + Share (loads immediately) */}

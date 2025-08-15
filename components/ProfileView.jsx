@@ -16,6 +16,7 @@ import { ProfileGridSkeleton, AchievementsSkeleton } from './ui/SkeletonLoader';
 import { useProfilePosts } from '../hooks/useOptimizedFeed';
 import { uploadImageToStorage } from '../lib/imageStorage';
 import { saveAvatarUrl, getAvatarUrl, saveBasicProfile, getBasicProfile } from '../lib/localUserCache';
+import FirstInWorldBadge from './gamification/FirstInWorldBadge';
 
 /* Smaller, quieter stat pill used in "Additional Info" */
 const StatCard = ({ icon, value, label }) => (
@@ -206,13 +207,16 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
           const [followersRes, followingRes, postsCountRes] = await Promise.all([
             getUserFollowers(user.id),
             getUserFollowing(user.id),
-            supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_public', true),
+            supabase.from('posts').select('items!inner(id)', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_public', true),
           ]);
 
           if (alive) {
             setFollowersCount(followersRes.data?.length || 0);
             setFollowingCount(followingRes.data?.length || 0);
             setPostsCount(postsCountRes?.count || 0);
+            
+            // Basic logging for debugging
+            console.log('📊 [ProfileView] Profile stats loaded - Posts:', postsCountRes?.count || 0);
           }
         }
       } catch (e) {
@@ -486,15 +490,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             <ProfileGridSkeleton count={6} />
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {posts.length > 0 && console.log('🔍 [ProfileView] Posts sample:', JSON.stringify({
-                postsCount: posts.length,
-                firstPost: posts[0] ? {
-                  id: posts[0].id,
-                  hasItems: !!posts[0].items,
-                  itemsImageUrl: posts[0].items?.image_url ? (posts[0].items.image_url.startsWith('https://') ? 'HTTPS_URL' : 'BASE64_OR_OTHER') : 'NO_URL',
-                  hasLists: !!posts[0].lists
-                } : null
-              }))}
+              {posts.length > 0 && console.log('🔍 [ProfileView] Posts loaded:', posts.length)}
               {posts.map((post, index) => (
                 <div key={post.id}>
                   <div
@@ -525,6 +521,20 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                         }
                       }}
                     />
+                    {/* First in World Badge for profile photos */}
+                    {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
+                      <FirstInWorldBadge 
+                        achievement={{
+                          id: post.items.first_in_world_achievement_id || 'first_in_world',
+                          name: 'First in World',
+                          rarity: 'legendary',
+                          icon: '🌍'
+                        }}
+                        size="small"
+                        variant="floating"
+                        animate={true}
+                      />
+                    )}
                   </div>
 
                   <div className="mt-2">

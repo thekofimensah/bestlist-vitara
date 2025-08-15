@@ -7,13 +7,43 @@ import { getInstagramClassicFilter } from '../lib/imageUtils';
 export const RatingOverlay = ({ 
   image, 
   onRatingSelect, 
-  isVisible = true 
+  isVisible = true,
+  firstInWorldAchievement = null
 }) => {
   const [showStars, setShowStars] = useState(true);
   const [selectedStar, setSelectedStar] = useState(null);
   const [showExit, setShowExit] = useState(false);
   const [sparkles, setSparkles] = useState([]);
   const [isTallImage, setIsTallImage] = useState(false);
+
+  // Get achievement colors for first-in-world styling
+  const getAchievementColors = (achievement) => {
+    if (!achievement) return null;
+    
+    const rarity = achievement.rarity || 'legendary';
+    switch (rarity) {
+      case 'legendary':
+        return {
+          background: 'bg-gradient-to-br from-purple-900/60 via-pink-900/60 to-purple-900/60',
+          card: 'bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200',
+          glow: 'shadow-purple-500/30'
+        };
+      case 'rare':
+        return {
+          background: 'bg-gradient-to-br from-blue-900/60 via-cyan-900/60 to-blue-900/60',
+          card: 'bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200',
+          glow: 'shadow-blue-500/30'
+        };
+      default:
+        return {
+          background: 'bg-gradient-to-br from-teal-900/60 via-green-900/60 to-teal-900/60',
+          card: 'bg-gradient-to-br from-teal-50 to-green-50 border-2 border-teal-200',
+          glow: 'shadow-teal-500/30'
+        };
+    }
+  };
+
+  const achievementColors = getAchievementColors(firstInWorldAchievement);
 
   // Animation sequence
   useEffect(() => {
@@ -59,10 +89,14 @@ export const RatingOverlay = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${
+      achievementColors ? achievementColors.background : 'bg-black/40'
+    }`}>
       {/* Card Container */}
       <motion.div 
-        className="bg-white rounded-3xl overflow-hidden w-full max-w-md max-h-[90vh] mx-auto flex flex-col shadow-2xl"
+        className={`rounded-3xl overflow-hidden w-full max-w-md max-h-[90vh] mx-auto flex flex-col shadow-2xl ${
+          achievementColors ? `${achievementColors.card} ${achievementColors.glow}` : 'bg-white'
+        }`}
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3 }}

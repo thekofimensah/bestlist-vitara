@@ -20,7 +20,7 @@ const AchievementSystem = () => {
           achievement={notification.achievement}
           onClose={() => removeNotification(notification.id)}
           isVisible={true}
-          style={{ top: `${4 + index * 6}rem` }} // Stack multiple toasts
+          style={{ top: `${1 + index * 5}rem` }} // Stack multiple toasts closer to top
         />
       ))}
 

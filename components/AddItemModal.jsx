@@ -24,7 +24,9 @@ import { createPost, deleteItemAndRelated } from '../lib/supabase';
 import { prependProfilePost } from '../hooks/useOptimizedFeed';
 import { supabase } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
-import FirstInWorldBanner from './gamification/FirstInWorldBanner';
+import AchievementGlow from './gamification/AchievementGlow';
+import FirstInWorldBadge from './gamification/FirstInWorldBadge';
+
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
   const [justClicked, setJustClicked] = useState(null);
@@ -188,7 +190,8 @@ const AddItemModal = ({
   onUpdateAI,
   photoMetadata,
   aiError,
-  onRetryAI
+  onRetryAI,
+  aiTriggeredAchievements
 }) => {
   
   const [currentImage, setCurrentImage] = useState(image); // image shown & saved
@@ -203,6 +206,8 @@ const AddItemModal = ({
       }
     }
   }, [image, currentImage]);
+
+
   const [isCropping, setIsCropping] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -223,14 +228,70 @@ const AddItemModal = ({
   const [showAISummary, setShowAISummary] = useState(false);
   const [createListError, setCreateListError] = useState(null);
   
-  // First in World banner state
-  const [showFirstInWorldBanner, setShowFirstInWorldBanner] = useState(false);
+  // First in World achievement state
+  const [firstInWorldAchievement, setFirstInWorldAchievement] = useState(() => {
+    // Check if editing an existing first-in-world item
+    if (item?.is_first_in_world || item?.first_in_world_achievement_id) {
+      const achievement = {
+        id: item.first_in_world_achievement_id || 'first_in_world',
+        name: 'First in World',
+        rarity: 'legendary',
+        icon: '🌍'
+      };
+      console.log('🧪 Initial first-in-world achievement set:', achievement);
+      return achievement;
+    }
+    return null;
+  });
+
+  // Set first in world achievement from AI-triggered achievements
+  useEffect(() => {
+    if (aiTriggeredAchievements && aiTriggeredAchievements.length > 0) {
+      // Find any global first achievements
+      const globalFirstAchievement = aiTriggeredAchievements.find(a => a.isGlobalFirst);
+      if (globalFirstAchievement) {
+        console.log('🏆 [AddItemModal] Setting first in world achievement from AI:', globalFirstAchievement);
+        setFirstInWorldAchievement({
+          id: globalFirstAchievement.achievement?.id || globalFirstAchievement.id,
+          name: globalFirstAchievement.achievement?.name || globalFirstAchievement.name,
+          rarity: globalFirstAchievement.achievement?.rarity || globalFirstAchievement.rarity,
+          icon: globalFirstAchievement.achievement?.icon || '🌍',
+          isGlobalFirst: true
+        });
+      }
+    }
+  }, [aiTriggeredAchievements]);
+
+  // Debug log when firstInWorldAchievement changes
+  useEffect(() => {
+    console.log('🧪 [AddItemModal] FirstInWorldAchievement state changed:', firstInWorldAchievement);
+    if (firstInWorldAchievement) {
+      console.log('🧪 [AddItemModal] Achievement details:', {
+        id: firstInWorldAchievement.id,
+        name: firstInWorldAchievement.name,
+        rarity: firstInWorldAchievement.rarity,
+        isGlobalFirst: firstInWorldAchievement.isGlobalFirst
+      });
+    }
+  }, [firstInWorldAchievement]);
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
   // AI status toast
   const [showAIToast, setShowAIToast] = useState(false);
   const [aiToastMessage, setAiToastMessage] = useState('');
+  
+  // Manual AI sparkle toggle
+  const [showAISparkle, setShowAISparkle] = useState(() => {
+    // Default to true if we have AI metadata, false otherwise
+    return Boolean(aiMetadata);
+  });
+  
+  // First in World popup state
+  const [showFirstInWorldPopup, setShowFirstInWorldPopup] = useState(false);
+  
+  // Auto-close countdown for first-in-world achievements
+  const [autoCloseCountdown, setAutoCloseCountdown] = useState(null);
 
   const onCropComplete = useCallback((_ignored, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -749,6 +810,8 @@ const AddItemModal = ({
       setQualityOverview(aiMetadata.species || '');
       // Set allergens from AI data
       setAllergens(aiMetadata.allergens || []);
+      // Show AI sparkle when metadata is available
+      setShowAISparkle(true);
       // Attributes will be synced by the rating useEffect
       
       // Notify parent component of AI update
@@ -927,15 +990,29 @@ const AddItemModal = ({
       const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
       
       // 🏆 Check for "First in World" achievements (non-blocking)
-      if (saveResult?.achievements) {
+      console.log('🏆 [AddItemModal] Save result:', saveResult);
+      console.log('🏆 [AddItemModal] Save result achievements:', saveResult?.achievements);
+      console.log('🏆 [AddItemModal] Save result data:', saveResult?.data);
+      
+      let hasFirstInWorldAchievement = false;
+      if (saveResult?.achievements && Array.isArray(saveResult.achievements)) {
+        console.log('🏆 [AddItemModal] Achievements array length:', saveResult.achievements.length);
+        console.log('🏆 [AddItemModal] All achievements:', saveResult.achievements);
+        
         const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
+        console.log('🏆 [AddItemModal] Global first achievement found:', globalFirstAchievement);
+        
         if (globalFirstAchievement) {
-          // Use setTimeout to avoid blocking the UI
-          setTimeout(() => {
-            setFirstInWorldProduct(productName || newItem.name || 'this item');
-            setShowFirstInWorldBanner(true);
-          }, 100);
+          hasFirstInWorldAchievement = true;
+          // Set the achievement state immediately
+          console.log('🏆 [AddItemModal] Setting first in world achievement:', globalFirstAchievement);
+          setFirstInWorldProduct(productName || newItem.name || 'this item');
+          setFirstInWorldAchievement(globalFirstAchievement);
+        } else {
+          console.log('🏆 [AddItemModal] No global first achievement found in array');
         }
+      } else {
+        console.log('🏆 [AddItemModal] No achievements array or empty array');
       }
       
       // Create public post if item is public and not editing existing item
@@ -960,14 +1037,14 @@ const AddItemModal = ({
           } catch (prependErr) {
             console.log('⚠️ Failed to prepend to profile cache (non-fatal):', prependErr?.message || prependErr);
           }
-        } catch (error) {
+        } catch (postError) {
           console.error('❌ Failed to create public post:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
+          message: postError.message,
+          name: postError.name,
+          details: postError.details,
+          hint: postError.hint,
+          code: postError.code,
+          fullError: postError
         }, null, 2));
           // Don't block the flow if post creation fails
         }
@@ -975,8 +1052,27 @@ const AddItemModal = ({
       
       console.log('✅ Save operation completed successfully');
       
-      if (isBulk && onNext) onNext();
-      else onClose();
+      // If first-in-world achievement was awarded, delay closing to show the effect
+      if (hasFirstInWorldAchievement) {
+        console.log('🏆 [AddItemModal] First in world achievement awarded - delaying close to show effect');
+        // Start countdown
+        setAutoCloseCountdown(3);
+        const countdownInterval = setInterval(() => {
+          setAutoCloseCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(countdownInterval);
+              if (isBulk && onNext) onNext();
+              else onClose();
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        // No achievement, close immediately
+        if (isBulk && onNext) onNext();
+        else onClose();
+      }
       
     } catch (error) {
       console.error('❌ Save operation failed:', JSON.stringify({
@@ -1221,13 +1317,13 @@ const AddItemModal = ({
             maximumAge: 300000 // Accept 5-minute old position
           });
         } catch (nativeError) {
-          console.log('Native geolocation failed, trying web fallback:', nativeJSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
+          console.log('Native geolocation failed, trying web fallback:', JSON.stringify({
+          message: nativeError.message,
+          name: nativeError.name,
+          details: nativeError.details,
+          hint: nativeError.hint,
+          code: nativeError.code,
+          fullError: nativeError
         }, null, 2));
           // Fall back to web geolocation even on native
           if (navigator.geolocation) {
@@ -1491,6 +1587,32 @@ const AddItemModal = ({
           <ArrowLeft className="w-5 h-5 text-gray-700" />
         </button>
 
+        {/* First in World Achievement Countdown */}
+        {autoCloseCountdown && (
+          <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-20">
+            <div className="bg-purple-600 text-white rounded-full px-4 py-2 shadow-lg flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🏆</span>
+                <span className="text-sm font-medium">First in World!</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-80">Auto-close in</span>
+                <span className="text-lg font-bold">{autoCloseCountdown}s</span>
+              </div>
+              <button
+                onClick={() => {
+                  setAutoCloseCountdown(null);
+                  if (isBulk && onNext) onNext();
+                  else onClose();
+                }}
+                className="ml-2 px-2 py-1 bg-white/20 hover:bg-white/30 rounded-full text-xs font-medium transition-colors"
+              >
+                Close Now
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Bulk navigation buttons */}
       {isBulk && (
           <div className="absolute top-6 right-4 flex gap-2 z-20">
@@ -1526,17 +1648,26 @@ const AddItemModal = ({
       </div>
 
       {/* Overlapping Data Card */}
-      <div 
-        className={`rounded-t-3xl shadow-xl relative z-10 mx-4 ${showRatingOverlay ? 'hidden' : ''}`}
-        style={{
-          backgroundColor: 'white',
-          borderTopLeftRadius: '48px',
-          borderTopRightRadius: '48px',
-          boxShadow: '0 8px 24px -4px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05)',
-          marginTop: '-24px',
-          minHeight: 'calc(100vh - 326px)' // Ensure it fills remaining space
-        }}
+      {console.log('🧪 [AddItemModal] Rendering AchievementGlow with achievement:', firstInWorldAchievement)}
+      <AchievementGlow 
+        achievement={firstInWorldAchievement} 
+        variant="border" 
+        intensity="strong"
+        className={`relative z-10 mx-4 ${showRatingOverlay ? 'hidden' : ''}`}
       >
+        <div 
+          className="rounded-t-3xl shadow-xl"
+          style={{
+            backgroundColor: 'white',
+            borderTopLeftRadius: '48px',
+            borderTopRightRadius: '48px',
+            boxShadow: firstInWorldAchievement 
+              ? '0 8px 24px -4px rgba(168, 85, 247, 0.2), 0 2px 6px rgba(168, 85, 247, 0.1)' 
+              : '0 8px 24px -4px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05)',
+            marginTop: '-24px',
+            minHeight: 'calc(100vh - 326px)' // Ensure it fills remaining space
+          }}
+        >
         {/* Scrollable content */}
         <div className="h-full overflow-y-auto">
           <div className="p-6 pb-20 min-h-full">
@@ -1610,6 +1741,8 @@ const AddItemModal = ({
               ))}
             </div>
 
+
+
             {/* Item Header */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
@@ -1648,11 +1781,16 @@ const AddItemModal = ({
                   )}
                 </div>
                 {!isAIProcessing && aiMetadata && (
-                  <div className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-0.5" style={{ backgroundColor: '#FAFAF9' }}>
-                    <Sparkles className="w-2.5 h-2.5 text-gray-400" />
+                  <button 
+                    onClick={() => setShowAISparkle(!showAISparkle)}
+                    className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-0.5 hover:bg-stone-100 transition-colors" 
+                    style={{ backgroundColor: '#FAFAF9' }}
+                    title="Toggle AI indicator"
+                  >
+                    <Sparkles className={`w-2.5 h-2.5 transition-colors ${showAISparkle ? 'text-yellow-500' : 'text-gray-400'}`} />
                     <span className="text-xs text-gray-400">AI</span>
                     <span className="text-xs text-gray-400 whitespace-nowrap">{certainty > 0 ? `${Math.round(certainty)}%` : 'N/A'}</span>
-                  </div>
+                  </button>
                 )}
               </div>
               
@@ -1679,6 +1817,17 @@ const AddItemModal = ({
                         <ChevronDown className="w-4 h-4" />
                       )}
                     </button>
+                  )}
+                  {/* First in World Badge - positioned to the right of the chevron */}
+                  {firstInWorldAchievement && (
+                    <div className="ml-auto">
+                      <FirstInWorldBadge 
+                        achievement={firstInWorldAchievement}
+                        size="medium"
+                        className="cursor-pointer hover:scale-110 transition-transform"
+                        onClick={() => setShowFirstInWorldPopup(true)}
+                      />
+                    </div>
                   )}
                 </div>
                 
@@ -2471,7 +2620,8 @@ const AddItemModal = ({
             )}
           </div>
         </div>
-      </div>
+        </div>
+      </AchievementGlow>
 
       {/* Simple Create List Dialog */}
       {showCreateListDialog && (
@@ -2731,16 +2881,58 @@ const AddItemModal = ({
             isVisible={true}
           />
         )}
-      </AnimatePresence>
+              </AnimatePresence>
 
-      {/* First in World Banner */}
-      <FirstInWorldBanner
-        isVisible={showFirstInWorldBanner}
-        productName={firstInWorldProduct}
-        onComplete={() => setShowFirstInWorldBanner(false)}
-      />
+        {/* First in World Achievement Popup */}
+        {showFirstInWorldPopup && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 relative">
+              {/* Close button */}
+              <button
+                onClick={() => setShowFirstInWorldPopup(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              {/* Achievement icon and title */}
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-2">🌍</div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">
+                  First in World Achievement!
+                </h3>
+                <p className="text-sm text-gray-600">
+                  You're the first person in the world to add this item to BestList!
+                </p>
+              </div>
+              
+              {/* Achievement details */}
+              <div className="bg-purple-50 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                    <span className="text-2xl">🏆</span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-purple-900">
+                      {firstInWorldProduct || 'This Item'}
+                    </h4>
+                    <p className="text-sm text-purple-700">
+                      Legendary achievement unlocked
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Description */}
+              <p className="text-sm text-gray-600 text-center leading-relaxed">
+                This badge will now appear on this item everywhere it's displayed, 
+                marking your historic first discovery for the BestList community.
+              </p>
+            </div>
+          </div>
+        )}
 
-      {/* AI Status Toast */}
+        {/* AI Status Toast */}
       <AnimatePresence>
         {showAIToast && (
           <motion.div

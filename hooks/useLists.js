@@ -7,15 +7,9 @@ export const useLists = (userId) => {
   const [loading, setLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false); // Guard against multiple fetches
   
-  // Safely get achievements hook - will work even if provider isn't available
-  let checkAchievements = () => Promise.resolve([]);
-  try {
-    const achievementsHook = useAchievements();
-    checkAchievements = achievementsHook.checkAchievements || (() => Promise.resolve([]));
-  } catch (error) {
-    // Silently fail if achievements aren't available
-    console.log('Achievements not available:', error.message);
-  }
+  // Get achievements hook
+  const achievementsHook = useAchievements();
+  const checkAchievements = achievementsHook?.checkAchievements || (() => Promise.resolve([]));
   const [retryCount, setRetryCount] = useState(0);
   const [connectionError, setConnectionError] = useState(null);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -511,39 +505,85 @@ export const useLists = (userId) => {
       
       // 🏆 Check for achievements after successful item save
       let achievements = [];
+      let primaryItem = results[0]?.data; // Move to outer scope
+      
+      if (!primaryItem) {
+        throw new Error('No item data returned from insert');
+      }
+      
       try {
+        
         const context = {
+          itemId: primaryItem.id, // 🌍 CRITICAL: Include item ID for first-in-world tracking
           barcode: item.barcode,
           location: item.location,
           hasPhoto: !!item.image_url,
           rating: item.rating,
           notes: item.notes,
           ai_product_name: item.ai_product_name,
+          ai_brand: item.ai_brand,
+          ai_confidence: item.ai_confidence,
           user_product_name: item.user_product_name
         };
         
         // Run achievement checking in background to avoid blocking the UI
+        console.log('🏆 [useLists] Setting up achievement check timeout...');
         setTimeout(async () => {
           try {
+            console.log('🏆 [useLists] Achievement check timeout fired!');
+            console.log('🏆 [useLists] Starting achievement check with context:', JSON.stringify(context, null, 2));
+            console.log('🏆 [useLists] checkAchievements function available:', typeof checkAchievements);
+            console.log('🏆 [useLists] Calling checkAchievements with actionType:', 'item_saved');
+            
             const newAchievements = await checkAchievements('item_saved', context);
+            console.log('🏆 [useLists] Item saved achievements result:', newAchievements);
             
             // If there's a photo, also check photo achievements
             if (item.image_url) {
+              console.log('🏆 [useLists] Checking photo achievements...');
               const photoAchievements = await checkAchievements('photo_taken', context);
+              console.log('🏆 [useLists] Photo achievements result:', photoAchievements);
               newAchievements.push(...photoAchievements);
             }
 
             if (newAchievements.length > 0) {
-              console.log('🏆 New achievements unlocked:', newAchievements.map(a => ({
-                id: a.achievement.id,
-                name: a.achievement.name,
-                rarity: a.achievement.rarity,
+              console.log('🏆 [useLists] New achievements unlocked:', newAchievements.map(a => ({
+                id: a.achievement?.id || a.id,
+                name: a.achievement?.name || a.name,
+                rarity: a.achievement?.rarity || a.rarity,
                 awarded: a.awarded,
                 isGlobalFirst: a.isGlobalFirst
               })));
               
               // Update achievements state
               achievements = newAchievements;
+              
+              // 🌍 CRITICAL: If any global first achievements were awarded, fetch the updated item data
+              const hasGlobalFirst = newAchievements.some(a => a.isGlobalFirst);
+              if (hasGlobalFirst && primaryItem?.id) {
+                console.log('🏆 [useLists] Global first achievement awarded - fetching updated item data');
+                try {
+                  const { data: updatedItem, error: fetchError } = await supabase
+                    .from('items')
+                    .select('*')
+                    .eq('id', primaryItem.id)
+                    .single();
+                    
+                  if (fetchError) {
+                    console.error('❌ [useLists] Failed to fetch updated item:', fetchError);
+                  } else {
+                    console.log('✅ [useLists] Updated item data fetched:', {
+                      id: updatedItem.id,
+                      is_first_in_world: updatedItem.is_first_in_world,
+                      first_in_world_achievement_id: updatedItem.first_in_world_achievement_id
+                    });
+                    // Update the primary item with the latest data
+                    primaryItem = updatedItem;
+                  }
+                } catch (fetchError) {
+                  console.error('❌ [useLists] Exception fetching updated item:', fetchError);
+                }
+              }
             }
           } catch (achievementError) {
             console.error('❌ Achievement check error:', JSON.stringify({
@@ -569,7 +609,8 @@ export const useLists = (userId) => {
       }
       
       // Return the first result's data (or all results if multiple lists)
-      const returnData = results.length === 1 ? results[0].data : results.map(r => r.data);
+      // Use updated primaryItem if it was modified by achievement checks
+      const returnData = results.length === 1 ? primaryItem : results.map(r => r.data);
       return { 
         data: returnData, 
         error: null, 

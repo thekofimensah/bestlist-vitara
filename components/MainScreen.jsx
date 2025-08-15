@@ -200,7 +200,7 @@ const MainScreen = React.forwardRef(({
   const { showAchievement } = useGlobalAchievements();
   
   // Track AI-triggered achievements for potential removal
-  const [aiTriggeredAchievements, setAiTriggeredAchievements] = useState([]);
+
   
   // Camera states
   const [isCapturing, setIsCapturing] = useState(false);
@@ -253,72 +253,7 @@ const MainScreen = React.forwardRef(({
     }
   };
 
-  // Check for "First in World" achievement immediately after AI completion
-  const checkFirstInWorldAchievement = async (aiResult) => {
-    try {
-      if (!aiResult?.productName) return;
 
-      console.log('🏆 [First in World] Checking achievement for product:', aiResult.productName);
-      
-      const context = {
-        ai_product_name: aiResult.productName,
-        ai_brand: aiResult.brand || null,
-        user_product_name: null, // This is AI-generated, not user-entered
-        hasPhoto: true,
-        // Prefer device-resolved location ("City, Country") for location-based checks
-        location: deviceLocation || aiResult.location || 'Unknown'
-      };
-
-      // Check for "First in World" achievements 
-      const achievements = await checkAchievements('photo_taken', context);
-      
-      if (achievements && achievements.length > 0) {
-        console.log('🏆 [First in World] Achievement unlocked!', achievements);
-        
-        // Track achievements for potential removal if user doesn't save
-        setAiTriggeredAchievements(prev => [
-          ...prev,
-          ...achievements.map(a => ({
-            achievementId: a.achievement.id,
-            productName: aiResult.productName,
-            context
-          }))
-        ]);
-        
-        // Show achievement immediately with special effects
-        achievements.forEach(achievement => {
-          if (achievement.isGlobalFirst) {
-            // Special legendary effects for global first achievements
-            console.log('🎉 [Legendary] Global first achievement unlocked!');
-            
-            // Haptic feedback
-            if (navigator.vibrate) {
-              navigator.vibrate([100, 50, 100, 50, 200]); // Special pattern for legendary
-            }
-            
-            // Show achievement with special effects
-            showAchievement({
-              ...achievement,
-              specialEffects: true, // This will trigger special UI effects
-              triggeredOnAI: true   // Mark that this was triggered by AI completion
-            });
-          } else {
-            // Regular achievement
-            showAchievement(achievement);
-          }
-        });
-      }
-    } catch (error) {
-      console.error('❌ [First in World] Error checking achievement:', JSON.stringify({
-        message: error.message,
-        name: error.name,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        fullError: error
-      }, null, 2));
-    }
-  };
 
   // Fixed camera height; allow the entire page to scroll so the camera fully scrolls away
   // Dynamic camera height (px) capped at 60% of viewport height
@@ -696,6 +631,49 @@ const MainScreen = React.forwardRef(({
           console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
           const aiResult = await analyzeImage(compressed, deviceLocation);
           
+          // 🏆 CHECK FOR FIRST IN WORLD ACHIEVEMENT after AI completes
+          console.log('🏆 [AI Complete] Checking for First in World achievement...');
+          console.log('🏆 [First in World] Checking achievement for product:', aiResult.productName);
+          try {
+            const context = {
+              itemId: null, // Will be set when item is saved
+              ai_brand: aiResult.brand,
+              ai_confidence: aiResult.certainty,
+              ai_product_name: aiResult.productName, // This is what checkGlobalFirstAchievement expects
+              user_product_name: null, // Only set when user manually overrides AI result
+              location: deviceLocation,
+              category: aiResult.category,
+              tags: aiResult.tags
+            };
+            
+            console.log('🏆 [First in World] Checking achievement with context:', JSON.stringify(context, null, 2));
+            
+            // Use the already imported checkAchievements hook
+            const newAchievements = await checkAchievements('ai_complete', context);
+            console.log('🏆 [First in World] Achievement check completed, results:', newAchievements);
+            
+            if (newAchievements && newAchievements.length > 0) {
+              console.log('🏆 [First in World] Achievement unlocked during AI analysis!', newAchievements);
+              
+              // Find any global first achievements
+              const globalFirstAchievement = newAchievements.find(a => a.isGlobalFirst);
+              if (globalFirstAchievement) {
+                console.log('🎉 [Legendary] Global first achievement unlocked!');
+              }
+              
+              // Store the achievement info to be used when the item is saved
+              setCapturedImage(prev => ({ 
+                ...prev, 
+                aiTriggeredAchievements: newAchievements
+              }));
+            } else {
+              console.log('🏆 [First in World] No achievements unlocked for this product');
+            }
+          } catch (achievementError) {
+            console.error('🏆 [First in World] Achievement check error:', achievementError);
+            // Don't fail the main flow if achievements fail
+          }
+          
           // Create photo metadata
           const photoMetadata = {
             source: 'camera',
@@ -716,13 +694,7 @@ const MainScreen = React.forwardRef(({
             photoMetadata
           }));
 
-          // 🏆 Check for "First in World" achievement immediately after AI completion
-          if (aiResult?.productName) {
-            console.log('🏆 [AI Complete] Checking for First in World achievement...');
-            // Import and use the achievement checking hook
-            // This will trigger immediately, even if user doesn't save the item
-            checkFirstInWorldAchievement(aiResult);
-          }
+
         } catch (error) {
           console.error('Background processing error:', JSON.stringify({
           message: error.message,
@@ -823,10 +795,7 @@ const MainScreen = React.forwardRef(({
       console.log('✅ [Modal] Item was saved, keeping files');
     }
     
-    // Do not delete DB achievements on modal close; just clear local queue
-    if (aiTriggeredAchievements.length > 0) {
-      setAiTriggeredAchievements([]);
-    }
+
     
     setShowModal(false);
     setCapturedImage(null);
@@ -855,11 +824,7 @@ const MainScreen = React.forwardRef(({
     console.log('💾 [Save] Setting wasSaved=true (both state and ref) to prevent file cleanup');
     const savedItem = await onAddItem(...args);
     
-    // Clear AI-triggered achievements since user saved the item
-    if (aiTriggeredAchievements.length > 0) {
-      console.log('🏆 [Save] Clearing AI-triggered achievements (item was saved):', aiTriggeredAchievements);
-      setAiTriggeredAchievements([]);
-    }
+
     
     // Don't close modal here - let AddItemModal handle closing via onClose()
     // This prevents state conflicts with the cleanup logic
@@ -956,6 +921,49 @@ const MainScreen = React.forwardRef(({
               console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
               const aiResult = await analyzeImage(compressed, deviceLocation);
               
+              // 🏆 CHECK FOR FIRST IN WORLD ACHIEVEMENT after AI completes
+              console.log('🏆 [AI Complete] Gallery - Checking for First in World achievement...');
+              console.log('🏆 [First in World] Gallery checking achievement for product:', aiResult.productName);
+              try {
+                const context = {
+                  itemId: null, // Will be set when item is saved
+                  ai_brand: aiResult.brand,
+                  ai_confidence: aiResult.certainty,
+                  ai_product_name: aiResult.productName, // This is what checkGlobalFirstAchievement expects
+                  user_product_name: null, // Only set when user manually overrides AI result
+                  location: deviceLocation,
+                  category: aiResult.category,
+                  tags: aiResult.tags
+                };
+                
+                console.log('🏆 [First in World] Gallery checking achievement with context:', JSON.stringify(context, null, 2));
+                
+                // Use the already imported checkAchievements hook
+                const newAchievements = await checkAchievements('ai_complete', context);
+                console.log('🏆 [First in World] Gallery achievement check completed, results:', newAchievements);
+                
+                if (newAchievements && newAchievements.length > 0) {
+                  console.log('🏆 [First in World] Gallery achievement unlocked during AI analysis!', newAchievements);
+                  
+                  // Find any global first achievements
+                  const globalFirstAchievement = newAchievements.find(a => a.isGlobalFirst);
+                  if (globalFirstAchievement) {
+                    console.log('🎉 [Legendary] Gallery - Global first achievement unlocked!');
+                  }
+                  
+                  // Store the achievement info to be used when the item is saved
+                  setCapturedImage(prev => ({ 
+                    ...prev, 
+                    aiTriggeredAchievements: newAchievements
+                  }));
+                } else {
+                  console.log('🏆 [First in World] Gallery - No achievements unlocked for this product');
+                }
+              } catch (achievementError) {
+                console.error('🏆 [First in World] Gallery achievement check error:', achievementError);
+                // Don't fail the main flow if achievements fail
+              }
+              
               // Create photo metadata for gallery image
               const photoMetadata = {
                 source: 'gallery',
@@ -976,11 +984,7 @@ const MainScreen = React.forwardRef(({
                 photoMetadata
               }));
 
-              // 🏆 Check for "First in World" achievement immediately after AI completion
-              if (aiResult?.productName) {
-                console.log('🏆 [AI Complete] Checking for First in World achievement...');
-                checkFirstInWorldAchievement(aiResult);
-              }
+
             } catch (error) {
               console.error('Background processing error:', JSON.stringify({
           message: error.message,
@@ -1378,6 +1382,7 @@ const MainScreen = React.forwardRef(({
           onCreateList={onCreateList}
           showRatingFirst={true}
           photoMetadata={capturedImage?.photoMetadata}
+          aiTriggeredAchievements={capturedImage?.aiTriggeredAchievements}
           onUpdateAI={(aiData) => {
             setCapturedImage(prev => ({
               ...prev,

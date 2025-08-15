@@ -815,6 +815,14 @@ const App = () => {
               try {
                 console.log('🏆 [App] Loading pending achievements...');
                 setLoadingProgress(prev => ({ ...prev, achievements: false }));
+                
+                // Safety check for user.id
+                if (!user?.id) {
+                  console.log('⚠️ [App] No user ID available for achievements loading');
+                  setLoadingProgress(prev => ({ ...prev, achievements: true }));
+                  return;
+                }
+                
                 const achievements = await loadPendingAchievements(user.id);
                 setLoadingProgress(prev => {
                   const newProgress = { ...prev, achievements: true };

@@ -4,6 +4,7 @@ import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User } fro
 import { supabase, likePost, unlikePost, getPostComments, commentOnPost } from '../../lib/supabase';
 import { getInstagramClassicFilter } from '../../lib/imageUtils';
 import SmartImage from './SmartImage';
+import FirstInWorldBadge from '../gamification/FirstInWorldBadge';
 
 const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser, scrollToComments = false }) => {
   const [post, setPost] = useState(null);
@@ -349,12 +350,29 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
               </span>
             </div>
 
-            {displayLocation && (
-              <div className="ml-auto flex items-center gap-1 min-w-0">
-                <MapPin className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                <span className="text-sm text-gray-600 whitespace-nowrap truncate">{displayLocation}</span>
-              </div>
-            )}
+            <div className="ml-auto flex flex-col items-end gap-1">
+              {/* First in World Badge - appears above location for public view */}
+              {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
+                <FirstInWorldBadge 
+                  achievement={{
+                    id: post.items.first_in_world_achievement_id || 'first_in_world',
+                    name: 'First in World',
+                    rarity: 'legendary',
+                    icon: '🌍'
+                  }}
+                  size="small"
+                  variant="default"
+                  animate={true}
+                />
+              )}
+              
+              {displayLocation && (
+                <div className="flex items-center gap-1 min-w-0">
+                  <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  <span className="text-sm text-gray-600 whitespace-nowrap truncate">{displayLocation}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Notes */}

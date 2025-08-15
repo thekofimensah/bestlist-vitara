@@ -5,10 +5,10 @@ import { Trophy, Star, Sparkles } from 'lucide-react';
 const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
   useEffect(() => {
     if (isVisible) {
-      // Auto-close after 4 seconds (reset when props change)
+      // Auto-close after 2.5 seconds (quick dopamine hit)
       const timer = setTimeout(() => {
         onClose();
-      }, 4000);
+      }, 2500);
 
       // Haptic feedback if available
       if (navigator.vibrate) {
@@ -78,7 +78,8 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: -100, opacity: 0, scale: 0.95 }}
           transition={{ type: 'spring', stiffness: 280, damping: 28, duration: 0.45 }}
-          className="fixed top-16 left-4 right-4 z-50"
+          className="fixed top-4 left-4 right-4 z-50"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
         >
           {/* Animated glowing edge BORDER that moves with the card */}
           <motion.div
@@ -97,10 +98,10 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
             transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
           >
             <motion.div className={`bg-white rounded-2xl p-4 ${styles.text}`}>
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 {/* Achievement Icon */}
-                <div className="relative">
-                  <div className="text-3xl">
+                <div className="relative flex-shrink-0">
+                  <div className="text-3xl leading-none">
                     {achievement.icon || '🏆'}
                   </div>
                   {achievement.rarity === 'legendary' && (
@@ -115,51 +116,34 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
                 </div>
 
                 {/* Achievement Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 text-gray-800">
-                    <Trophy className="w-4 h-4" />
-                    <span className="text-sm font-medium opacity-90">
-                      Achievement Unlocked!
-                    </span>
-                    {achievement.rarity === 'legendary' && (
-                      <Star className="w-4 h-4 text-yellow-400" />
-                    )}
-                  </div>
-                  <h3 className="font-bold text-lg leading-tight text-gray-900">
-                    {achievement.name}
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <h3 className="font-bold text-base leading-snug text-gray-900 mb-1">
+                    🏆 {achievement.name}
                   </h3>
-                  <p className="text-sm text-gray-700 leading-tight">
-                    {achievement.description}
-                  </p>
                   {achievement.reward_points > 0 && (
-                    <div className="text-xs mt-1 text-gray-600">
+                    <div className="text-xs text-gray-600 font-medium">
                       +{achievement.reward_points} points
                     </div>
                   )}
                 </div>
 
-                {/* Rarity Badge */}
-                <div className="text-right text-gray-700">
-                  <div className="text-xs font-medium opacity-75 uppercase tracking-wider">
-                    {achievement.rarity}
-                  </div>
-                  {achievement.rarity === 'legendary' && (
-                    <motion.div
-                      animate={{ scale: [1, 1.1, 1] }}
-                      transition={{ duration: 1, repeat: Infinity }}
-                      className="text-yellow-500 text-xs mt-1"
-                    >
-                      ✨ LEGENDARY ✨
-                    </motion.div>
-                  )}
-                </div>
+                {/* Sparkle for legendary only */}
+                {achievement.rarity === 'legendary' && (
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    className="flex-shrink-0"
+                  >
+                    <Star className="w-5 h-5 text-yellow-400" />
+                  </motion.div>
+                )}
               </div>
 
               {/* Progress Bar Animation with side offsets to respect rounded edges */}
               <motion.div
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: 1 }}
-                transition={{ duration: 4, ease: 'linear' }}
+                transition={{ duration: 2.5, ease: 'linear' }}
                 className="absolute bottom-1 h-1 bg-gradient-to-r from-teal-500 via-blue-400 to-purple-400 rounded-full"
                 style={{ left: 8, right: 8, transformOrigin: 'left' }}
               />

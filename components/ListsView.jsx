@@ -8,6 +8,7 @@ import { deleteItemAndRelated } from '../lib/supabase';
 import { removeProfilePostsByItemIds } from '../hooks/useOptimizedFeed';
 import { removeCachedImage } from '../lib/localImageCache';
 import { supabase } from '../lib/supabase';
+import FirstInWorldBadge from './gamification/FirstInWorldBadge';
 
 
 const StarRating = ({ rating }) => {
@@ -95,6 +96,20 @@ const ItemTile = ({
           <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
         )}
         {item.rating && <StarRating rating={item.rating} />}
+        {/* First in World Badge - check for first-in-world achievement */}
+        {(item.is_first_in_world || item.first_in_world_achievement_id) && (
+          <FirstInWorldBadge 
+            achievement={{
+              id: item.first_in_world_achievement_id || 'first_in_world',
+              name: 'First in World',
+              rarity: 'legendary',
+              icon: '🌍'
+            }}
+            size="small"
+            variant="floating"
+            animate={true}
+          />
+        )}
       </div>
       <div className="mt-2" onClick={(e) => { e.stopPropagation(); onTap?.(); }}>
         <p className="text-xs text-gray-700 font-medium truncate">{item.name}</p>

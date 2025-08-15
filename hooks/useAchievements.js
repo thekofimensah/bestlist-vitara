@@ -94,6 +94,40 @@ const useAchievements = () => {
     if (!userId) return false;
 
     try {
+      // First, get the achievement details to determine the type
+      const { data: achievement, error: achievementError } = await supabase
+        .from('achievements')
+        .select('criteria')
+        .eq('id', achievementId)
+        .single();
+        
+      if (achievementError) throw achievementError;
+      
+      // For first-in-world achievements, check items table instead of user_achievements
+      if (achievement?.criteria?.type === 'global_first') {
+        console.log('🔍 [hasAchievement] Checking first-in-world via items table for achievement:', achievementId);
+        
+        // Check if user has any items marked with this first-in-world achievement
+        const { data: userLists } = await supabase
+          .from('lists')
+          .select('id')
+          .eq('user_id', userId);
+          
+        if (!userLists || userLists.length === 0) return false;
+        
+        const listIds = userLists.map(list => list.id);
+        const { data: items, error: itemsError } = await supabase
+          .from('items')
+          .select('id')
+          .eq('first_in_world_achievement_id', achievementId)
+          .in('list_id', listIds)
+          .limit(1);
+          
+        if (itemsError) throw itemsError;
+        return items && items.length > 0;
+      }
+      
+      // For other achievements, use user_achievements table as aggregation
       const { data, error } = await supabase
         .from('user_achievements')
         .select('id')
@@ -387,13 +421,69 @@ const useAchievements = () => {
 
       // If user hasn't done this action before, award the achievement
       if (!data || data.length === 0) {
+        console.log('🏆 [GlobalFirst] No existing items found - this could be first in world!');
+        console.log('🏆 [GlobalFirst] Context validation:', {
+          hasItemId: !!context.itemId,
+          criteriaScope: criteria.scope,
+          itemId: context.itemId
+        });
+        
+        // 🌍 CRITICAL: Update the item FIRST as the primary action
+        if (context.itemId && criteria.scope === 'product') {
+          try {
+            console.log('🌍 [FirstInWorld] PRIMARY: Marking item as first-in-world:', context.itemId, 'Achievement ID:', achievement.id);
+            const { data: updateData, error: updateError } = await supabase
+              .from('items')
+              .update({
+                is_first_in_world: true,
+                first_in_world_achievement_id: achievement.id
+              })
+              .eq('id', context.itemId)
+              .select(); // Add select to get the updated data back
+              
+            if (updateError) {
+              console.error('❌ [FirstInWorld] PRIMARY action failed - aborting achievement:', JSON.stringify({
+                message: updateError.message,
+                details: updateError.details,
+                hint: updateError.hint,
+                code: updateError.code
+              }));
+              return null; // Don't award achievement if item update fails
+            }
+            
+            console.log('✅ [FirstInWorld] Item successfully marked as first-in-world. Updated data:', updateData);
+          } catch (itemUpdateError) {
+            console.error('❌ [FirstInWorld] Item update exception - aborting:', JSON.stringify({
+              message: itemUpdateError.message,
+              name: itemUpdateError.name,
+              details: itemUpdateError.details,
+              hint: itemUpdateError.hint,
+              code: itemUpdateError.code,
+              fullError: itemUpdateError
+            }));
+            return null; // Don't award achievement if item update fails
+          }
+        }
+        
+        // SECONDARY: Award achievement to user (only if item update succeeded)
         const result = await awardAchievement(achievement.id, { context });
         if (result?.success) {
+          console.log('✅ [FirstInWorld] SECONDARY: Achievement awarded to user');
           return { 
             achievement, 
             awarded: true, 
-            isGlobalFirst: criteria.scope === 'global', // Only global scope is truly "global first"
+            isGlobalFirst: true, // All global_first achievements should trigger glow effects, not modals
             count: result.count,
+            isRepeatable: true
+          };
+        } else {
+          console.error('❌ [FirstInWorld] SECONDARY action failed - user achievement not awarded');
+          // Item is already marked, which is the most important part
+          return { 
+            achievement, 
+            awarded: false, 
+            isGlobalFirst: true,
+            count: 0,
             isRepeatable: true
           };
         }
@@ -417,6 +507,15 @@ const useAchievements = () => {
     if (!user?.id || isProcessing) return [];
 
     setIsProcessing(true);
+    
+    // Validate context for first-in-world achievements
+    if (actionType === 'item_saved' && (!context.itemId || !context.ai_product_name || !context.ai_brand)) {
+      console.log('⚠️ [Achievements] Missing required context for first-in-world check:', {
+        hasItemId: !!context.itemId,
+        hasProductName: !!context.ai_product_name,
+        hasBrand: !!context.ai_brand
+      });
+    }
     
     try {
       const achievements = await getAchievements();

@@ -363,12 +363,18 @@ const useAchievements = () => {
         const normalizedName = sanitize(context.ai_product_name);
         const brand = (context.ai_brand || '').trim(); // Only AI brand qualifies
         console.log('🏆 [GlobalFirst/Product] Search tokens', { brand, normalizedName, rawName: context.ai_product_name });
+        
+        // Use full-text search for better matching of the product name, plus an exact match on the brand.
         query = supabase
           .from('items')
           .select('id')
-          .ilike('ai_product_name', `%${normalizedName}%`)
+          .textSearch('ai_product_name', `'${normalizedName}'`, {
+            type: 'websearch',
+            config: 'english'
+          })
           .eq('ai_brand', brand)
           .not('image_url', 'is', null);
+          
       } else if (criteria.scope === 'country' && context.location) {
         // For "first picture in new country" - check if THIS user has photographed in this country before
         const country = extractCountryFromLocation(context.location);

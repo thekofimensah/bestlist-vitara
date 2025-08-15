@@ -946,7 +946,7 @@ const AddItemModal = ({
       ai_lookup_status: aiError ? 'error' : 'success',
       
       // User overrides
-      user_product_name: productName,
+      user_product_name: isProductNameEditedByUser ? productName : null,
       user_description: qualityOverview,
       user_tags: activeTags,
       
@@ -1490,6 +1490,10 @@ const AddItemModal = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const isEditingExisting = Boolean(item?.id);
 
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isProductNameEditedByUser, setIsProductNameEditedByUser] = useState(false);
+
   return (
     <div 
       className="fixed inset-0 bg-stone-50 z-50 overflow-y-auto modal-overlay" 
@@ -1757,13 +1761,14 @@ const AddItemModal = ({
                   ) : (
                     <input
                       ref={productNameRef}
-                      type="text"
                       value={productName}
                       onChange={(e) => {
                         setProductName(e.target.value);
-                        setProductNameManuallyEdited(true);
-                        if (showValidationErrors && validationErrors.productName) {
-                          setValidationErrors(prev => ({ ...prev, productName: null }));
+                        setIsProductNameEditedByUser(true);
+                        if (validationErrors.productName) {
+                          const newErrors = { ...validationErrors };
+                          delete newErrors.productName;
+                          setValidationErrors(newErrors);
                         }
                       }}
                       onFocus={() => setProductNameManuallyEdited(true)}
@@ -2885,48 +2890,24 @@ const AddItemModal = ({
 
         {/* First in World Achievement Popup */}
         {showFirstInWorldPopup && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 relative">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-2xl p-8 max-w-xs mx-auto relative text-center">
               {/* Close button */}
               <button
                 onClick={() => setShowFirstInWorldPopup(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
-              
-              {/* Achievement icon and title */}
-              <div className="text-center mb-4">
-                <div className="text-4xl mb-2">🌍</div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">
-                  First in World Achievement!
-                </h3>
-                <p className="text-sm text-gray-600">
-                  You're the first person in the world to add this item to BestList!
-                </p>
-              </div>
-              
-              {/* Achievement details */}
-              <div className="bg-purple-50 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span className="text-2xl">🏆</span>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-purple-900">
-                      {firstInWorldProduct || 'This Item'}
-                    </h4>
-                    <p className="text-sm text-purple-700">
-                      Legendary achievement unlocked
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Description */}
-              <p className="text-sm text-gray-600 text-center leading-relaxed">
-                This badge will now appear on this item everywhere it's displayed, 
-                marking your historic first discovery for the BestList community.
+
+              <div className="text-5xl mb-4">🏆</div>
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                A Historic First!
+              </h3>
+
+              <p className="text-sm text-gray-600 leading-relaxed">
+                You're the first in the world to discover this item. This badge is now permanently part of its history.
               </p>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, User } from 'lucide-react';
-import { commentOnPost, getPostComments } from '../lib/supabase';
+import { commentOnPost, getPostComments, deleteComment } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
 const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
@@ -148,6 +148,43 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
     setNewComment('');
   };
 
+  const handleDeleteComment = async (commentId, isReply = false, parentId = null) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+
+    try {
+      const { error } = await deleteComment(commentId);
+      
+      if (error) {
+        console.error('❌ Error deleting comment:', error);
+        alert('Failed to delete comment. Please try again.');
+        return;
+      }
+
+      // Remove comment from local state
+      if (isReply && parentId) {
+        // Remove reply from parent comment
+        setComments(prev => prev.map(comment => 
+          comment.id === parentId 
+            ? { ...comment, replies: comment.replies.filter(reply => reply.id !== commentId) }
+            : comment
+        ));
+      } else {
+        // Remove top-level comment
+        setComments(prev => prev.filter(comment => comment.id !== commentId));
+      }
+
+      // Notify parent to update comment count
+      if (onCommentAdded) {
+        onCommentAdded(post.id);
+      }
+
+      console.log('✅ Comment deleted successfully');
+    } catch (error) {
+      console.error('❌ Delete comment exception:', error);
+      alert('Failed to delete comment. Please try again.');
+    }
+  };
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -257,12 +294,22 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
                          <p className="text-gray-700 text-sm leading-relaxed mb-1">
                            {comment.content}
                          </p>
-                         <button
-                           onClick={() => handleReplyToComment(comment)}
-                           className="text-xs text-gray-500 hover:text-teal-700 transition-colors"
-                         >
-                           Reply
-                         </button>
+                         <div className="flex items-center gap-4">
+                           <button
+                             onClick={() => handleReplyToComment(comment)}
+                             className="text-xs text-gray-500 hover:text-teal-700 transition-colors"
+                           >
+                             Reply
+                           </button>
+                                                   {comment.profiles?.username === userProfile?.username && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                         </div>
                        </div>
                      </div>
 
@@ -293,9 +340,17 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
                                    {getTimeAgo(reply.created_at)}
                                  </span>
                                </div>
-                               <p className="text-gray-700 text-xs leading-relaxed">
+                               <p className="text-gray-700 text-xs leading-relaxed mb-1">
                                  {reply.content}
                                </p>
+                                       {reply.profiles?.username === userProfile?.username && (
+          <button
+            onClick={() => handleDeleteComment(reply.id, true, comment.id)}
+            className="text-xs text-red-400 hover:text-red-600 transition-colors"
+          >
+            Delete
+          </button>
+        )}
                              </div>
                            </div>
                          ))}
@@ -361,7 +416,9 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
                     {submitting ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <Send className="w-4 h-4" />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7" />
+                      </svg>
                     )}
                   </button>
                 </div>

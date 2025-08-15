@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Calendar, Heart, MessageCircle, UserPlus, UserMinus,
 import { getUserProfile, getUserPosts, followUser, unfollowUser, getUserFollowers, getUserFollowing, supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import SmartImage from './SmartImage';
+import CommentsModal from './CommentsModal';
 import { App as CapacitorApp } from '@capacitor/app';
 
 const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImageTap, onEditItem }) => {
@@ -21,6 +22,9 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
   const [postsCount, setPostsCount] = useState(0);
+
+  // Comments modal state
+  const [commentsModal, setCommentsModal] = useState({ isOpen: false, post: null });
 
   // Load user profile data
   useEffect(() => {
@@ -270,6 +274,35 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
     }
   };
 
+  const handleCommentTap = (post) => {
+    setCommentsModal({ isOpen: true, post });
+  };
+
+  const handleCommentAdded = async (postId) => {
+    // Update the specific post's comment count immediately
+    if (userPosts) {
+      const updatedPosts = userPosts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            comment_count: (post.comment_count || 0) + 1,
+            comments: (post.comments || 0) + 1 // Also update the 'comments' field that the UI displays
+          };
+        }
+        return post;
+      });
+      
+      // Update the posts state
+      setUserPosts(updatedPosts);
+    }
+    
+    console.log('💬 Comment added to post:', postId);
+  };
+
+  const handleCloseComments = () => {
+    setCommentsModal({ isOpen: false, post: null });
+  };
+
   // Native Android back swipe/button -> go back
   useEffect(() => {
     let handle;
@@ -358,19 +391,16 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
 
   return (
     <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-4 py-4">
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="w-10 h-10 flex items-center justify-center" aria-label="Back">
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-        </div>
-      </div>
-
       {/* Profile Content */}
-      <div className="pt-6 px-4">
+      <div className="px-4 pb-20">
         {/* Profile Header */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          {/* Back Button */}
+          <div className="flex items-center gap-2 mb-4">
+            <button onClick={onBack} className="w-10 h-10 flex items-center justify-center" aria-label="Back">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
           <div className="flex items-start gap-4 mb-4">
          
 
@@ -500,10 +530,16 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
                           <Heart className="w-3 h-3" />
                           <span>{formattedPost.likes}</span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCommentTap(post);
+                          }}
+                          className="flex items-center gap-1 hover:text-gray-700 transition-colors"
+                        >
                           <MessageCircle className="w-3 h-3" />
                           <span>{formattedPost.comments}</span>
-                        </div>
+                        </button>
                         {formattedPost.location && (
                           <div className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
@@ -524,6 +560,14 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
           )}
         </div>
       </div>
+
+      {/* Comments Modal */}
+      <CommentsModal
+        isOpen={commentsModal.isOpen}
+        onClose={handleCloseComments}
+        post={commentsModal.post}
+        onCommentAdded={handleCommentAdded}
+      />
     </div>
   );
 };

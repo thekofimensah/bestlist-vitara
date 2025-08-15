@@ -47,7 +47,7 @@ const useAchievements = () => {
     }
   }, []);
 
-  // Get user's earned achievements
+  // Get user's earned achievements with correct counts
   const getUserAchievements = useCallback(async (userId = user?.id) => {
     if (!userId) return [];
 
@@ -66,18 +66,91 @@ const useAchievements = () => {
             icon,
             rarity,
             category,
-            reward_points
+            reward_points,
+            type,
+            criteria
           )
         `)
         .eq('user_id', userId)
         .order('earned_at', { ascending: false });
 
       if (error) throw error;
-      const list = data || [];
-      userAchievementsCache.set(userId, list);
-      return list;
+      
+      // Fix counts for STATE achievements
+      const correctedList = await Promise.all((data || []).map(async (achievement) => {
+        // For STATE achievements, calculate milestone count
+        if (achievement.achievements?.type === 'STATE') {
+          const target = achievement.achievements.criteria?.target;
+          const field = achievement.achievements.criteria?.field;
+          
+          if (target && field) {
+            // Get actual current count from progress view
+            const { data: progress } = await supabase
+              .from('v_user_achievement_progress')
+              .select('current_count')
+              .eq('user_id', userId)
+              .eq('achievement_id', achievement.achievement_id)
+              .single();
+              
+            const actualCount = progress?.current_count || 0;
+            
+            // Calculate how many times they've hit the milestone
+            const milestoneCount = Math.floor(actualCount / target);
+            
+            console.log(`🏆 [getUserAchievements] ${achievement.achievements.name}: ${actualCount} items = ${milestoneCount} milestones (target: ${target})`);
+            
+            return {
+              ...achievement,
+              count: Math.max(milestoneCount, 1) // Show at least 1 if they earned it
+            };
+          }
+        }
+        
+        // For EVENT achievements, use the stored count
+        return achievement;
+      }));
+      
+      userAchievementsCache.set(userId, correctedList);
+      return correctedList;
     } catch (error) {
       console.error('Error fetching user achievements:', JSON.stringify({
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        }, null, 2));
+      return [];
+    }
+  }, [user?.id]);
+
+  // Get user's progress for STATE achievements (counter-based)
+  const getUserProgress = useCallback(async (userId = user?.id) => {
+    if (!userId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('v_user_achievement_progress')
+        .select(`
+          *,
+          achievement_id,
+          achievements!inner (
+            name,
+            description,
+            icon,
+            rarity,
+            category,
+            reward_points,
+            type
+          )
+        `)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching user progress:', JSON.stringify({
           message: error.message,
           name: error.name,
           details: error.details,
@@ -97,11 +170,26 @@ const useAchievements = () => {
       // First, get the achievement details to determine the type
       const { data: achievement, error: achievementError } = await supabase
         .from('achievements')
-        .select('criteria')
+        .select('type, criteria')
         .eq('id', achievementId)
         .single();
         
       if (achievementError) throw achievementError;
+      
+      // For STATE achievements (counter-based), check the progress view
+      if (achievement?.type === 'STATE') {
+        console.log('🔍 [hasAchievement] Checking STATE achievement via progress view:', achievementId);
+        
+        const { data: progress, error: progressError } = await supabase
+          .from('v_user_achievement_progress')
+          .select('is_earned')
+          .eq('user_id', userId)
+          .eq('achievement_id', achievementId)
+          .single();
+          
+        if (progressError && progressError.code !== 'PGRST116') throw progressError;
+        return progress?.is_earned || false;
+      }
       
       // For first-in-world achievements, check items table instead of user_achievements
       if (achievement?.criteria?.type === 'global_first') {
@@ -127,7 +215,7 @@ const useAchievements = () => {
         return items && items.length > 0;
       }
       
-      // For other achievements, use user_achievements table as aggregation
+      // For EVENT achievements, use user_achievements table as aggregation
       const { data, error } = await supabase
         .from('user_achievements')
         .select('id')
@@ -155,10 +243,10 @@ const useAchievements = () => {
     if (!user?.id) return false;
 
     try {
-      // First, get the achievement details to check if it's repeatable
+      // First, get the achievement details to check if it's repeatable and its type
       const { data: achievement, error: achievementError } = await supabase
         .from('achievements')
-        .select('is_repeatable')
+        .select('type, is_repeatable, criteria')
         .eq('id', achievementId)
         .single();
 
@@ -167,6 +255,60 @@ const useAchievements = () => {
         return false;
       }
 
+      // For STATE achievements, we only log notifications, not award the achievement itself
+      // The achievement is "earned" when the live count meets the target
+      if (achievement.type === 'STATE') {
+        console.log('🏆 [awardAchievement] STATE achievement - logging notification only:', achievementId);
+        
+        // Check if we've already notified the user about this threshold
+        const { data: existingNotification, error: notificationError } = await supabase
+          .from('user_achievements')
+          .select('id, count')
+          .eq('user_id', user.id)
+          .eq('achievement_id', achievementId)
+          .limit(1);
+          
+        if (notificationError && notificationError.code !== 'PGRST116') {
+          throw notificationError;
+        }
+        
+        if (existingNotification && existingNotification.length > 0) {
+          // Update notification timestamp to show it was triggered again
+          const { error: updateError } = await supabase
+            .from('user_achievements')
+            .update({
+              notified_at: new Date().toISOString(),
+              progress_data: progressData
+            })
+            .eq('user_id', user.id)
+            .eq('achievement_id', achievementId);
+            
+          if (updateError) throw updateError;
+          
+          // Clear cache after successful update
+          userAchievementsCache.delete(user.id);
+          return { success: true, count: 1 };
+        } else {
+          // Insert notification record for this STATE achievement
+          const { error: insertError } = await supabase
+            .from('user_achievements')
+            .insert({
+              user_id: user.id,
+              achievement_id: achievementId,
+              progress_data: progressData,
+              count: 1,
+              notified_at: new Date().toISOString()
+            });
+            
+          if (insertError) throw insertError;
+          
+          // Clear cache after successful insert
+          userAchievementsCache.delete(user.id);
+          return { success: true, count: 1 };
+        }
+      }
+
+      // For EVENT achievements (traditional behavior)
       // For repeatable achievements, increment count instead of checking if already has
       if (achievement.is_repeatable) {
         // Fetch a single existing row (do not fail if multiple or none)
@@ -197,16 +339,19 @@ const useAchievements = () => {
 
           if (updateError) throw updateError;
           
+          // Clear cache after successful update
+          userAchievementsCache.delete(user.id);
+          
           // Return the updated count so the notification system can show it
           return { success: true, count: existing.count + 1 };
         }
       } else {
-        // Check if user already has this achievement (non-repeatable)
+        // Check if user already has this achievement (non-repeatable EVENT)
         const alreadyHas = await hasAchievement(achievementId);
         if (alreadyHas) return false;
       }
 
-      // Insert new achievement
+      // Insert new EVENT achievement
       const { error } = await supabase
         .from('user_achievements')
         .insert({
@@ -218,6 +363,9 @@ const useAchievements = () => {
         });
 
       if (error) throw error;
+      
+      // Clear cache after successful insert
+      userAchievementsCache.delete(user.id);
       return { success: true, count: 1 };
     } catch (error) {
       console.error('Error awarding achievement:', JSON.stringify({
@@ -232,27 +380,64 @@ const useAchievements = () => {
     }
   }, [user?.id, hasAchievement]);
 
-  // Check counter-based achievements
+  // Check counter-based achievements (now using STATE system)
   const checkCounterAchievement = useCallback(async (achievement) => {
     const { criteria } = achievement;
-    const field = criteria.field;
-    const target = criteria.target;
-
-    const currentValue = stats[field] || 0;
     
-    if (currentValue >= target) {
-      const result = await awardAchievement(achievement.id);
-      if (result?.success) {
-        return { 
-          achievement, 
-          awarded: true, 
-          count: result.count,
-          isRepeatable: true
-        };
+    if (!user?.id) return null;
+    
+    try {
+      // Query the progress view for this user and achievement
+      const { data: progress, error: progressError } = await supabase
+        .from('v_user_achievement_progress')
+        .select('current_count, target, is_earned')
+        .eq('user_id', user.id)
+        .eq('achievement_id', achievement.id)
+        .single();
+        
+      if (progressError && progressError.code !== 'PGRST116') {
+        console.warn('Error checking counter achievement progress:', progressError);
+        return null;
       }
+      
+      // If no progress data, user hasn't earned it yet
+      if (!progress) return null;
+      
+      console.log(`🎯 [Counter] ${achievement.name}: ${progress.current_count}/${progress.target} (earned: ${progress.is_earned})`);
+      
+      // If user has reached the target, trigger notification
+      if (progress.is_earned) {
+        // Check if we've already notified them about this achievement
+        const { data: notification, error: notificationError } = await supabase
+          .from('user_achievements')
+          .select('notified_at')
+          .eq('user_id', user.id)
+          .eq('achievement_id', achievement.id)
+          .single();
+          
+        // Only award if they haven't been notified yet, or if it's repeatable
+        if (notificationError?.code === 'PGRST116' || !notification?.notified_at) {
+          const result = await awardAchievement(achievement.id, {
+            current_count: progress.current_count,
+            target: progress.target
+          });
+          
+          if (result?.success) {
+            return { 
+              achievement, 
+              awarded: true, 
+              count: result.count,
+              isRepeatable: achievement.is_repeatable || false
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in checkCounterAchievement:', error);
     }
+    
     return null;
-  }, [stats, awardAchievement]);
+  }, [user?.id, awardAchievement]);
 
   // Check first action achievements
   const checkFirstActionAchievement = useCallback(async (achievement, actionType) => {
@@ -616,12 +801,23 @@ const useAchievements = () => {
     }
   }, [user?.id]);
 
+  // Clear cache when user data changes (called from other hooks when items are added/deleted)
+  const clearCache = useCallback((userId = user?.id) => {
+    if (userId) {
+      userAchievementsCache.delete(userId);
+    }
+  }, [user?.id]);
+
+
+
   return {
     checkAchievements,
     getUserAchievements,
+    getUserProgress,
     getAchievements,
     hasAchievement,
     removeAchievement,
+    clearCache,
     isProcessing
   };
 };

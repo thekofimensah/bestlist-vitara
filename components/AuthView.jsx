@@ -108,8 +108,6 @@ const AuthView = () => {
       if (!idOk) return setMsg({ type: 'error', text: 'Enter email or username' });
     }
     if (pwd.length < 6) return setMsg({ type: 'error', text: 'Password ≥ 6 chars' });
-    if (signUp && name.trim().length < 2)
-      return setMsg({ type: 'error', text: 'Enter full name' });
     if (signUp && !validUsername(username))
       return setMsg({ type: 'error', text: 'Username: 3-20 chars, letters/numbers/_' });
     if (signUp && usernameStatus.checking)
@@ -124,7 +122,7 @@ const AuthView = () => {
     const email = identifier.toLowerCase();
     let data, error;
     if (signUp) {
-      ({ data, error } = await signUpWithEmail(email, pwd, name.trim(), username.trim()));
+      ({ data, error } = await signUpWithEmail(email, pwd, username.trim(), username.trim()));
     } else {
       ({ data, error } = await signInWithIdentifier(identifier, pwd));
     }
@@ -257,22 +255,7 @@ const AuthView = () => {
                         : palette.border,
                   }}
                 />
-              <div className="relative">
-                <User size={20} className="absolute left-4 top-3.5 text-gray-400" />
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  required
-                  className={`${baseInput} ${
-                    name.trim().length >= 2 && 'border-herb'
-                  }`}
-                  style={{
-                    borderColor:
-                      name.trim().length >= 2 ? palette.herb : palette.border,
-                  }}
-                  />
-               </div>
+
                 {username && (
                   <span className="absolute right-4 top-3.5">
                     {usernameStatus.checking ? (

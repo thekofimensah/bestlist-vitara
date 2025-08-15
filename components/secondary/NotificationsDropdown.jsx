@@ -146,7 +146,7 @@ export const NotificationsDropdown = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-500 bg-opacity-20 z-40"
+            className="fixed inset-0 bg-gray-500 bg-opacity-20 z-50"
             onClick={onClose}
           />
 
@@ -157,7 +157,7 @@ export const NotificationsDropdown = ({
             exit={{ opacity: 0, y: -10 }}
             role="dialog"
             aria-label="Notifications"
-            className="fixed right-4 top-16 w-[420px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
+            className="fixed top-16 left-0 right-0 mx-auto w-[420px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
           >
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div>

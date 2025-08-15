@@ -60,7 +60,7 @@ export const AchievementsDropdown = ({ isOpen, onClose, achievements = [] }) => 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-500 bg-opacity-20 z-40"
+            className="fixed inset-0 bg-gray-500 bg-opacity-20 z-50"
             onClick={onClose}
           />
 

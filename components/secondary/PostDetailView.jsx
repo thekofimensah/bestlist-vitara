@@ -1,37 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User } from 'lucide-react';
-import { supabase, likePost, unlikePost, getPostComments, commentOnPost } from '../../lib/supabase';
+import { supabase, likePost, unlikePost, getPostComments, commentOnPost, deleteComment } from '../../lib/supabase';
 import { getInstagramClassicFilter } from '../../lib/imageUtils';
 import SmartImage from './SmartImage';
 import FirstInWorldBadge from '../gamification/FirstInWorldBadge';
+import CommentsModal from '../CommentsModal';
+import { useAuth } from '../../hooks/useAuth';
 
 const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser, scrollToComments = false }) => {
+  const { userProfile } = useAuth();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [comments, setComments] = useState([]);
   const [isLiking, setIsLiking] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [isCommenting, setIsCommenting] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
   const containerRef = useRef(null);
   const commentsRef = useRef(null);
-  const hasAutoScrolledRef = useRef(false);
 
   // Auto-scroll to comments when opened from a comment notification
   useEffect(() => {
-    // Always register this hook to preserve hook order across renders
-    if (hasAutoScrolledRef.current) return;
-    if (!scrollToComments) return;
-    if (loading) return;
-    const el = commentsRef.current || (typeof document !== 'undefined' ? document.getElementById('comments-section') : null);
+    if (!scrollToComments || loading || !post) return;
+    const el = commentsRef.current || document.getElementById('comments-section');
     if (!el) return;
-    hasAutoScrolledRef.current = true;
     setTimeout(() => {
       try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
     }, 100);
-  }, [scrollToComments, loading]);
+  }, [scrollToComments, loading, post]);
 
   useEffect(() => {
     console.log('🔍 PostDetailView: postId received:', postId);
@@ -147,26 +147,118 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
     }
   };
 
-  const handleCommentAdded = async () => {
+  const handleCommentAdded = async (postId) => {
     await loadComments();
     await loadPost(); // Refresh comment count
   };
 
   const handleAddComment = async () => {
-    if (!newComment.trim() || !post || isCommenting) return;
+    if (!newComment.trim() || isCommenting) return;
     
     try {
       setIsCommenting(true);
-      const { data: commentData, error: commentError } = await commentOnPost(postId, newComment);
-      if (commentError) throw commentError;
+      const { data, error } = await commentOnPost(
+        postId, 
+        newComment.trim(), 
+        replyingTo?.commentId || null
+      );
       
-      setComments(prev => [commentData, ...prev]);
+      if (error) {
+        console.error('❌ Error posting comment:', error?.message || 'Unknown error');
+        console.error('❌ Error details:', JSON.stringify({
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+          code: error?.code,
+          name: error?.name
+        }, null, 2));
+        return;
+      }
+
+      // Format the new comment (same as CommentsModal)
+      const formattedComment = {
+        id: data.id,
+        content: data.content,
+        created_at: data.created_at,
+        parent_id: data.parent_id,
+        profiles: {
+          username: userProfile?.username,
+          display_name: userProfile?.display_name,
+          avatar_url: userProfile?.avatar_url
+        },
+        replies: []
+      };
+
+      // Add comment to the appropriate place (same logic as CommentsModal)
+      if (replyingTo?.commentId) {
+        // This is a reply - add it to the parent comment's replies
+        setComments(prev => prev.map(comment => 
+          comment.id === replyingTo.commentId 
+            ? { ...comment, replies: [...comment.replies, formattedComment] }
+            : comment
+        ));
+      } else {
+        // This is a top-level comment
+        setComments(prev => [...prev, formattedComment]);
+      }
+
       setNewComment('');
-      await loadPost(); // Refresh comment count
+      setReplyingTo(null);
+      
+      // Refresh comment count
+      await loadPost();
+      
+      // Provide haptic feedback
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
     } catch (error) {
-      console.error('Error adding comment:', error);
+      console.error('❌ Error submitting comment exception:', error?.message || 'Unknown error');
     } finally {
       setIsCommenting(false);
+    }
+  };
+
+  const handleReplyToComment = (comment) => {
+    setReplyingTo({ commentId: comment.id, username: comment.profiles?.username });
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+  };
+
+  const handleDeleteComment = async (commentId, isReply = false, parentId = null) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+
+    try {
+      const { error } = await deleteComment(commentId);
+      
+      if (error) {
+        console.error('❌ Error deleting comment:', error);
+        alert('Failed to delete comment. Please try again.');
+        return;
+      }
+
+      // Remove comment from local state
+      if (isReply && parentId) {
+        // Remove reply from parent comment
+        setComments(prev => prev.map(comment => 
+          comment.id === parentId 
+            ? { ...comment, replies: comment.replies.filter(reply => reply.id !== commentId) }
+            : comment
+        ));
+      } else {
+        // Remove top-level comment
+        setComments(prev => prev.filter(comment => comment.id !== commentId));
+      }
+
+      // Refresh comment count
+      await loadPost();
+
+      console.log('✅ Comment deleted successfully');
+    } catch (error) {
+      console.error('❌ Delete comment exception:', error);
+      alert('Failed to delete comment. Please try again.');
     }
   };
 
@@ -272,7 +364,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
   return (
     <div ref={containerRef} className="min-h-screen bg-black relative overflow-y-auto" style={{ paddingBottom: '80px' }}>
       {/* Header */}
-      <div className="sticky top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/50 to-transparent">
+      <div className="sticky top-0 left-0 right-0 z-0 bg-gradient-to-b from-black/50 to-transparent">
         <div className="flex items-center justify-between p-4 pt-8">
           <button
             onClick={onBack}
@@ -306,7 +398,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
       </div>
 
       {/* Content Section */}
-      <div className="bg-white rounded-t-3xl mt-[-24px] relative z-10">
+      <div className="bg-white rounded-t-3xl mt-[-24px] relative z-0">
         {/* Product Info */}
         <div className="p-6 pb-4">
           {/* User Info */}
@@ -315,14 +407,16 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
               onClick={handleUserTap}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity"
             >
-              <img
-                src={post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
-                alt={post.profiles?.username}
-                className="w-10 h-10 rounded-full object-cover"
-              />
-              <div>
-                <p className="font-medium text-gray-900">{post.profiles?.username}</p>
-                <p className="text-sm text-gray-500">{post.lists?.name}</p>
+              <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+                <img
+                  src={post.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
+                  alt={post.profiles?.username}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="text-left">
+                <p className="font-medium text-gray-900 text-left">{post.profiles?.username}</p>
+                <p className="text-sm text-gray-500 text-left">{post.lists?.name}</p>
               </div>
             </button>
           </div>
@@ -426,21 +520,76 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           <div className="px-6 space-y-4 mb-6">
             {comments.length > 0 ? (
               comments.map(comment => (
-                <div key={comment.id} className="flex items-start gap-3">
-                  <img
-                    src={comment.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
-                    alt={comment.profiles?.username}
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm">
-                      <span className="font-medium text-gray-900">@{comment.profiles?.username}</span>{' '}
-                      <span className="text-gray-700">{comment.content}</span>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(comment.created_at).toLocaleDateString()}
-                    </p>
+                <div key={comment.id}>
+                  {/* Main comment */}
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={comment.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
+                      alt={comment.profiles?.username}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm">
+                        <span className="font-medium text-gray-900">{comment.profiles?.username}</span>{' '}
+                        <span className="text-gray-700">{comment.content}</span>
+                      </p>
+                      <div className="flex items-center gap-4 mt-1">
+                        <p className="text-xs text-gray-500">
+                          {new Date(comment.created_at).toLocaleDateString()}
+                        </p>
+                        <button
+                          onClick={() => handleReplyToComment(comment)}
+                          className="text-xs text-gray-500 hover:text-teal-700 transition-colors"
+                        >
+                          Reply
+                        </button>
+                        {comment.profiles?.username === userProfile?.username && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Replies */}
+                  {comment.replies && comment.replies.length > 0 && (
+                    <div className="ml-11 mt-3 space-y-3">
+                      {comment.replies.map((reply) => (
+                        <div key={reply.id} className="flex gap-3">
+                          <img
+                            src={reply.profiles?.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
+                            alt={reply.profiles?.username}
+                            className="w-6 h-6 rounded-full object-cover"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-gray-900 text-xs">
+                                {reply.profiles?.username || 'Anonymous'}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {new Date(reply.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-gray-700 text-xs leading-relaxed mb-1">
+                              {reply.content}
+                            </p>
+                            {reply.profiles?.username === userProfile?.username && (
+                              <button
+                                onClick={() => handleDeleteComment(reply.id, true, comment.id)}
+                                className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             ) : (
@@ -450,12 +599,29 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
 
           {/* Add Comment */}
           <div className="px-6 pb-24">
+            {/* Reply indicator */}
+            {replyingTo && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-teal-50 rounded-xl">
+                <span className="text-sm text-teal-700">
+                  Replying to @{replyingTo.username}
+                </span>
+                <button
+                  onClick={cancelReply}
+                  className="text-teal-600 hover:text-teal-800"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            
             <div className="relative flex items-center">
               <input
                 type="text"
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Add a comment..."
+                placeholder={replyingTo ? `Reply to @${replyingTo.username}...` : "Add a comment..."}
                 className="flex-1 p-3 pr-12 border border-gray-200 rounded-full focus:outline-none focus:border-teal-500 bg-gray-50"
                 onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
               />
@@ -474,6 +640,14 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           </div>
         </div>
       </div>
+
+      {/* Comments Modal */}
+      <CommentsModal
+        isOpen={showCommentsModal}
+        onClose={() => setShowCommentsModal(false)}
+        post={post}
+        onCommentAdded={handleCommentAdded}
+      />
     </div>
   );
 };

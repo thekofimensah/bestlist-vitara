@@ -303,7 +303,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleItemTap = (item) => {
     // Open AddItemModal for editing by finding the parent list
-    const parentList = lists.find(list => 
+    const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
     if (parentList && onEditItem) {
@@ -347,7 +347,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           deletedItemIds.push(id);
           // Remove locally cached image for this item if present
           try {
-            const item = lists.flatMap(l => [...(l.items||[]), ...(l.stayAways||[])]).find(it => it.id === id);
+            const item = lists?.flatMap(l => [...(l.items||[]), ...(l.stayAways||[])]).find(it => it.id === id);
             if (item?.image_url) await removeCachedImage(item.image_url);
           } catch (_) {}
         }
@@ -390,7 +390,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleItemImageTap = (item) => {
     // Open AddItemModal for editing by finding the parent list
-    const parentList = lists.find(list => 
+    const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
     if (parentList && onEditItem) {
@@ -405,7 +405,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       return;
     }
     // Fallback: navigate to list detail
-    const targetList = lists.find(list => list.id === listId);
+    const targetList = lists?.find(list => list.id === listId);
     if (targetList && typeof onSelectList === 'function') onSelectList(targetList);
   };
 
@@ -529,7 +529,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     >
       {/* Content */}
       <div className="pb-32">
-        {lists.length === 0 ? (
+        {(!lists || lists.length === 0) ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
             <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-sm">
               <Plus className="w-10 h-10 text-gray-400" />
@@ -611,7 +611,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                   onReorder={handleReorder}
                   className="space-y-0"
                 >
-                  {reorderedLists.map((list) => (
+                  {(reorderedLists || []).map((list) => (
                     <Reorder.Item
                       key={list.id}
                       value={list}
@@ -643,7 +643,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                 </Reorder.Group>
               ) : (
                 <div>
-                  {reorderedLists.map((list) => (
+                  {(reorderedLists || []).map((list) => (
                     <ListRow
                       key={list.id}
                       list={list}
@@ -768,13 +768,13 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           >
             {/* Sort options */}
             {(() => {
-              const l = lists.find(l => l.id === contextMenu.listId);
+              const l = lists?.find(l => l.id === contextMenu.listId);
               const currentMode = (l?.__sortMode || 'recent');
               return (
                 <>
                   <button
                     onClick={() => {
-                      const listToUpdate = lists.find(l => l.id === contextMenu.listId);
+                      const listToUpdate = lists?.find(l => l.id === contextMenu.listId);
                       if (!listToUpdate) return;
                       listToUpdate.__sortMode = 'recent';
                       setReorderedLists(prev => prev.map(l => l.id === listToUpdate.id ? { ...l, __sortMode: 'recent' } : l));
@@ -787,7 +787,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                   </button>
                   <button
                     onClick={() => {
-                      const listToUpdate = lists.find(l => l.id === contextMenu.listId);
+                      const listToUpdate = lists?.find(l => l.id === contextMenu.listId);
                       if (!listToUpdate) return;
                       listToUpdate.__sortMode = 'ranking';
                       setReorderedLists(prev => prev.map(l => l.id === listToUpdate.id ? { ...l, __sortMode: 'ranking' } : l));
@@ -804,8 +804,8 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             })()}
             <button
               onClick={() => {
-                const listToRename = lists.find(l => l.id === contextMenu.listId);
-                setRenameDialog({ isOpen: true, list: listToRename, newName: listToRename.name });
+                const listToRename = lists?.find(l => l.id === contextMenu.listId);
+                setRenameDialog({ isOpen: true, list: listToRename, newName: listToRename?.name || '' });
                 setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
               }}
               className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
@@ -814,7 +814,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             </button>
             <button
               onClick={() => {
-                const listToDelete = lists.find(l => l.id === contextMenu.listId);
+                const listToDelete = lists?.find(l => l.id === contextMenu.listId);
                 setDeleteDialog({ isOpen: true, list: listToDelete });
                 setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
               }}

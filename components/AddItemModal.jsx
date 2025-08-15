@@ -2062,7 +2062,7 @@ const AddItemModal = ({
                     spellCheck="true"
                   />
                   {showPlaceSearch && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-20">
+                                            <div className="absolute left-0 right-0 top-full mt-1 z-50">
                       <div className="bg-white rounded-lg shadow-xl border border-gray-200">
                         <div className="p-2 border-b border-gray-100 flex items-center">
                           <span className="text-xs text-gray-500">Search places</span>
@@ -2111,7 +2111,7 @@ const AddItemModal = ({
                 {/* Location with search (right) */}
                 <div className="relative min-w-[200px]" ref={locationDropdownRef}>
                   {showLocationSearch ? (
-                    <div className="absolute right-0 top-0 w-full z-10">
+                                          <div className="absolute right-0 top-0 w-full z-50">
                       <div className="bg-white rounded-lg shadow-xl border border-gray-200">
                         {/* Search input */}
                         <div className="p-2 border-b border-gray-100">
@@ -2305,7 +2305,7 @@ const AddItemModal = ({
                     onClick={() => setShowListDropdown(false)}
                   />
                   <div className="relative">
-                    <div className="absolute top-0 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-200 z-20 max-h-80 overflow-y-auto mb-4" style={{ maxHeight: 'min(80vh, 320px)', marginBottom: '100px' }}>
+                        <div className="absolute top-0 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-200 z-50 max-h-80 overflow-y-auto mb-4" style={{ maxHeight: 'min(80vh, 320px)', marginBottom: '100px' }}>
                       
                       {/* List options */}
                       <div className="py-2">
@@ -2454,7 +2454,7 @@ const AddItemModal = ({
                       className="fixed inset-0 bg-transparent z-10"
                       onClick={() => setShowCurrencySelector(false)}
                     />
-                    <div className="fixed inset-x-4 top-20 bottom-20 bg-white rounded-xl shadow-lg border border-gray-200 z-20 overflow-hidden flex flex-col">
+                        <div className="fixed inset-x-4 top-20 bottom-20 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden flex flex-col">
                       {/* Recent currencies */}
                       {recentCurrencies.length > 0 && (
                         <>

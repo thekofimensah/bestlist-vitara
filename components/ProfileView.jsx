@@ -207,7 +207,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
           const [followersRes, followingRes, postsCountRes] = await Promise.all([
             getUserFollowers(user.id),
             getUserFollowing(user.id),
-            supabase.from('posts').select('items!inner(id)', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_public', true),
+            supabase.from('posts').select('items!inner(id)', { count: 'exact', head: true }).eq('user_id', user.id),
           ]);
 
           if (alive) {
@@ -216,7 +216,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             setPostsCount(postsCountRes?.count || 0);
             
             // Basic logging for debugging
-            console.log('📊 [ProfileView] Profile stats loaded - Posts:', postsCountRes?.count || 0);
+            console.log('📊 [ProfileView] Profile stats loaded - Items:', postsCountRes?.count || 0);
           }
         }
       } catch (e) {
@@ -369,7 +369,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
       className="min-h-screen overflow-x-hidden" 
       style={{ backgroundColor: '#FFFFFF' }}
     >
-      <div className="px-4 pb-8 pt-6 space-y-6">
+      <div className="px-4 pb-20 pt-6 space-y-6">
         {/* Header row (best-practice alignment) */}
         <div className="p-1">
           <div className="grid grid-cols-[auto,1fr] gap-4 items-start">
@@ -402,7 +402,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                   ) : (
                     <div className="text-2xl font-bold leading-none text-left">{postsCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-left">Posts</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-left">Items</div>
                 </div>
                 <button className="text-left" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
                   {countsLoading || followersCount === null ? (

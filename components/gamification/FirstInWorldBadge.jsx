@@ -144,7 +144,7 @@ const FirstInWorldBadge = ({
     <BadgeComponent
       {...badgeProps}
       className={`
-        absolute top-2 right-2 z-10
+        absolute top-2 right-2 z-0
         ${sizes.container}
         bg-gradient-to-br ${colors.bg}
         rounded-full

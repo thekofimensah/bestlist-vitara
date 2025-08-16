@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, getSessionOptimized } from '../lib/supabase';
+import { supabase, getSessionOptimized, createUserProfile } from '../lib/supabase';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -58,6 +58,7 @@ export const useAuth = () => {
 
   const fetchUserProfile = async (userId) => {
     try {
+      console.log('🔍 [useAuth] Fetching profile for user:', userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -65,17 +66,18 @@ export const useAuth = () => {
         .single();
       
       if (error && error.code === 'PGRST116') {
-        // User doesn't exist in profiles table yet
-        console.log('Profile not found for user:', userId);
+        // Profile not found - this shouldn't happen if signup worked correctly
+        console.error('❌ [useAuth] Profile not found for user:', userId, '- this indicates signup failed to create profile');
         setUserProfile(null);
       } else if (!error) {
+        console.log('✅ [useAuth] Profile found:', data);
         setUserProfile(data);
       } else {
-        console.error('Error fetching user profile:', error);
+        console.error('❌ [useAuth] Error fetching user profile:', error);
         setUserProfile(null);
       }
     } catch (err) {
-      console.error('Error fetching user profile:', JSON.stringify({
+      console.error('❌ [useAuth] Exception fetching user profile:', JSON.stringify({
         message: err.message,
         name: err.name,
         details: err.details,
@@ -111,6 +113,7 @@ export const useAuth = () => {
     user,
     userProfile,
     loading,
-    updateProfile
+    updateProfile,
+    refetchProfile: () => user?.id ? fetchUserProfile(user.id) : null
   };
 };

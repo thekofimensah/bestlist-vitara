@@ -26,6 +26,7 @@ const useUserStats = (userId) => {
     }
 
     let subscription;
+    let appStateHandler;
 
     const fetchStats = async () => {
       try {
@@ -52,25 +53,49 @@ const useUserStats = (userId) => {
           // If no stats row exists, create one
           if (error.code === 'PGRST116') {
             console.log('🔧 [useUserStats] No stats found, creating initial row');
-            await supabase.rpc('ensure_profile_stats', { target_user_id: userId });
-            
-            // Fetch again after creating
-            const { data: newData, error: newError } = await supabase
-              .from('profile_stats')
-              .select('*')
-              .eq('user_id', userId)
-              .single();
-            
-            if (newError) throw newError;
-            
-            setStats({
-              photosTaken: newData.photos_taken || 0,
-              listsCreated: newData.lists_created || 0,
-              uniqueIngredients: newData.unique_ingredients || 0,
-              likesReceived: newData.likes_received || 0,
-              totalItems: newData.total_items || 0,
-              avgRating: parseFloat(newData.avg_rating) || 0
-            });
+            try {
+              await supabase.rpc('ensure_profile_stats', { target_user_id: userId });
+              
+              // Fetch again after creating
+              const { data: newData, error: newError } = await supabase
+                .from('profile_stats')
+                .select('*')
+                .eq('user_id', userId)
+                .single();
+              
+              if (newError) {
+                console.log('🔧 [useUserStats] Still no stats after creation, using defaults');
+                // If still no stats, just use defaults
+                setStats({
+                  photosTaken: 0,
+                  listsCreated: 0,
+                  uniqueIngredients: 0,
+                  likesReceived: 0,
+                  totalItems: 0,
+                  avgRating: 0
+                });
+              } else {
+                setStats({
+                  photosTaken: newData.photos_taken || 0,
+                  listsCreated: newData.lists_created || 0,
+                  uniqueIngredients: newData.unique_ingredients || 0,
+                  likesReceived: newData.likes_received || 0,
+                  totalItems: newData.total_items || 0,
+                  avgRating: parseFloat(newData.avg_rating) || 0
+                });
+              }
+            } catch (rpcError) {
+              console.log('🔧 [useUserStats] RPC error, using default stats:', rpcError);
+              // If RPC fails, just use defaults
+              setStats({
+                photosTaken: 0,
+                listsCreated: 0,
+                uniqueIngredients: 0,
+                likesReceived: 0,
+                totalItems: 0,
+                avgRating: 0
+              });
+            }
           } else {
             throw error;
           }
@@ -107,12 +132,15 @@ const useUserStats = (userId) => {
         });
 
       } catch (err) {
-        console.error('🚨 [useUserStats] Error fetching stats:', {
-          message: err.message,
-          code: err.code,
-          details: err.details
-        });
-        setError(err.message);
+        console.error('🚨 [useUserStats] Error fetching stats:', JSON.stringify({
+          message: err?.message || 'Unknown error',
+          code: err?.code || 'NO_CODE', 
+          details: err?.details || 'NO_DETAILS',
+          name: err?.name || 'NO_NAME',
+          stack: err?.stack || 'NO_STACK',
+          fullError: err
+        }, null, 2));
+        setError(err?.message || 'Unknown error');
       } finally {
         setLoading(false);
       }
@@ -137,8 +165,26 @@ const useUserStats = (userId) => {
       })();
     }
 
-    // Set up real-time subscription for automatic updates
+    // Clean up subscription function
+    const cleanupSubscription = () => {
+      if (subscription) {
+        console.log('🧹 [useUserStats] Cleaning up subscription');
+        supabase.removeChannel(subscription);
+        subscription = null;
+      }
+    };
+
+    // Set up real-time subscription for automatic updates (only if app is active)
     const setupRealtimeSubscription = () => {
+      // Don't set up subscription if app is not active
+      if (!isAppActive()) {
+        console.log('🔔 [useUserStats] Skipping subscription setup - app inactive');
+        return;
+      }
+
+      // Clean up existing subscription first
+      cleanupSubscription();
+      
       console.log('🔔 [useUserStats] Setting up real-time subscription for user:', userId);
       
       subscription = supabase
@@ -180,13 +226,50 @@ const useUserStats = (userId) => {
         });
     };
 
+    // Set up app state listener to handle background/foreground
+    const setupAppStateListener = () => {
+      appStateHandler = () => {
+        if (isAppActive()) {
+          console.log('🔔 [useUserStats] App became active - setting up subscription');
+          setupRealtimeSubscription();
+        } else {
+          console.log('🔔 [useUserStats] App became inactive - cleaning up subscription');
+          cleanupSubscription();
+        }
+      };
+
+      // Listen for app state changes via the global variable
+      if (typeof window !== 'undefined') {
+        const checkAppState = () => {
+          const currentActive = isAppActive();
+          const wasActive = window.__STATS_LAST_ACTIVE__ !== false;
+          if (currentActive !== wasActive) {
+            window.__STATS_LAST_ACTIVE__ = currentActive;
+            appStateHandler();
+          }
+        };
+        
+        // Check every few seconds, but only when document is visible
+        const intervalId = setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            checkAppState();
+          }
+        }, 2000);
+        
+        // Store cleanup function
+        appStateHandler.cleanup = () => clearInterval(intervalId);
+      }
+    };
+
     setupRealtimeSubscription();
+    setupAppStateListener();
 
     // Cleanup function
     return () => {
-      if (subscription) {
-        console.log('🧹 [useUserStats] Cleaning up subscription');
-        supabase.removeChannel(subscription);
+      console.log('🧹 [useUserStats] Cleaning up useEffect');
+      cleanupSubscription();
+      if (appStateHandler?.cleanup) {
+        appStateHandler.cleanup();
       }
     };
   }, [userId]);
@@ -217,8 +300,15 @@ const useUserStats = (userId) => {
         avgRating: parseFloat(data.avg_rating) || 0
       });
     } catch (err) {
-      console.error('🚨 [useUserStats] Error refreshing stats:', err);
-      setError(err.message);
+      console.error('🚨 [useUserStats] Error refreshing stats:', JSON.stringify({
+        message: err?.message || 'Unknown error',
+        code: err?.code || 'NO_CODE',
+        details: err?.details || 'NO_DETAILS', 
+        name: err?.name || 'NO_NAME',
+        stack: err?.stack || 'NO_STACK',
+        fullError: err
+      }, null, 2));
+      setError(err?.message || 'Unknown error');
     } finally {
       setLoading(false);
     }

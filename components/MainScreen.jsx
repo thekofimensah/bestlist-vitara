@@ -196,7 +196,7 @@ const MainScreen = React.forwardRef(({
   const streamRef = useRef(null);
   
   // Achievement hooks
-  const { checkAchievements, removeAchievement } = useAchievements();
+  const { checkAchievements, removeAchievement, previewAchievements } = useAchievements();
   const { showAchievement } = useGlobalAchievements();
   
   // Track AI-triggered achievements for potential removal
@@ -229,7 +229,7 @@ const MainScreen = React.forwardRef(({
   // Location state for AI context
   const [deviceLocation, setDeviceLocation] = useState(null);
   
-  const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError } = useAI();
+  const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
   // Log AI failures to Supabase (app_errors table)
   const logAIFailure = async ({ message, imageUrl, source = 'unknown', location = null, extra = {} }) => {
@@ -376,7 +376,12 @@ const MainScreen = React.forwardRef(({
       const constraints = {
         video: {
           facingMode: { exact: mode },
-          torch: flashEnabled // This may not work on all devices
+          torch: flashEnabled,
+          // Instagram-quality viewport settings
+          width: { ideal: 1080, min: 720 },
+          height: { ideal: 1080, min: 720 },  // Square-ish like Instagram
+          frameRate: { ideal: 30, min: 24 },
+          aspectRatio: { ideal: 1.0 }  // Instagram's signature square ratio
         }
       };
       
@@ -393,7 +398,14 @@ const MainScreen = React.forwardRef(({
         setError(null);
       } catch (err) {
         // Fallback without torch constraint
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: mode } } });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { exact: mode },
+            width: { ideal: 1080, min: 720 },
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, min: 24 }
+          } 
+        });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -406,7 +418,14 @@ const MainScreen = React.forwardRef(({
       }
     } catch (err) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: mode,
+            width: { ideal: 1080, min: 720 },
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30 }
+          } 
+        });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -632,6 +651,7 @@ const MainScreen = React.forwardRef(({
           const aiResult = await analyzeImage(compressed, deviceLocation);
           
           // 🏆 CHECK FOR FIRST IN WORLD ACHIEVEMENT after AI completes
+          // 🏆 Check for achievements after AI analysis completes (for glow effect only, no database save)
           console.log('🏆 [AI Complete] Checking for First in World achievement...');
           console.log('🏆 [First in World] Checking achievement for product:', aiResult.productName);
           try {
@@ -648,29 +668,29 @@ const MainScreen = React.forwardRef(({
             
             console.log('🏆 [First in World] Checking achievement with context:', JSON.stringify(context, null, 2));
             
-            // Use the already imported checkAchievements hook
-            const newAchievements = await checkAchievements('ai_complete', context);
-            console.log('🏆 [First in World] Achievement check completed, results:', newAchievements);
+            // Use the NEW preview function that doesn't save to database
+            const newAchievements = await previewAchievements('ai_complete', context);
+            console.log('🏆 [First in World] Achievement preview completed, results:', newAchievements);
             
             if (newAchievements && newAchievements.length > 0) {
-              console.log('🏆 [First in World] Achievement unlocked during AI analysis!', newAchievements);
+              console.log('🏆 [First in World] Achievement detected during AI analysis (preview only)!', newAchievements);
               
               // Find any global first achievements
               const globalFirstAchievement = newAchievements.find(a => a.isGlobalFirst);
               if (globalFirstAchievement) {
-                console.log('🎉 [Legendary] Global first achievement unlocked!');
+                console.log('🎉 [Legendary] Global first achievement detected (glow effect only)!');
               }
               
-              // Store the achievement info to be used when the item is saved
+              // Store the achievement info to be used for glow effect
               setCapturedImage(prev => ({ 
                 ...prev, 
                 aiTriggeredAchievements: newAchievements
               }));
             } else {
-              console.log('🏆 [First in World] No achievements unlocked for this product');
+              console.log('🏆 [First in World] No achievements detected for this product');
             }
           } catch (achievementError) {
-            console.error('🏆 [First in World] Achievement check error:', achievementError);
+            console.error('🏆 [First in World] Achievement preview error:', achievementError);
             // Don't fail the main flow if achievements fail
           }
           
@@ -725,6 +745,10 @@ const MainScreen = React.forwardRef(({
             // Close modal and show notification
             setShowModal(false);
             setCapturedImage(null);
+            // Cancel any ongoing AI request
+            if (cancelAIRequest) {
+              cancelAIRequest();
+            }
             setInvalidImageNotification({
               message: 'Photo doesn\'t show a product',
               subMessage: 'Please take a photo of food, drinks, or consumer products'
@@ -799,6 +823,10 @@ const MainScreen = React.forwardRef(({
     
     setShowModal(false);
     setCapturedImage(null);
+    // Cancel any ongoing AI request when closing modal
+    if (cancelAIRequest) {
+      cancelAIRequest();
+    }
     // Reset both state and ref AFTER cleanup decisions are made
     setWasSaved(false);
     wasSavedRef.current = false;
@@ -938,29 +966,29 @@ const MainScreen = React.forwardRef(({
                 
                 console.log('🏆 [First in World] Gallery checking achievement with context:', JSON.stringify(context, null, 2));
                 
-                // Use the already imported checkAchievements hook
-                const newAchievements = await checkAchievements('ai_complete', context);
-                console.log('🏆 [First in World] Gallery achievement check completed, results:', newAchievements);
+                // Use the NEW preview function that doesn't save to database
+                const newAchievements = await previewAchievements('ai_complete', context);
+                console.log('🏆 [First in World] Gallery achievement preview completed, results:', newAchievements);
                 
                 if (newAchievements && newAchievements.length > 0) {
-                  console.log('🏆 [First in World] Gallery achievement unlocked during AI analysis!', newAchievements);
+                  console.log('🏆 [First in World] Gallery achievement detected during AI analysis (preview only)!', newAchievements);
                   
                   // Find any global first achievements
                   const globalFirstAchievement = newAchievements.find(a => a.isGlobalFirst);
                   if (globalFirstAchievement) {
-                    console.log('🎉 [Legendary] Gallery - Global first achievement unlocked!');
+                    console.log('🎉 [Legendary] Gallery - Global first achievement detected (glow effect only)!');
                   }
                   
-                  // Store the achievement info to be used when the item is saved
+                  // Store the achievement info to be used for glow effect
                   setCapturedImage(prev => ({ 
                     ...prev, 
                     aiTriggeredAchievements: newAchievements
                   }));
                 } else {
-                  console.log('🏆 [First in World] Gallery - No achievements unlocked for this product');
+                  console.log('🏆 [First in World] Gallery - No achievements detected for this product');
                 }
               } catch (achievementError) {
-                console.error('🏆 [First in World] Gallery achievement check error:', achievementError);
+                console.error('🏆 [First in World] Gallery achievement preview error:', achievementError);
                 // Don't fail the main flow if achievements fail
               }
               
@@ -1015,6 +1043,10 @@ const MainScreen = React.forwardRef(({
                 // Close modal and show notification
                 setShowModal(false);
                 setCapturedImage(null);
+                // Cancel any ongoing AI request
+                if (cancelAIRequest) {
+                  cancelAIRequest();
+                }
                 setInvalidImageNotification({
                   message: 'Photo doesn\'t show a product',
                   subMessage: 'Please select a photo of food, drinks, or consumer products'

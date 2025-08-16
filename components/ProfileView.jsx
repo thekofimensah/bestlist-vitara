@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase, signOut, getUserPosts, getUserFollowers, getUserFollowing } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import useUserStats from '../hooks/useUserStats';
+
 import PrivacyPolicy from './secondary/PrivacyPolicy.jsx';
 import TermsOfService from './secondary/TermsOfService';
 import useAchievements from '../hooks/useAchievements';
@@ -40,18 +40,16 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
 
-  const { stats, loading: statsLoading, error: statsError } = useUserStats(user?.id);
+
   const { getUserAchievements } = useAchievements();
 
   const [achievementsOpen, setAchievementsOpen] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
   const [userAchievements, setUserAchievements] = useState([]);
   const [achievementsLoading, setAchievementsLoading] = useState(true);
-  const [useLocalCache, setUseLocalCache] = useState(true);
+
   const [cachedProfile, setCachedProfile] = useState(null);
-  const [primaryName, setPrimaryName] = useState(() => (
-     userProfile?.username || null
-  ));
+  const [primaryName, setPrimaryName] = useState(null);
 
   // Optimized posts loading
   const { 
@@ -109,19 +107,38 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   //   }
   // }, [user?.email, primaryName]);
 
+  // Priority-based name resolution
   useEffect(() => {
-    const cachedName = cachedProfile?.display_name || cachedProfile?.username;
-    if (cachedName && !primaryName) {
-      setPrimaryName(cachedName);
+    let newName = null;
+    
+    // Priority 1: Remote profile data (highest priority)
+    if (userProfile?.display_name) {
+      newName = userProfile.display_name;
+    } else if (userProfile?.username) {
+      newName = userProfile.username;
     }
-  }, [cachedProfile?.display_name, cachedProfile?.username, primaryName]);
+    // Priority 2: Cached profile data
+    else if (cachedProfile?.display_name) {
+      newName = cachedProfile.display_name;
+    } else if (cachedProfile?.username) {
+      newName = cachedProfile.username;
+    }
+    // Priority 3: Email fallback (lowest priority)
+    else if (user?.email) {
+      newName = user.email.split('@')[0];
+    }
 
-  useEffect(() => {
-    const remoteName = userProfile?.display_name || userProfile?.username;
-    if (remoteName && remoteName !== primaryName) {
-      setPrimaryName(remoteName);
+    if (newName && newName !== primaryName) {
+      setPrimaryName(newName);
     }
-  }, [userProfile?.display_name, userProfile?.username]);
+  }, [
+    userProfile?.display_name, 
+    userProfile?.username, 
+    cachedProfile?.display_name, 
+    cachedProfile?.username, 
+    user?.email, 
+    primaryName
+  ]);
 
   // If no local avatar and remote arrives later, set once without flicker
   useEffect(() => {
@@ -175,15 +192,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     }
   };
 
-  // Real stats with fallbacks (totalItems is the "big number")
-  const userStats = {
-    photosTaken: stats?.photosTaken || 0,
-    listsCreated: stats?.listsCreated || 0,
-    uniqueIngredients: stats?.uniqueIngredients || 0,
-    likesReceived: stats?.likesReceived || 0,
-    totalItems: stats?.totalItems || 0,
-    avgRating: stats?.avgRating || 0,
-  };
+
 
   /* Load achievements and counts */
   useEffect(() => {
@@ -463,27 +472,9 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         {/* Additional information hidden per request */}
 
         {/* Recent Activity feed (mimic screenshot "cards") */}
-        <div>
+                  <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-gray-900">Recent photos</h3>
-            {/* TEMP: Cache toggle + refresh */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={async () => {
-                  // If offline, just re-render (no network)
-                  try { await refreshPosts?.(); } catch (_) {}
-                }}
-                className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
-              >
-                Refresh
-              </button>
-              <button
-                onClick={() => setUseLocalCache((v) => !v)}
-                className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
-              >
-                {useLocalCache ? 'Using: Local' : 'Using: Remote'}
-              </button>
-            </div>
           </div>
 
           {postsLoading ? (
@@ -510,7 +501,6 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       className="w-full aspect-square object-cover rounded-xl"
                       priority={index < 6 ? 'high' : 'normal'} // First 6 images get high priority
                       viewType="profile"
-                      useLocalCache={useLocalCache}
                       onLoadStateChange={(loadState) => {
                         // Debug log for ProfileView images
                         if (Math.random() < 0.1) { // 10% frequency to avoid spam

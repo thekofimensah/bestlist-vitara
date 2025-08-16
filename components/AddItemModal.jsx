@@ -26,6 +26,7 @@ import { supabase } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import AchievementGlow from './gamification/AchievementGlow';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
+import LevelUpEffect from './gamification/LevelUpEffect';
 
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
@@ -244,7 +245,7 @@ const AddItemModal = ({
     return null;
   });
 
-  // Set first in world achievement from AI-triggered achievements
+  // Set first in world achievement from AI-triggered achievements (for glow effect)
   useEffect(() => {
     if (aiTriggeredAchievements && aiTriggeredAchievements.length > 0) {
       // Find any global first achievements
@@ -258,6 +259,11 @@ const AddItemModal = ({
           icon: globalFirstAchievement.achievement?.icon || '🌍',
           isGlobalFirst: true
         });
+        
+        // Trigger the level-up effect
+        setTimeout(() => {
+          setShowLevelUpEffect(true);
+        }, 500); // Small delay to let the modal appear first
       }
     }
   }, [aiTriggeredAchievements]);
@@ -276,6 +282,7 @@ const AddItemModal = ({
   }, [firstInWorldAchievement]);
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showLevelUpEffect, setShowLevelUpEffect] = useState(false);
   
   // AI status toast
   const [showAIToast, setShowAIToast] = useState(false);
@@ -2938,6 +2945,12 @@ const AddItemModal = ({
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Level-up effect for first in world achievements */}
+      <LevelUpEffect 
+        isActive={showLevelUpEffect}
+        onComplete={() => setShowLevelUpEffect(false)}
+      />
     </div>
   );
 };

@@ -810,6 +810,135 @@ const useAchievements = () => {
 
 
 
+  // Check if achievements would be awarded WITHOUT actually awarding them (for glow effects)
+  const previewAchievements = useCallback(async (actionType, context = {}) => {
+    if (!user?.id) return [];
+
+    try {
+      const achievements = await getAchievements();
+      let potentialAchievements = [];
+
+      for (const achievement of achievements) {
+        const { criteria } = achievement;
+        let wouldAward = false;
+
+        switch (criteria.type) {
+          case 'global_first':
+            // Use same logic as checkGlobalFirstAchievement but don't award
+            wouldAward = await checkGlobalFirstAchievementPreview(achievement, context);
+            break;
+          
+          case 'first_action':
+            // Check if this would be first action without awarding
+            if (criteria.action === actionType) {
+              const hasIt = await hasAchievement(achievement.id);
+              wouldAward = !hasIt;
+            }
+            break;
+          
+          // Add other types as needed
+          default:
+            break;
+        }
+
+        if (wouldAward) {
+          potentialAchievements.push({
+            achievement,
+            awarded: false, // Not actually awarded, just preview
+            isGlobalFirst: criteria.type === 'global_first',
+            count: 1,
+            isRepeatable: true
+          });
+        }
+      }
+
+      return potentialAchievements;
+    } catch (error) {
+      console.error('Error previewing achievements:', error);
+      return [];
+    }
+  }, [user?.id, getAchievements, hasAchievement]);
+
+  // Preview version of global first check (no database writes)
+  const checkGlobalFirstAchievementPreview = useCallback(async (achievement, context) => {
+    const { criteria } = achievement;
+    
+    if (criteria.type !== 'global_first') return false;
+
+    try {
+      let query;
+      const sanitize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const isLikelyPackagedProduct = () => {
+        const brand = context.ai_brand;
+        if (!brand || sanitize(brand).length < 2) return false;
+        const name = sanitize(context.ai_product_name || context.product_name);
+        const dishWords = ['plate', 'bowl', 'soup', 'salad', 'pizza', 'pasta', 'ravioli', 'ramen', 'steak', 'sandwich'];
+        if (dishWords.some((w) => name.includes(` ${w} `) || name.endsWith(` ${w}`) || name.startsWith(`${w} `))) {
+          return false;
+        }
+        return true;
+      };
+      
+      if (criteria.scope === 'product' && context.ai_product_name) {
+        const minConfidenceOk = typeof context.ai_confidence === 'number' ? context.ai_confidence >= 0.6 : true;
+        if (!isLikelyPackagedProduct() || !minConfidenceOk || context.user_product_name) {
+          console.log('🏆 [GlobalFirst/Preview] Skipping due to validation');
+          return false;
+        }
+        
+        const normalizedName = sanitize(context.ai_product_name);
+        const brand = (context.ai_brand || '').trim();
+        
+        query = supabase
+          .from('items')
+          .select('id')
+          .textSearch('ai_product_name', `'${normalizedName}'`, {
+            type: 'websearch',
+            config: 'english'
+          })
+          .eq('ai_brand', brand)
+          .not('image_url', 'is', null);
+          
+        if (context.itemId) {
+          query = query.not('id', 'eq', context.itemId);
+        }
+      } else if (criteria.scope === 'country' && context.location) {
+        // Country logic (simplified for preview)
+        const country = extractCountryFromLocation(context.location);
+        if (!country) return false;
+        
+        const { data: userLists } = await supabase
+          .from('lists')
+          .select('id')
+          .eq('user_id', user.id);
+          
+        if (!userLists || userLists.length === 0) return true;
+        
+        const userListIds = userLists.map(list => list.id);
+        query = supabase
+          .from('items')
+          .select('id')
+          .ilike('location', `%${country}%`)
+          .not('image_url', 'is', null)
+          .in('list_id', userListIds);
+      }
+
+      if (!query) return false;
+
+      const { data, error } = await query.limit(1);
+      if (error) {
+        console.error('🏆 [GlobalFirst/Preview] Query error', error);
+        return false;
+      }
+
+      // Return true if this would be first in world
+      return !data || data.length === 0;
+    } catch (error) {
+      console.error('Error in global first preview:', error);
+      return false;
+    }
+  }, [user?.id]);
+
   return {
     checkAchievements,
     getUserAchievements,
@@ -817,6 +946,7 @@ const useAchievements = () => {
     getAchievements,
     hasAchievement,
     removeAchievement,
+    previewAchievements, // New function for glow effects
     clearCache,
     isProcessing
   };

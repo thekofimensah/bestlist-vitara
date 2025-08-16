@@ -7,6 +7,7 @@ export const useAI = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [abortController, setAbortController] = useState(null);
 
   const encodeImageToBase64 = useCallback((file) => {
     return new Promise((resolve, reject) => {
@@ -49,6 +50,16 @@ export const useAI = () => {
     if (!GEMINI_API_KEY) {
       throw new Error('Gemini API key not configured');
     }
+
+    // Cancel any existing request
+    if (abortController) {
+      console.log('🤖 [AI] Cancelling previous request');
+      abortController.abort();
+    }
+
+    // Create new abort controller for this request
+    const newAbortController = new AbortController();
+    setAbortController(newAbortController);
 
     setIsProcessing(true);
     setError(null);
@@ -156,7 +167,7 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
               'Content-Type': 'application/json',
             },
             body: JSON.stringify(requestBody),
-            signal: AbortSignal.timeout(timeoutMs) // Progressive timeout
+            signal: newAbortController.signal // Add abort signal for cancellation
           }
         );
 
@@ -307,8 +318,14 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
       } catch (err) {
         const elapsed = Date.now() - startTime;
         
+        // Handle cancellation/abort errors
+        if (err.name === 'AbortError') {
+          console.log(`🤖 [AI] Request cancelled after ${elapsed}ms`);
+          throw new Error('Request cancelled');
+        }
+        
         // Handle timeout errors specifically
-        if (err.name === 'AbortError' || err.message.includes('timeout')) {
+        if (err.message.includes('timeout')) {
           console.error(`🤖 [AI] Timeout after ${elapsed}ms (attempt ${attempt}/${maxAttempts})`);
           
           if (attempt < maxAttempts) {
@@ -371,32 +388,35 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
       console.log('✅ [AI] Final status: success');
       return ai;
     } catch (err) {
-      console.error(
-        '❌ [AI] Analysis failed: ' +
-          JSON.stringify(
-            {
-              message: err.message,
-              name: err.name,
-              attempts: '3 attempts made',
-            },
-            null,
-            2
-          )
-      );
-      
-      // Provide more specific error messages
-      let userFriendlyError = err.message;
-      if (err.message.includes('timeout')) {
-        userFriendlyError = 'Analysis timed out - please try again';
-      } else if (err.message.includes('network') || err.message.includes('connection')) {
-        userFriendlyError = 'Network error - check your connection and try again';
-      } else if (err.message.includes('API key')) {
-        userFriendlyError = 'AI service not configured';
-      } else if (err.message.includes('Invalid JSON')) {
-        userFriendlyError = 'AI response error - please try again';
+      // Don't log errors for cancelled requests
+      if (err.message !== 'Request cancelled') {
+        console.error(
+          '❌ [AI] Analysis failed: ' +
+            JSON.stringify(
+              {
+                message: err.message,
+                name: err.name,
+                attempts: '3 attempts made',
+              },
+              null,
+              2
+            )
+        );
+        
+        // Provide more specific error messages
+        let userFriendlyError = err.message;
+        if (err.message.includes('timeout')) {
+          userFriendlyError = 'Analysis timed out - please try again';
+        } else if (err.message.includes('network') || err.message.includes('connection')) {
+          userFriendlyError = 'Network error - check your connection and try again';
+        } else if (err.message.includes('API key')) {
+          userFriendlyError = 'AI service not configured';
+        } else if (err.message.includes('Invalid JSON')) {
+          userFriendlyError = 'AI response error - please try again';
+        }
+        
+        setError(userFriendlyError);
       }
-      
-      setError(userFriendlyError);
       
       // Return fallback data on error
       const fallbackResult = {
@@ -410,9 +430,21 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
       return fallbackResult;
     } finally {
       setIsProcessing(false);
+      setAbortController(null); // Clear the abort controller
       console.log('🧹 [AI] Processing flag cleared');
     }
-  }, [encodeImageToBase64]);
+  }, [encodeImageToBase64, abortController]);
 
-  return { analyzeImage, isProcessing, error, result };
+  // Function to cancel any ongoing request
+  const cancelRequest = useCallback(() => {
+    if (abortController) {
+      console.log('🤖 [AI] Manually cancelling request');
+      abortController.abort();
+      setAbortController(null);
+      setIsProcessing(false);
+      setError(null);
+    }
+  }, [abortController]);
+
+  return { analyzeImage, isProcessing, error, result, cancelRequest };
 };

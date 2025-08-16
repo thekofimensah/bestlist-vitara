@@ -64,11 +64,28 @@ const ItemTile = ({
       }}
       onTouchStart={(e) => {
         clearLongPressTimer();
-        longPressTimerRef.current = setTimeout(() => onLongPress?.(item, e), 500);
+        longPressTimerRef.current = setTimeout(() => {
+          // Trigger vibration first
+          if (navigator.vibrate) {
+            navigator.vibrate(50);
+          }
+          // Then immediately trigger long press with selection
+          onLongPress?.(item, e);
+        }, 500);
       }}
       onTouchEnd={clearLongPressTimer}
       onTouchCancel={clearLongPressTimer}
       onTouchMove={clearLongPressTimer}
+      onDragStart={(e) => {
+        // Prevent drag ghost image
+        e.preventDefault();
+        return false;
+      }}
+      onSelectStart={(e) => {
+        // Prevent text selection on long press
+        e.preventDefault();
+        return false;
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onTap?.();
@@ -79,10 +96,11 @@ const ItemTile = ({
           src={item.image_url || item.image}
           alt={item.name}
           className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
-          style={{ width: '200px', height: '200px' }}
+          style={{ width: '200px', height: '200px', userSelect: 'none' }}
           useThumbnail={true}
           size="small"
           lazyLoad={true}
+          draggable={false}
           onClick={(e) => {
             e.stopPropagation();
             if (showSelection) {
@@ -313,10 +331,11 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleItemLongPress = (item) => {
     if (!selectionEnabled) {
+      // Enable selection mode and immediately select the item that was long-pressed
       setSelectionEnabled(true);
       setSelectedItemIds([item.id]);
-    }
-    if (selectionEnabled) {
+    } else {
+      // If already in selection mode, toggle the item
       setSelectedItemIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
     }
   };
@@ -531,24 +550,16 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       <div className="pb-32">
         {(!lists || lists.length === 0) ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-sm">
+            <button
+              onClick={() => setShowNewListDialog(true)}
+              className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-4 shadow-sm hover:shadow-md transition-shadow"
+              disabled={isRefreshing}
+            >
               <Plus className="w-10 h-10 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Start organizing tastes
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {isRefreshing ? 'Loading your lists...' : 'Create your first list to group ingredients and dishes'}
+            </button>
+            <p className="text-gray-600">
+              {isRefreshing ? 'Loading your lists...' : 'Create your first list'}
             </p>
-            {!isRefreshing && (
-              <button
-                onClick={() => setShowNewListDialog(true)}
-                className="px-6 py-3 bg-teal-700 text-white rounded-full font-medium"
-                style={{ backgroundColor: '#1F6D5A' }}
-              >
-                Create Your First List
-              </button>
-            )}
           </div>
         ) : (
           <>

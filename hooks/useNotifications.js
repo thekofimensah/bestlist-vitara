@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// Check if app is active (same as useUserStats)
+const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
+
 // Helper function to log to Android Studio
 const logToAndroid = (message, data = null) => {
   const logMessage = data ? `${message}: ${JSON.stringify(data)}` : message;
@@ -42,48 +45,109 @@ export const useNotifications = (userId) => {
     setReady(false);
     loadNotifications();
 
-    // Subscribe to new notifications (with error handling for Realtime)
     let subscription;
-    try {
-      subscription = supabase
-        .channel(`notifications:${userId}`)
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`
-        }, (payload) => {
-          logToAndroid('🔔 Received new notification:', payload.new);
-          // Ignore achievement-related notifications in the bell
-          if (payload?.new?.type && ACHIEVEMENT_TYPES.has(payload.new.type)) {
-            logToAndroid('🔔 Ignoring achievement-type notification for bell:', payload.new.type);
-            return;
-          }
-          setNotifications(prev => {
-            logToAndroid('🔔 Adding notification to existing:', prev.length, 'notifications');
-            return [payload.new, ...prev];
-          });
-          setUnreadCount(prev => prev + 1);
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            logToAndroid('🔔 Successfully subscribed to notifications channel');
-          } else if (status === 'CHANNEL_ERROR') {
-            logToAndroid('🔔 Failed to subscribe to notifications - Realtime may not be enabled');
-            logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
-          }
-        });
+    let appStateHandler;
 
-      logToAndroid('🔔 Attempted to subscribe to notifications channel');
-    } catch (error) {
-      logToAndroid('🔔 Error setting up notifications subscription:', error.message);
-      logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
-    }
+    // Clean up subscription function
+    const cleanupSubscription = () => {
+      if (subscription) {
+        logToAndroid('🔔 Cleaning up notifications subscription');
+        subscription.unsubscribe();
+        subscription = null;
+      }
+    };
+
+    // Set up subscription only if app is active
+    const setupSubscription = () => {
+      if (!isAppActive()) {
+        logToAndroid('🔔 Skipping notifications subscription setup - app inactive');
+        return;
+      }
+
+      // Clean up existing subscription first
+      cleanupSubscription();
+
+      // Subscribe to new notifications (with error handling for Realtime)
+      try {
+        subscription = supabase
+          .channel(`notifications:${userId}`)
+          .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${userId}`
+          }, (payload) => {
+            logToAndroid('🔔 Received new notification:', payload.new);
+            // Ignore achievement-related notifications in the bell
+            if (payload?.new?.type && ACHIEVEMENT_TYPES.has(payload.new.type)) {
+              logToAndroid('🔔 Ignoring achievement-type notification for bell:', payload.new.type);
+              return;
+            }
+            setNotifications(prev => {
+              logToAndroid('🔔 Adding notification to existing:', prev.length, 'notifications');
+              return [payload.new, ...prev];
+            });
+            setUnreadCount(prev => prev + 1);
+          })
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              logToAndroid('🔔 Successfully subscribed to notifications channel');
+            } else if (status === 'CHANNEL_ERROR') {
+              logToAndroid('🔔 Failed to subscribe to notifications - Realtime may not be enabled');
+              logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+            }
+          });
+
+        logToAndroid('🔔 Attempted to subscribe to notifications channel');
+      } catch (error) {
+        logToAndroid('🔔 Error setting up notifications subscription:', error.message);
+        logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+      }
+    };
+
+    // Set up app state listener to handle background/foreground
+    const setupAppStateListener = () => {
+      appStateHandler = () => {
+        if (isAppActive()) {
+          logToAndroid('🔔 App became active - setting up notifications subscription');
+          setupSubscription();
+        } else {
+          logToAndroid('🔔 App became inactive - cleaning up notifications subscription');
+          cleanupSubscription();
+        }
+      };
+
+      // Listen for app state changes via the global variable
+      if (typeof window !== 'undefined') {
+        const checkAppState = () => {
+          const currentActive = isAppActive();
+          const wasActive = window.__NOTIFICATIONS_LAST_ACTIVE__ !== false;
+          if (currentActive !== wasActive) {
+            window.__NOTIFICATIONS_LAST_ACTIVE__ = currentActive;
+            appStateHandler();
+          }
+        };
+        
+        // Check every few seconds, but only when document is visible
+        const intervalId = setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            checkAppState();
+          }
+        }, 2000);
+        
+        // Store cleanup function
+        appStateHandler.cleanup = () => clearInterval(intervalId);
+      }
+    };
+
+    setupSubscription();
+    setupAppStateListener();
 
     return () => {
       logToAndroid('🔔 Unsubscribing from notifications');
-      if (subscription) {
-        subscription.unsubscribe();
+      cleanupSubscription();
+      if (appStateHandler?.cleanup) {
+        appStateHandler.cleanup();
       }
     };
   }, [userId]);

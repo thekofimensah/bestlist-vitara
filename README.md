@@ -237,15 +237,7 @@ Whatsapp actual image on the share
 Listsview should allow tos ort by ranking or by recent.. default recent
 
 
-"just now" for posts when it should say how many mins or hours
-
 Sign on when slow inernet, it does loading screen then login then it logs in and goes to the feed
 
 Change api keys to extend trials
 
-
-
-
-Quality of images
-
-Mainscreen fed cutoff on the bottom

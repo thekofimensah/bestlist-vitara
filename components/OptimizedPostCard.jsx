@@ -196,6 +196,21 @@ const OptimizedPostCard = memo(({
         <div className="flex items-center gap-2 h-4">
           <StarRating rating={post.rating} />
           <VerdictBadge verdict={post.verdict} />
+          
+          {/* First in World Badge - right aligned in header */}
+          {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
+            <FirstInWorldBadge 
+              achievement={{
+                id: post.items.first_in_world_achievement_id || 'first_in_world',
+                name: 'First in World',
+                rarity: 'legendary',
+                icon: '🌍'
+              }}
+              size="small"
+              variant="default"
+              animate={true}
+            />
+          )}
         </div>
       </div>
 
@@ -220,20 +235,6 @@ const OptimizedPostCard = memo(({
           postId={post.id}
           onLoadStateChange={updateImageLoadState}
         />
-        {/* First in World Badge for feed posts */}
-        {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
-          <FirstInWorldBadge 
-            achievement={{
-              id: post.items.first_in_world_achievement_id || 'first_in_world',
-              name: 'First in World',
-              rarity: 'legendary',
-              icon: '🌍'
-            }}
-            size="medium"
-            variant="floating"
-            animate={true}
-          />
-        )}
       </div>
 
       {/* Title + Share (loads immediately) */}

@@ -226,6 +226,9 @@ const MainScreen = React.forwardRef(({
   // Share modal state
   const [shareModal, setShareModal] = useState({ isOpen: false, post: null });
   
+  // Invite modal state
+  const [inviteModal, setInviteModal] = useState({ isOpen: false });
+  
   // Location state for AI context
   const [deviceLocation, setDeviceLocation] = useState(null);
   
@@ -476,8 +479,9 @@ const MainScreen = React.forwardRef(({
   // Handle app visibility changes - restart camera when app becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !showModal) {
         // App became visible again - restart camera after a short delay
+        // Only if no modal is open to prevent unnecessary restarts
         console.log('📷 App visible - restarting camera...');
         setTimeout(() => {
           startCamera(facingMode);
@@ -490,7 +494,7 @@ const MainScreen = React.forwardRef(({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [facingMode]);
+  }, [facingMode, showModal]);
 
   // Check if user is following anyone when component mounts or tab changes
   useEffect(() => {
@@ -1153,6 +1157,14 @@ const MainScreen = React.forwardRef(({
     setShareModal({ isOpen: false, post: null });
   };
 
+  const handleInviteFriends = () => {
+    setInviteModal({ isOpen: true });
+  };
+
+  const handleCloseInvite = () => {
+    setInviteModal({ isOpen: false });
+  };
+
 
 
   return (
@@ -1324,15 +1336,24 @@ const MainScreen = React.forwardRef(({
                 <div className="text-gray-500 mb-2">
                   {selectedTab === 'Following' ? 'No posts from followed users' : 'No posts yet'}
                 </div>
-                <div className="text-gray-400 text-sm">
+                <div className="text-gray-400 text-sm mb-4">
                   {selectedTab === 'Following' 
                     ? (userFollowingAnyone === false 
-                        ? 'Follow other users first to see their posts here!' 
+                        ? 'Invite friends to see their finds in your feed!' 
                         : 'Users you follow haven\'t posted anything yet'
                       )
                     : 'Be the first to share something amazing!'
                   }
                 </div>
+                {selectedTab === 'Following' && userFollowingAnyone === false && (
+                  <button
+                    onClick={handleInviteFriends}
+                    className="px-6 py-3 bg-teal-700 text-white rounded-xl text-sm font-medium hover:bg-teal-800 transition-colors"
+                    style={{ backgroundColor: '#1F6D5A' }}
+                  >
+                    Invite Friends
+                  </button>
+                )}
               </div>
             )}
 
@@ -1395,8 +1416,8 @@ const MainScreen = React.forwardRef(({
               />
             </div>
             
-            {/* Bottom padding for last post */}
-            <div className="pb-6"></div>
+            {/* Bottom padding for last post - extra space for bottom navigation */}
+            <div className="pb-20"></div>
           </div>
         </div>
       </div>
@@ -1473,6 +1494,14 @@ const MainScreen = React.forwardRef(({
         isOpen={shareModal.isOpen}
         onClose={handleCloseShare}
         post={shareModal.post}
+      />
+
+      {/* Invite Modal */}
+      <ShareModal
+        isOpen={inviteModal.isOpen}
+        onClose={handleCloseInvite}
+        post={null}
+        isInviteMode={true}
       />
     </div>
   );

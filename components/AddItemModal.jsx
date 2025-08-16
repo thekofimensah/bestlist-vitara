@@ -1068,6 +1068,8 @@ const AddItemModal = ({
           setAutoCloseCountdown(prev => {
             if (prev <= 1) {
               clearInterval(countdownInterval);
+              // Reset saving state before closing
+              setIsSaving(false);
               if (isBulk && onNext) onNext();
               else onClose();
               return null;
@@ -1076,7 +1078,8 @@ const AddItemModal = ({
           });
         }, 1000);
       } else {
-        // No achievement, close immediately
+        // No achievement, reset saving state and close immediately
+        setIsSaving(false);
         if (isBulk && onNext) onNext();
         else onClose();
       }
@@ -1092,8 +1095,7 @@ const AddItemModal = ({
         }, null, 2));
       // Show error to user (you might want to add a toast notification here)
       alert('Failed to save item. Please try again.');
-    } finally {
-      // Always reset saving state
+      // Reset saving state on error
       setIsSaving(false);
     }
   };

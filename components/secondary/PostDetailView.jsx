@@ -398,11 +398,11 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
       </div>
 
       {/* Content Section */}
-      <div className="bg-white rounded-t-3xl mt-[-24px] relative z-0">
+      <div className="bg-white rounded-t-3xl mt-[-24px] relative z-0 min-h-[calc(100vh-60vh+24px)]">
         {/* Product Info */}
         <div className="p-6 pb-4">
           {/* User Info */}
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center justify-between mb-4">
             <button
               onClick={handleUserTap}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity"
@@ -419,6 +419,23 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
                 <p className="text-sm text-gray-500 text-left">{post.lists?.name}</p>
               </div>
             </button>
+            
+            {/* First in World Badge - positioned all the way to the right */}
+            {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
+              <div className="flex-shrink-0">
+                <FirstInWorldBadge 
+                  achievement={{
+                    id: post.items.first_in_world_achievement_id || 'first_in_world',
+                    name: 'First in World',
+                    rarity: 'legendary',
+                    icon: '🌍'
+                  }}
+                  size="medium"
+                  variant="default"
+                  animate={true}
+                />
+              </div>
+            )}
           </div>
 
           {/* Product Name */}
@@ -444,29 +461,12 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
               </span>
             </div>
 
-            <div className="ml-auto flex flex-col items-end gap-1">
-              {/* First in World Badge - appears above location for public view */}
-              {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
-                <FirstInWorldBadge 
-                  achievement={{
-                    id: post.items.first_in_world_achievement_id || 'first_in_world',
-                    name: 'First in World',
-                    rarity: 'legendary',
-                    icon: '🌍'
-                  }}
-                  size="small"
-                  variant="default"
-                  animate={true}
-                />
-              )}
-              
-              {displayLocation && (
-                <div className="flex items-center gap-1 min-w-0">
-                  <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                  <span className="text-sm text-gray-600 whitespace-nowrap truncate">{displayLocation}</span>
-                </div>
-              )}
-            </div>
+            {displayLocation && (
+              <div className="ml-auto flex items-center gap-1 min-w-0">
+                <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                <span className="text-sm text-gray-600 whitespace-nowrap truncate">{displayLocation}</span>
+              </div>
+            )}
           </div>
 
           {/* Notes */}

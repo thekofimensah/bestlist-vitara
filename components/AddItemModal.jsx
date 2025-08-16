@@ -246,8 +246,19 @@ const AddItemModal = ({
   });
 
   // Set first in world achievement from AI-triggered achievements (for glow effect)
+  // Use useRef to track if we've already processed these achievements
+  const processedAchievementsRef = useRef(null);
+  
   useEffect(() => {
     if (aiTriggeredAchievements && aiTriggeredAchievements.length > 0) {
+      // Stringify to compare achievement arrays properly
+      const achievementsKey = JSON.stringify(aiTriggeredAchievements);
+      
+      // Skip if we've already processed these exact achievements
+      if (processedAchievementsRef.current === achievementsKey) {
+        return;
+      }
+      
       // Find any global first achievements
       const globalFirstAchievement = aiTriggeredAchievements.find(a => a.isGlobalFirst);
       if (globalFirstAchievement) {
@@ -264,22 +275,14 @@ const AddItemModal = ({
         setTimeout(() => {
           setShowLevelUpEffect(true);
         }, 500); // Small delay to let the modal appear first
+        
+        // Mark these achievements as processed
+        processedAchievementsRef.current = achievementsKey;
       }
     }
   }, [aiTriggeredAchievements]);
 
-  // Debug log when firstInWorldAchievement changes
-  useEffect(() => {
-    console.log('🧪 [AddItemModal] FirstInWorldAchievement state changed:', firstInWorldAchievement);
-    if (firstInWorldAchievement) {
-      console.log('🧪 [AddItemModal] Achievement details:', {
-        id: firstInWorldAchievement.id,
-        name: firstInWorldAchievement.name,
-        rarity: firstInWorldAchievement.rarity,
-        isGlobalFirst: firstInWorldAchievement.isGlobalFirst
-      });
-    }
-  }, [firstInWorldAchievement]);
+
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showLevelUpEffect, setShowLevelUpEffect] = useState(false);
@@ -482,6 +485,11 @@ const AddItemModal = ({
     return () => clearTimeout(searchTimeout);
   }, [locationSearch]);
   const [place, setPlace] = useState('');
+  
+  // Debug place state changes
+  useEffect(() => {
+    console.log('🔍 [Places State] place state changed to:', `"${place}"`);
+  }, [place]);
   const placeInputRef = useRef(null);
   const googleAutocompleteRef = useRef(null);
   const googleScriptLoadingRef = useRef(false);
@@ -552,53 +560,122 @@ const AddItemModal = ({
     return 2 * R * Math.asin(Math.sqrt(a));
   };
 
-  // Debounced place search (restaurants, supermarkets, etc.) using Nominatim
+  // Debounced place search using Google Places API
   useEffect(() => {
-    if (!showPlaceSearch) return;
+    console.log('🔍 [Places useEffect] Called with:', { place, showPlaceSearch, currentCoords });
+    if (!showPlaceSearch) {
+      console.log('🔍 [Places useEffect] Exiting - showPlaceSearch is false');
+      return;
+    }
     const q = (place || '').trim();
+    console.log('🔍 [Places Search] Starting search for:', q);
+    
     if (q.length < 2) {
+      console.log('🔍 [Places Search] Query too short, clearing results');
       setPlaceResults([]);
       return;
     }
-    const allowedClasses = new Set(['amenity', 'shop']);
-    const allowedTypes = new Set([
-      'restaurant', 'cafe', 'bar', 'fast_food', 'pub', 'food_court',
-      'supermarket', 'convenience', 'bakery', 'grocery', 'mall', 'marketplace'
-    ]);
 
+    console.log('🔍 [Places Search] Setting timeout for query:', q);
     const t = setTimeout(async () => {
+      console.log('🔍 [Places Search] Executing search after timeout for:', q);
       setIsSearchingPlaces(true);
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&q=${encodeURIComponent(q)}`;
-        const resp = await fetch(url);
-        const results = await resp.json();
-        let filtered = (results || []).filter(r => {
-          const cls = r.class || '';
-          const type = r.type || '';
-          return allowedClasses.has(cls) || allowedTypes.has(type);
-        });
-        if (currentCoords && currentCoords.lat && currentCoords.lon) {
-          filtered = filtered
-            .map(r => ({
-              ...r,
-              _distance: haversine(currentCoords.lat, currentCoords.lon, Number(r.lat), Number(r.lon))
-            }))
-            .sort((a, b) => (a._distance || Infinity) - (b._distance || Infinity));
+        const apiKey = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
+        console.log('🔍 [Places Search] API Key check:', apiKey ? 'Found' : 'Missing');
+        
+        if (!apiKey) {
+          console.error('⚠️ Google Places API key not found in VITE_GOOGLE_PLACES_API_KEY');
+          setPlaceResults([]);
+          return;
         }
-        setPlaceResults(filtered.map(r => ({
-          name: (r.display_name || '').split(',')[0],
-          display: r.display_name,
-          lat: Number(r.lat),
-          lon: Number(r.lon),
-          city: r.address?.city || r.address?.town || r.address?.village || '',
-          country: r.address?.country || ''
-        })));
-      } catch (_) {
+
+        // Use Google Places API Text Search (New) for food establishments
+        const url = `https://places.googleapis.com/v1/places:searchText`;
+        
+        const requestBody = {
+          textQuery: q,
+          maxResultCount: 8,
+          locationBias: currentCoords ? {
+            circle: {
+              center: {
+                latitude: currentCoords.lat,
+                longitude: currentCoords.lon
+              },
+              radius: 50000 // 50km radius
+            }
+          } : undefined
+        };
+
+        console.log('🔍 [Places Search] Request URL:', url);
+        console.log('🔍 [Places Search] Request body:', JSON.stringify(requestBody, null, 2));
+        console.log('🔍 [Places Search] Using coords:', currentCoords);
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types,places.primaryType'
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        console.log('🔍 [Places Search] Response status:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          console.log('🔍 [Places Search] New API failed, trying fallback...');
+          // Fallback to legacy Text Search if new API fails
+          const types = 'restaurant|cafe|bakery|supermarket|grocery_or_supermarket|meal_takeaway|food';
+          const legacyUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q)}&type=${types}&key=${apiKey}`;
+          console.log('🔍 [Places Search] Fallback URL:', legacyUrl);
+          const legacyResponse = await fetch(legacyUrl);
+          const legacyData = await legacyResponse.json();
+          console.log('🔍 [Places Search] Fallback response:', legacyData);
+          
+          if (legacyData.status === 'OK' && legacyData.results) {
+            const results = legacyData.results.slice(0, 8).map(result => ({
+              name: result.name,
+              display: result.formatted_address,
+              lat: result.geometry?.location?.lat,
+              lon: result.geometry?.location?.lng,
+              types: result.types || [],
+              rating: result.rating
+            })).filter(r => r.lat && r.lon);
+            
+            setPlaceResults(results);
+          } else {
+            setPlaceResults([]);
+          }
+        } else {
+          const data = await response.json();
+          console.log('🔍 [Places Search] Main API response:', data);
+          
+          if (data.places && data.places.length > 0) {
+            const results = data.places.map(place => ({
+              name: place.displayName?.text || 'Unknown Place',
+              display: place.formattedAddress || 'Address not available',
+              lat: place.location?.latitude,
+              lon: place.location?.longitude,
+              types: place.types || [],
+              primaryType: place.primaryType
+            })).filter(r => r.lat && r.lon);
+            
+            console.log('🔍 [Places Search] Final results:', results);
+            setPlaceResults(results);
+          } else {
+            console.log('🔍 [Places Search] No places found in response');
+            setPlaceResults([]);
+          }
+        }
+      } catch (error) {
+        console.error('🔍 [Places Search] Error:', error);
+        console.error('🔍 [Places Search] Error details:', error.message, error.stack);
         setPlaceResults([]);
       } finally {
         setIsSearchingPlaces(false);
       }
-    }, 300);
+    }, 500);
     return () => clearTimeout(t);
   }, [place, showPlaceSearch, currentCoords]);
 
@@ -606,9 +683,30 @@ const AddItemModal = ({
   useEffect(() => {
     if (!showPlaceSearch) return;
     const handleClickAway = (e) => {
-      if (!placeDropdownRef.current) return;
+      console.log('🔍 [Click Away] Event triggered:', e.type, e.target);
+      
+      // Ignore events while user is actively typing
+      if (document.activeElement === placeInputRef.current) {
+        console.log('🔍 [Click Away] Input is focused, ignoring click-away');
+        return;
+      }
+      
+      // Ignore touch events that might be from keyboard interaction
+      if (e.type === 'touchstart' && e.target.tagName === 'DIV') {
+        console.log('🔍 [Click Away] Ignoring touchstart on div (likely keyboard)');
+        return;
+      }
+      
+      if (!placeDropdownRef.current) {
+        console.log('🔍 [Click Away] No dropdown ref, ignoring');
+        return;
+      }
+      
       if (!placeDropdownRef.current.contains(e.target)) {
+        console.log('🔍 [Click Away] Click outside dropdown, closing');
         setShowPlaceSearch(false);
+      } else {
+        console.log('🔍 [Click Away] Click inside dropdown, keeping open');
       }
     };
     document.addEventListener('mousedown', handleClickAway);
@@ -1661,7 +1759,6 @@ const AddItemModal = ({
       </div>
 
       {/* Overlapping Data Card */}
-      {console.log('🧪 [AddItemModal] Rendering AchievementGlow with achievement:', firstInWorldAchievement)}
       <AchievementGlow 
         achievement={firstInWorldAchievement} 
         variant="border" 
@@ -2061,7 +2158,10 @@ const AddItemModal = ({
                     ref={placeInputRef}
                     type="text"
                     value={place}
-                    onChange={(e) => setPlace(e.target.value)}
+                    onChange={(e) => {
+                      console.log('🔍 [Places Input] onChange triggered with value:', e.target.value);
+                      setPlace(e.target.value);
+                    }}
                     onFocus={() => setShowPlaceSearch(true)}
                     placeholder="Place name.."
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
@@ -2071,39 +2171,101 @@ const AddItemModal = ({
                     spellCheck="true"
                   />
                   {showPlaceSearch && (
-                                            <div className="absolute left-0 right-0 top-full mt-1 z-50">
+                    <div className="absolute left-0 right-0 top-full mt-1 z-50">
                       <div className="bg-white rounded-lg shadow-xl border border-gray-200">
+                        {/* Header */}
                         <div className="p-2 border-b border-gray-100 flex items-center">
                           <span className="text-xs text-gray-500">Search places</span>
                           {isSearchingPlaces && (
                             <div className="ml-auto w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
                           )}
                         </div>
+                        
+                        {/* Results */}
                         <div className="max-h-48 overflow-y-auto">
+                          {/* DEBUG: Show test results if no real results and field is focused */}
+                          {placeResults.length === 0 && (place || '').trim().length >= 2 && (
+                            <div className="p-3 text-center text-sm">
+                              <div className="text-gray-500 mb-2">🔍 Debug: API Status</div>
+                              <div className="text-xs text-left space-y-1">
+                                <div>API Key: {import.meta.env.VITE_GOOGLE_PLACES_API_KEY ? '✅ Found' : '❌ Missing'}</div>
+                                <div>Search Query: "{(place || '').trim()}"</div>
+                                <div>Searching: {isSearchingPlaces ? 'Yes' : 'No'}</div>
+                              </div>
+                            </div>
+                          )}
+                          
                           {placeResults.length > 0 ? (
-                            placeResults.map((r, idx) => (
+                            placeResults.map((result, idx) => (
                               <button
                                 key={`place-${idx}`}
                                 onClick={() => {
-                                  setPlace(r.name);
-                                  setSelectedPlaceCoords({ lat: r.lat, lng: r.lon });
-                                  const newLocation = [r.city, r.country].filter(Boolean).join(', ');
-                                  if (newLocation) {
+                                  setPlace(result.name);
+                                  setSelectedPlaceCoords({ lat: result.lat, lng: result.lon });
+                                  
+                                  // Extract city and country from formatted address
+                                  const addressParts = result.display.split(',').map(p => p.trim());
+                                  let city = '';
+                                  let country = '';
+                                  
+                                  if (addressParts.length >= 2) {
+                                    // Try to extract city and country from address
+                                    // Usually format is: Place Name, Street, City, State/Province, Country
+                                    country = addressParts[addressParts.length - 1]; // Last part is usually country
+                                    // City is usually 2nd or 3rd from the end
+                                    if (addressParts.length >= 3) {
+                                      city = addressParts[addressParts.length - 3] || addressParts[addressParts.length - 2];
+                                    } else {
+                                      city = addressParts[0]; // Fallback to first part
+                                    }
+                                  }
+                                  
+                                  const newLocation = [city, country].filter(Boolean).join(', ');
+                                  if (newLocation && newLocation !== ', ') {
                                     setLocation(newLocation);
                                     setLocationManuallySet(true);
                                   }
+                                  
                                   setShowPlaceSearch(false);
                                 }}
-                                className="w-full p-2 text-left hover:bg-gray-50"
+                                className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
                               >
-                                <div className="text-sm font-medium text-gray-900">{r.name}</div>
-                                <div className="text-xs text-gray-500 truncate">{r.display}</div>
+                                <div className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0">
+                                  {(() => {
+                                    const types = result.types || [];
+                                    const primaryType = result.primaryType || '';
+                                    
+                                    if (types.includes('restaurant') || primaryType === 'restaurant') return '🍽️';
+                                    if (types.includes('cafe') || primaryType === 'cafe') return '☕';
+                                    if (types.includes('bakery') || primaryType === 'bakery') return '🥖';
+                                    if (types.includes('supermarket') || types.includes('grocery_store') || primaryType === 'supermarket') return '🛒';
+                                    if (types.includes('meal_takeaway') || primaryType === 'meal_takeaway') return '🥡';
+                                    return '📍'; // Default location icon
+                                  })()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">
+                                    {result.name}
+                                  </div>
+                                  <div className="text-xs text-gray-500 truncate">
+                                    {result.display}
+                                  </div>
+                                  {result.rating && (
+                                    <div className="text-xs text-yellow-600 mt-0.5">
+                                      ⭐ {result.rating}
+                                    </div>
+                                  )}
+                                </div>
                               </button>
                             ))
                           ) : (
-                            <div className="p-3 text-center text-sm text-gray-500">{(place || '').trim().length < 2 ? 'Type to search places' : 'No places found'}</div>
+                            <div className="p-3 text-center text-sm text-gray-500">
+                              {(place || '').trim().length < 2 ? 'Type to search places' : 'No places found'}
+                            </div>
                           )}
                         </div>
+                        
+                        {/* Footer */}
                         <div className="p-2 border-t border-gray-100">
                           <button
                             onClick={() => setShowPlaceSearch(false)}

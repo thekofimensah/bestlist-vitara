@@ -478,14 +478,27 @@ const MainScreen = React.forwardRef(({
 
   // Handle app visibility changes - restart camera when app becomes visible
   useEffect(() => {
+    let visibilityTimeout;
+    
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !showModal) {
-        // App became visible again - restart camera after a short delay
-        // Only if no modal is open to prevent unnecessary restarts
+      // Clear any pending restart
+      if (visibilityTimeout) {
+        clearTimeout(visibilityTimeout);
+      }
+      
+      // Only restart camera if:
+      // 1. App becomes visible
+      // 2. No modal is currently open
+      // 3. No image is being captured/processed
+      if (document.visibilityState === 'visible' && 
+          !showModal && 
+          !isCapturing && 
+          !capturedImage) {
         console.log('📷 App visible - restarting camera...');
-        setTimeout(() => {
+        // Longer delay to avoid conflicts with modal transitions
+        visibilityTimeout = setTimeout(() => {
           startCamera(facingMode);
-        }, 200);
+        }, 500);
       }
     };
 
@@ -493,8 +506,11 @@ const MainScreen = React.forwardRef(({
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (visibilityTimeout) {
+        clearTimeout(visibilityTimeout);
+      }
     };
-  }, [facingMode, showModal]);
+  }, [facingMode, showModal, isCapturing, capturedImage]);
 
   // Check if user is following anyone when component mounts or tab changes
   useEffect(() => {
@@ -573,31 +589,44 @@ const MainScreen = React.forwardRef(({
       
       console.log('📸 [Camera] Original image size:', file.size, 'bytes');
       
-      // Single compression: compress once and use the same file for preview and upload
-      const compressed = await imageCompression(file, {
-        maxSizeMB: 0.5,
-        maxWidthOrHeight: 1280,
-        useWebWorker: true,
-        fileType: 'image/webp',
-        initialQuality: 0.8
-      });
-      
-      // Convert compressed file to base64 for immediate display
-      const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
-      
-      console.log('📸 [Camera] Compressed image size:', compressed.size, 'bytes');
-      
-      // Set captured image with COMPRESSED base64 for immediate display
+      // Open modal immediately with original image for instant feedback
       const capturedImageData = { 
-        url: compressedBase64,           // Base64 for immediate display
+        url: imageData,                  // Original base64 for immediate display
         filename: tempFilename, 
         uploading: true, 
         aiProcessing: true 
       };
-      console.log('Setting capturedImage data with compressed image');
+      console.log('📸 [Fast] Opening modal immediately with original image');
       setCapturedImage(capturedImageData);
-      setShowModal(true); // Open modal immediately
+      setShowModal(true); // Open modal immediately - no waiting!
       setIsCapturing(false);
+      
+      // Compress image in background and update when ready
+      setTimeout(async () => {
+        try {
+          const compressed = await imageCompression(file, {
+            maxSizeMB: 0.5,
+            maxWidthOrHeight: 1280,
+            useWebWorker: true,
+            fileType: 'image/webp',
+            initialQuality: 0.8
+          });
+          
+          // Convert compressed file to base64
+          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
+          console.log('📸 [Camera] Compressed image size:', compressed.size, 'bytes');
+          
+          // Update with compressed image
+          setCapturedImage(prev => ({ 
+            ...prev, 
+            url: compressedBase64,
+            compressed: true
+          }));
+        } catch (compressionError) {
+          console.error('📸 [Compression] Failed, keeping original:', compressionError);
+          // Keep original image if compression fails
+        }
+      }, 50); // Small delay to let modal open first
       
       // Upload to Supabase Storage in background
       setTimeout(async () => {

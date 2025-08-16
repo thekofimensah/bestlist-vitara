@@ -45,15 +45,15 @@ export const RatingOverlay = ({
 
   const achievementColors = getAchievementColors(firstInWorldAchievement);
 
-  // Animation sequence
+  // Animation sequence - optimized for speed
   useEffect(() => {
     if (isVisible) {
-      // Show sparkles first
-      const sparklePositions = Array.from({ length: 8 }, (_, i) => ({
+      // Show sparkles first with faster timing
+      const sparklePositions = Array.from({ length: 6 }, (_, i) => ({
         id: i,
         x: Math.random() * 100,
         y: Math.random() * 100,
-        delay: Math.random() * 0.5
+        delay: Math.random() * 0.15 // Reduced from 0.5 to 0.15
       }));
       setSparkles(sparklePositions);
       // Stars visible immediately for snappier UX
@@ -71,21 +71,21 @@ export const RatingOverlay = ({
       navigator.vibrate(50);
     }
     
-    // Start exit animation
+    // Start exit animation - faster timing
     setTimeout(() => {
       setShowExit(true);
-      // Delay callback to allow animation
-      setTimeout(() => onRatingSelect(rating), 600);
-    }, 300);
+      // Delay callback to allow animation - reduced timing
+      setTimeout(() => onRatingSelect(rating), 350);
+    }, 150);
   };
 
   // Display stars left-to-right 1..5 so selection maps correctly.
-  // Use a center-out delay for entrance animation only.
+  // Use a center-out delay for entrance animation only - optimized for speed
   const stars = [1, 2, 3, 4, 5];
   const getStarDelay = (value) => {
     const center = 3; // middle star
     const distance = Math.abs(value - center);
-    return 0.2 + distance * 0.06;
+    return 0.05 + distance * 0.02; // Much faster: reduced from 0.2 + 0.06 to 0.05 + 0.02
   };
 
   return (
@@ -169,21 +169,23 @@ export const RatingOverlay = ({
 
               <motion.div 
                 className="flex items-center gap-4"
-                initial={{ opacity: 0, scale: 0.8 }}
+                initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 }}
+                transition={{ delay: 0.02, duration: 0.2 }}
               >
                 {stars.map((value) => (
                   <motion.button
                     key={value}
                     onClick={() => handleStarSelect(value)}
                     className="relative"
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ 
                       delay: getStarDelay(value),
                       type: "spring",
-                      stiffness: 300 
+                      stiffness: 500,
+                      damping: 25,
+                      duration: 0.3
                     }}
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.95 }}
@@ -210,10 +212,10 @@ export const RatingOverlay = ({
                         className="absolute inset-0 rounded-full bg-teal-400/30"
                         initial={{ scale: 1, opacity: 0 }}
                         animate={{ 
-                          scale: [1, 1.5, 2], 
-                          opacity: [0.5, 0.2, 0] 
+                          scale: [1, 1.3, 1.8], 
+                          opacity: [0.6, 0.3, 0] 
                         }}
-                        transition={{ duration: 0.6 }}
+                        transition={{ duration: 0.4 }}
                       />
                     )}
                   </motion.button>

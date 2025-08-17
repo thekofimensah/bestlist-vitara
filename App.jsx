@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, List, User, Search, Bell, X, Trophy } from 'lucide-react';
+import { Home, List, User, Search, Bell, X } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import MainScreen from './components/MainScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -18,8 +18,8 @@ import { useOptimizedFeed } from './hooks/useOptimizedFeed';
 import { useLists } from './hooks/useLists';
 import { motion as Sparkles } from 'framer-motion';
 import { NotificationsDropdown } from './components/secondary/NotificationsDropdown';
-import AchievementsDropdown from './components/gamification/AchievementsDropdown';
-import useAchievements from './hooks/useAchievements';
+// Removed header Achievements dropdown per redesign
+// import useAchievements from './hooks/useAchievements';
 import { useNotifications } from './hooks/useNotifications';
 import PostDetailView from './components/secondary/PostDetailView';
 import AchievementSystem from './components/gamification/AchievementSystem';
@@ -132,9 +132,7 @@ const App = () => {
   }, []);
   const [user, setUser] = useState(null);
   const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead, ready: notificationsReady } = useNotifications(user?.id);
-  const [achievementsOpen, setAchievementsOpen] = useState(false);
-  const [recentAchievements, setRecentAchievements] = useState([]);
-  const { getUserAchievements } = useAchievements();
+  // const { getUserAchievements } = useAchievements();
   // Pending achievements hook (must be declared before any effects that reference it)
   const {
     pendingAchievements,
@@ -143,30 +141,9 @@ const App = () => {
     loadPendingAchievements,
     markAsNotified
   } = usePendingAchievements(user?.id);
+  const [hadNewAchievementsOnEnter, setHadNewAchievementsOnEnter] = useState(false);
 
-  // Load recent achievements when user opens the dropdown or on user change
-  useEffect(() => {
-    const load = async () => {
-      if (!user?.id) return;
-      const data = await getUserAchievements(user.id);
-      setRecentAchievements(data?.slice(0, 50) || []);
-    };
-    if (achievementsOpen) {
-      load();
-    }
-  }, [achievementsOpen, user?.id]);
-
-  // When opening Achievements, mark any pending achievements as seen/notified
-  useEffect(() => {
-    if (!achievementsOpen) return;
-    if (!pendingAchievements || pendingAchievements.length === 0) return;
-    const ids = pendingAchievements.map(a => a.achievement_id).filter(Boolean);
-    if (ids.length > 0) {
-      setTimeout(() => {
-        try { markAsNotified(ids); } catch {}
-      }, 300);
-    }
-  }, [achievementsOpen, pendingAchievements, markAsNotified]);
+  // Removed dropdown-driven achievements loading/marking
   const { trackUserSession, isTracking } = useUserTracking();
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
@@ -193,8 +170,8 @@ const App = () => {
     queueStatus, 
     queueCreateItem, 
     queueUpdateItem,
-    sync: syncOfflineQueue,
-    clearQueue
+    triggerSync: syncOfflineQueue,
+    clearQueueData: clearQueue
   } = useOfflineQueue();
   const [currentScreen, setCurrentScreen] = useState('home');
   const [previousScreen, setPreviousScreen] = useState(null);
@@ -226,6 +203,8 @@ const App = () => {
     reorderLists,
     deleteList,
     updateList,
+    addOfflineItemToCache,
+    updateOfflineItemInCache,
     retryCount,
     connectionError,
     isRetrying 
@@ -236,6 +215,21 @@ const App = () => {
   const [deepLinkData, setDeepLinkData] = useState(null);
   const mainScreenRef = useRef(null);
   const hasInitialized = useRef(false);
+
+  // Mark achievements as seen when user navigates to Profile; clear badge when leaving
+  useEffect(() => {
+    if (currentScreen === 'profile') {
+      if (pendingAchievements && pendingAchievements.length > 0) {
+        setHadNewAchievementsOnEnter(true);
+        const ids = pendingAchievements.map(a => a.achievement_id).filter(Boolean);
+        if (ids.length > 0) {
+          try { markAsNotified(ids); } catch {}
+        }
+      }
+    } else {
+      setHadNewAchievementsOnEnter(false);
+    }
+  }, [currentScreen, pendingAchievements, markAsNotified]);
 
   // We no longer need to track scroll positions since we always reset to top
 
@@ -1135,7 +1129,7 @@ const App = () => {
       if (!queueStatus.isOnline) {
         console.log('📱 [Offline] Queueing item for later sync:', itemData.name);
         
-        // Queue the item for offline sync
+        // Add to offline queue
         const queueId = await queueCreateItem({
           selectedListIds,
           itemData,
@@ -1144,14 +1138,17 @@ const App = () => {
         
         console.log('📱 [Offline] Item queued with ID:', queueId);
         
+        // Add to local cache so it appears immediately in lists
+        const offlineId = addOfflineItemToCache(selectedListIds, itemData, isStayAway);
+        
         // Return a mock result for offline mode
         return {
           data: {
-            id: `offline_${queueId}`,
+            id: offlineId,
             ...itemData,
             pending_sync: true
           },
-          achievements: [],
+          achievements: [], // No achievements when offline
           error: null
         };
       }
@@ -1237,6 +1234,9 @@ const App = () => {
         const queueId = await queueUpdateItem(item);
         
         console.log('📱 [Offline] Item update queued with ID:', queueId);
+        
+        // Update in local cache so changes appear immediately
+        updateOfflineItemInCache(item);
         
         // Return a mock result for offline mode
         return {
@@ -1561,6 +1561,7 @@ const App = () => {
               onEditItem={handleEditItem}
               onNavigateToUser={handleNavigateToUser}
               onImageTap={handleImageTap}
+              hadNewAchievementsOnEnter={hadNewAchievementsOnEnter}
             />
           </PullToRefresh>
         );
@@ -1825,21 +1826,7 @@ const App = () => {
                 >
                   <Search className="w-4 h-4 text-gray-700" />
                 </button>
-                <button
-                  onClick={() => setAchievementsOpen((v) => !v)}
-                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
-                  aria-label="Achievements"
-                >
-                  <Trophy className="w-4 h-4 text-gray-700" />
-                  {pendingAchievements && pendingAchievements.length > 0 && (
-                    <div className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-teal-500 rounded-full flex items-center justify-center">
-                      <span className="text-[10px] font-medium text-white">
-                        {Math.min(9, pendingAchievements.length)}
-                        {pendingAchievements.length > 9 ? '+' : ''}
-                      </span>
-                    </div>
-                  )}
-                </button>
+                {/* Achievements header icon removed per redesign */}
                 <div className="relative">
                   <button 
                     onClick={handleNotifications}
@@ -1864,13 +1851,7 @@ const App = () => {
                     />
                   </div>
                 </div>
-                <div className="relative z-30">
-                  <AchievementsDropdown
-                    isOpen={achievementsOpen}
-                    onClose={() => setAchievementsOpen(false)}
-                    achievements={recentAchievements}
-                  />
-                </div>
+                {/* Dropdown removed */}
               </>
             )}
           </div>
@@ -1918,14 +1899,19 @@ const App = () => {
 
           <button
             onClick={() => navigateToScreen('profile')}
-            className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors duration-150 ${
+            className={`relative flex flex-col items-center gap-1 px-4 py-2 transition-colors duration-150 ${
               currentScreen === 'profile'
                 ? 'text-teal-700'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
             style={{ color: currentScreen === 'profile' ? '#1F6D5A' : undefined }}
           >
-            <User className="w-5 h-5" />
+            <div className="relative">
+              <User className="w-5 h-5" />
+              {pendingAchievements && pendingAchievements.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              )}
+            </div>
             <span className="text-xs font-medium">Profile</span>
           </button>
         </div>
@@ -1943,6 +1929,7 @@ const App = () => {
             }
           item={editingItem}
                     onCreateList={handleCreateList}
+          showRatingFirst={editingItem.showRatingFirst || false}
                   />
       )}
 

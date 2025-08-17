@@ -6,6 +6,7 @@ import { getInstagramClassicFilter } from '../../lib/imageUtils';
 import SmartImage from './SmartImage';
 import FirstInWorldBadge from '../gamification/FirstInWorldBadge';
 import CommentsModal from '../CommentsModal';
+import ShareModal from './ShareModal';
 import { useAuth } from '../../hooks/useAuth';
 
 const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser, scrollToComments = false }) => {
@@ -22,6 +23,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
   const [replyingTo, setReplyingTo] = useState(null);
   const containerRef = useRef(null);
   const commentsRef = useRef(null);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Auto-scroll to comments when opened from a comment notification
   useEffect(() => {
@@ -506,7 +508,10 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
               </button>
             </div>
 
-            <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <button 
+              onClick={() => setShowShareModal(true)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
               <Share className="w-5 h-5 text-gray-500" />
             </button>
           </div>
@@ -647,6 +652,22 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
         onClose={() => setShowCommentsModal(false)}
         post={post}
         onCommentAdded={handleCommentAdded}
+      />
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        post={{
+          id: post?.id,
+          item_name: post?.items?.name,
+          list_name: post?.lists?.name,
+          user: {
+            name: post?.profiles?.username,
+            avatar: post?.profiles?.avatar_url
+          },
+          snippet: post?.items?.notes
+        }}
       />
     </div>
   );

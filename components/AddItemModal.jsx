@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation, Trash2 } from 'lucide-react';
+import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation, Trash2, Share } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
 import { RatingOverlay } from './Elements';
 import SmartImage from './secondary/SmartImage';
@@ -26,7 +26,8 @@ import { supabase } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import AchievementGlow from './gamification/AchievementGlow';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
-import LevelUpEffect from './gamification/LevelUpEffect';
+import { useGlobalAchievements } from '../hooks/useGlobalAchievements';
+import ShareModal from './secondary/ShareModal';
 
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
@@ -248,6 +249,7 @@ const AddItemModal = ({
   // Set first in world achievement from AI-triggered achievements (for glow effect)
   // Use useRef to track if we've already processed these achievements
   const processedAchievementsRef = useRef(null);
+  const { showAchievement } = useGlobalAchievements();
   
   useEffect(() => {
     if (aiTriggeredAchievements && aiTriggeredAchievements.length > 0) {
@@ -271,10 +273,18 @@ const AddItemModal = ({
           isGlobalFirst: true
         });
         
-        // Trigger the level-up effect
+        // Trigger an achievement toast instead of full-screen effect
         setTimeout(() => {
-          setShowLevelUpEffect(true);
-        }, 500); // Small delay to let the modal appear first
+          showAchievement({
+            achievement: {
+              id: globalFirstAchievement.achievement?.id || globalFirstAchievement.id,
+              name: globalFirstAchievement.achievement?.name || globalFirstAchievement.name || 'First in World',
+              rarity: globalFirstAchievement.achievement?.rarity || globalFirstAchievement.rarity || 'legendary',
+              icon: globalFirstAchievement.achievement?.icon || '🌍'
+            },
+            isGlobalFirst: true
+          });
+        }, 200);
         
         // Mark these achievements as processed
         processedAchievementsRef.current = achievementsKey;
@@ -285,7 +295,7 @@ const AddItemModal = ({
 
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [showLevelUpEffect, setShowLevelUpEffect] = useState(false);
+  // LevelUpEffect removed per design
   
   // AI status toast
   const [showAIToast, setShowAIToast] = useState(false);
@@ -310,26 +320,36 @@ const AddItemModal = ({
   const getCroppedImg = async () => {
     return new Promise((resolve, reject) => {
       const imageObj = new Image();
+      // Set crossOrigin to handle CORS images properly
+      imageObj.crossOrigin = 'anonymous';
       imageObj.src = currentImage;
       imageObj.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = croppedAreaPixels.width;
-        canvas.height = croppedAreaPixels.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(
-          imageObj,
-          croppedAreaPixels.x,
-          croppedAreaPixels.y,
-          croppedAreaPixels.width,
-          croppedAreaPixels.height,
-          0,
-          0,
-          croppedAreaPixels.width,
-          croppedAreaPixels.height
-        );
-        resolve(canvas.toDataURL('image/jpeg'));
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = croppedAreaPixels.width;
+          canvas.height = croppedAreaPixels.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(
+            imageObj,
+            croppedAreaPixels.x,
+            croppedAreaPixels.y,
+            croppedAreaPixels.width,
+            croppedAreaPixels.height,
+            0,
+            0,
+            croppedAreaPixels.width,
+            croppedAreaPixels.height
+          );
+          resolve(canvas.toDataURL('image/jpeg', 0.9));
+        } catch (error) {
+          console.error('Canvas crop error:', error);
+          reject(error);
+        }
       };
-      imageObj.onerror = (e) => reject(e);
+      imageObj.onerror = (e) => {
+        console.error('Image load error for cropping:', e);
+        reject(e);
+      };
     });
   };
 
@@ -1007,7 +1027,7 @@ const AddItemModal = ({
       
       // Add haptic feedback if available
       if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 100]);
+        navigator.vibrate(50);
       }
       
       // Clear validation errors after 5 seconds
@@ -1542,6 +1562,9 @@ const AddItemModal = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isProductNameEditedByUser, setIsProductNameEditedByUser] = useState(false);
+  
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
 
   return (
     <div 
@@ -2522,6 +2545,17 @@ const AddItemModal = ({
                 )}
               </button>
 
+              {/* Share Button - only show for existing items */}
+              {isEditingExisting && (
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors mr-4"
+                  title="Share item"
+                >
+                  <Share className="w-5 h-5 text-gray-600" />
+                </button>
+              )}
+
               <div className="text-right relative">
                 {isEditingPrice ? (
                   <div className="flex items-center justify-end gap-2">
@@ -3052,11 +3086,23 @@ const AddItemModal = ({
         )}
       </AnimatePresence>
       
-      {/* Level-up effect for first in world achievements */}
-      <LevelUpEffect 
-        isActive={showLevelUpEffect}
-        onComplete={() => setShowLevelUpEffect(false)}
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        post={{
+          id: item?.id,
+          item_name: productName || item?.name,
+          list_name: lists?.find(l => selectedLists.includes(l.id))?.name || 'List',
+          user: {
+            name: 'You',
+            avatar: null
+          },
+          snippet: notes || qualityOverview
+        }}
       />
+      
+      {/* LevelUpEffect removed */}
     </div>
   );
 };

@@ -8,7 +8,7 @@ import { deleteItemAndRelated } from '../lib/supabase';
 import { removeProfilePostsByItemIds } from '../hooks/useOptimizedFeed';
 import { removeCachedImage } from '../lib/localImageCache';
 import { supabase } from '../lib/supabase';
-import FirstInWorldBadge from './gamification/FirstInWorldBadge';
+// FirstInWorldBadge intentionally not shown in ListsView per design
 
 
 const StarRating = ({ rating }) => {
@@ -114,20 +114,11 @@ const ItemTile = ({
           <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
         )}
         {item.rating && <StarRating rating={item.rating} />}
-        {/* First in World Badge - check for first-in-world achievement */}
-        {(item.is_first_in_world || item.first_in_world_achievement_id) && (
-          <FirstInWorldBadge 
-            achievement={{
-              id: item.first_in_world_achievement_id || 'first_in_world',
-              name: 'First in World',
-              rarity: 'legendary',
-              icon: '🌍'
-            }}
-            size="small"
-            variant="floating"
-            animate={true}
-          />
+        {/* Pending sync indicator for offline items */}
+        {item.pending_sync && (
+          <div className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full border border-white" title="Pending sync" />
         )}
+        {/* First in World Badge removed in ListsView */}
       </div>
       <div className="mt-2" onClick={(e) => { e.stopPropagation(); onTap?.(); }}>
         <p className="text-xs text-gray-700 font-medium truncate">{item.name}</p>
@@ -427,24 +418,37 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
       if (file && onEditItem) {
+        // Show immediate feedback - processing starts
+        console.log('📸 [Gallery] Photo selected, processing...');
+        
         // Find the target list
         const targetList = lists?.find(list => list.id === listId);
         if (targetList) {
+          // Create blob URL immediately for instant display
+          const imageUrl = URL.createObjectURL(file);
+          
           // Create a mock item with the selected image for editing
           const mockItem = {
             id: `temp_${Date.now()}`,
             name: '',
-            image: URL.createObjectURL(file),
+            image: imageUrl,
             imageFile: file, // Store the actual file for upload
             listId: listId,
-            isNewItem: true
+            isNewItem: true,
+            showRatingFirst: true // Show rating immediately for gallery uploads
           };
           
-          // Open the AddItemModal for editing this new item
+          // Open the AddItemModal immediately for rating
+          console.log('🌟 [Gallery] Opening rating screen...');
           onEditItem(mockItem, targetList);
         }
       }
     };
+    
+    // Haptic feedback on file picker open (iOS/Android)
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
     
     input.click();
   };

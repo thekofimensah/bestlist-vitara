@@ -54,7 +54,7 @@ const StatCard = ({ icon, value, label }) => (
     </div>
   );
   
-const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem, onNavigateToUser, onImageTap }, ref) => {
+const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem, onNavigateToUser, onImageTap, hadNewAchievementsOnEnter = false }, ref) => {
   const { user, userProfile } = useAuth();
 
   const [loading, setLoading] = useState(false);
@@ -65,6 +65,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
 
 
   const { getUserAchievements } = useAchievements();
+  const [hadNewOnEnter, setHadNewOnEnter] = useState(hadNewAchievementsOnEnter);
 
   const [achievementsOpen, setAchievementsOpen] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -579,7 +580,12 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         {/* Achievements section (no dropdown) */}
         <div>
           <div className="mb-2">
-            <h3 className="text-sm font-semibold text-gray-900">Achievements</h3>
+            <div className="relative inline-flex items-center">
+              <h3 className="text-sm font-semibold text-gray-900">Achievements</h3>
+              {hadNewOnEnter && (
+                <span className="ml-2 w-2 h-2 bg-red-500 rounded-full"></span>
+              )}
+            </div>
           </div>
           {achievementsLoading ? (
             <AchievementsSkeleton count={10} />
@@ -655,6 +661,10 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                         }
                       }}
                     />
+                    {/* Pending sync indicator for offline items */}
+                    {post.items?.pending_sync && (
+                      <div className="absolute top-2 right-2 w-3 h-3 bg-orange-500 rounded-full border-2 border-white shadow-sm" title="Pending sync" />
+                    )}
                     {/* First in World Badge for profile photos */}
                     {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
                       <FirstInWorldBadge 

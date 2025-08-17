@@ -59,7 +59,7 @@ const usePendingAchievements = (userId) => {
     }
   };
 
-  // Show pending achievements with delays
+  // Show pending achievements with delays (do NOT auto-mark as notified here)
   const showPendingAchievements = async (achievements) => {
     if (!achievements || achievements.length === 0) return;
 
@@ -95,10 +95,7 @@ const usePendingAchievements = (userId) => {
       }, 1000 + (i * 2500)); // First at 1s, then every 2.5s
     }
 
-    // Mark as notified after showing all
-    setTimeout(async () => {
-      await markAsNotified(achievements.map(a => a.achievement_id));
-    }, 1000 + (sortedAchievements.length * 2500) + 1000); // After all are shown + 1s buffer
+    // Do not auto-mark as notified here; caller decides when to mark as seen
   };
 
   // Mark achievements as notified

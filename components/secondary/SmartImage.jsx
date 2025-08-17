@@ -2,6 +2,10 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { generateImageSizes, preloadImage } from '../../lib/imageStorage';
 import { getLocalFirstUrl, getCachedLocalUrl } from '../../lib/localImageCache';
 
+// In-memory cache to avoid repeated filesystem calls
+const memoryCache = new Map();
+const pendingResolves = new Map();
+
 /**
  * Smart Image component that uses thumbnails for performance and full resolution on demand
  * @param {string} src - Image URL (can be storage URL or base64)
@@ -34,40 +38,85 @@ const SmartImage = ({
   const [localOverrideSrc, setLocalOverrideSrc] = useState(null);
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
 
-  // Try local-first resolution for remote URLs (background cache otherwise)
+  // Try local-first resolution for remote URLs (non-blocking with memory cache)
   useEffect(() => {
     let cancelled = false;
+    
     const resolveLocal = async () => {
       try {
         if (!useLocalCache || !src || src.startsWith('data:') || src.startsWith('file:')) return;
         
-        // For offline mode, try to get cached version immediately
-        if (offline) {
-          const cached = await getCachedLocalUrl(src);
-          if (cached && !cancelled) {
-            console.log('🔌 [SmartImage] Using offline cached image:', src.substring(0, 50) + '...');
-            setLocalOverrideSrc(cached);
+        // Check memory cache first (instant)
+        if (memoryCache.has(src)) {
+          const cachedUrl = memoryCache.get(src);
+          if (cachedUrl && !cancelled) {
+            setLocalOverrideSrc(cachedUrl);
             return;
           }
         }
         
-        // For online mode, try local first, then cache remote in background
-        const local = await getLocalFirstUrl(src, undefined, (cached) => {
-          if (!cancelled) {
-            console.log('📦 [SmartImage] Cached image ready:', src.substring(0, 50) + '...');
-            setLocalOverrideSrc(cached);
+        // Check if we're already resolving this URL
+        if (pendingResolves.has(src)) {
+          const existingPromise = pendingResolves.get(src);
+          try {
+            const result = await existingPromise;
+            if (result && !cancelled) {
+              setLocalOverrideSrc(result);
+            }
+          } catch (error) {
+            // Ignore errors from shared promises
           }
-        });
+          return;
+        }
         
-        if (local && !cancelled) {
-          console.log('📦 [SmartImage] Using local cached image:', src.substring(0, 50) + '...');
-          setLocalOverrideSrc(local);
+        // Create new resolve promise
+        const resolvePromise = (async () => {
+          try {
+            // For offline mode, try to get cached version immediately
+            if (offline) {
+              const cached = await getCachedLocalUrl(src);
+              if (cached) {
+                memoryCache.set(src, cached);
+                return cached;
+              }
+            }
+            
+            // For online mode, try local first, then cache remote in background
+            const local = await getLocalFirstUrl(src, undefined, (cached) => {
+              if (cached) {
+                memoryCache.set(src, cached);
+                // Update any components still listening for this URL
+                if (!cancelled) {
+                  setLocalOverrideSrc(cached);
+                }
+              }
+            });
+            
+            if (local) {
+              memoryCache.set(src, local);
+              return local;
+            }
+          } catch (error) {
+            console.warn('Local cache resolution failed:', error);
+          } finally {
+            pendingResolves.delete(src);
+          }
+          return null;
+        })();
+        
+        pendingResolves.set(src, resolvePromise);
+        
+        const result = await resolvePromise;
+        if (result && !cancelled) {
+          setLocalOverrideSrc(result);
         }
       } catch (error) {
         console.warn('Local cache resolution failed:', error);
       }
     };
-    resolveLocal();
+    
+    // Run resolution in background to avoid blocking initial render
+    setTimeout(resolveLocal, 0);
     return () => { cancelled = true; };
   }, [src, useLocalCache, offline]);
 

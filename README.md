@@ -230,11 +230,10 @@ Save other users' posts
 
 share doesn't create a proper link that can be clicked
 
-Whatsapp actual image on the share
+Remove tacky icons on share
 
 
 
-Listsview should allow tos ort by ranking or by recent.. default recent
 
 
 Sign on when slow inernet, it does loading screen then login then it logs in and goes to the feed

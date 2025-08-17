@@ -525,12 +525,16 @@ export const useLists = (userId) => {
           is_public: item.is_public
         };
         
-        console.log('🏆 [useLists] Starting synchronous achievement check with context:', JSON.stringify(context, null, 2));
-        const newAchievements = await checkAchievements('item_saved', context);
-        console.log('🏆 [useLists] Item saved achievements result:', newAchievements);
-        
-        // Assign achievements to be returned
-        achievements = newAchievements || [];
+        // Only check achievements if online
+        if (navigator.onLine) {
+          console.log('🏆 [useLists] Starting synchronous achievement check with context:', JSON.stringify(context, null, 2));
+          const newAchievements = await checkAchievements('item_saved', context);
+          console.log('🏆 [useLists] Item saved achievements result:', newAchievements);
+          achievements = newAchievements || [];
+        } else {
+          console.log('📱 [useLists] Offline - skipping achievement check');
+          achievements = [];
+        }
 
         // 🌍 CRITICAL: If any global first achievements were awarded, fetch the updated item data
         const hasGlobalFirst = achievements.some(a => a.isGlobalFirst);
@@ -993,6 +997,82 @@ export const useLists = (userId) => {
     return Promise.resolve();
   };
 
+  // Function to add offline item to local cache
+  const addOfflineItemToCache = (listIds, item, isStayAway = false) => {
+    if (!listIds || listIds.length === 0) return;
+    
+    console.log('📱 [useLists] Adding offline item to local cache:', item.name);
+    
+    // Create the item with a temporary ID and offline flag
+    const offlineItem = {
+      ...item,
+      id: `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      is_stay_away: isStayAway,
+      pending_sync: true,
+      offline: true,
+      created_at: new Date().toISOString()
+    };
+    
+    // Add to each specified list
+    setLists(prevLists => {
+      return prevLists.map(list => {
+        if (listIds.includes(list.id)) {
+          const updatedItems = isStayAway ? 
+            [...(list.stayAways || []), offlineItem] : 
+            [...(list.items || []), offlineItem];
+          
+          return {
+            ...list,
+            ...(isStayAway ? { stayAways: updatedItems } : { items: updatedItems })
+          };
+        }
+        return list;
+      });
+    });
+    
+    return offlineItem.id;
+  };
+
+  // Function to update offline item in local cache
+  const updateOfflineItemInCache = (updatedItem) => {
+    if (!updatedItem?.id) return;
+    
+    console.log('📱 [useLists] Updating offline item in local cache:', updatedItem.name);
+    
+    const itemWithOfflineFlag = {
+      ...updatedItem,
+      pending_sync: true,
+      offline: true
+    };
+    
+    setLists(prevLists => {
+      return prevLists.map(list => {
+        // Update in items array
+        const updatedItems = (list.items || []).map(item => 
+          item.id === updatedItem.id ? itemWithOfflineFlag : item
+        );
+        
+        // Update in stayAways array
+        const updatedStayAways = (list.stayAways || []).map(item => 
+          item.id === updatedItem.id ? itemWithOfflineFlag : item
+        );
+        
+        // Check if any updates were made
+        const itemsChanged = updatedItems.some((item, index) => item !== (list.items || [])[index]);
+        const stayAwaysChanged = updatedStayAways.some((item, index) => item !== (list.stayAways || [])[index]);
+        
+        if (itemsChanged || stayAwaysChanged) {
+          return {
+            ...list,
+            items: updatedItems,
+            stayAways: updatedStayAways
+          };
+        }
+        return list;
+      });
+    });
+  };
+
   return {
     lists,
     loading,
@@ -1006,6 +1086,9 @@ export const useLists = (userId) => {
     loadRemainingLists,
     deleteList,
     updateList,
+    // Offline cache functions
+    addOfflineItemToCache,
+    updateOfflineItemInCache,
     // Retry state for UI feedback
     retryCount,
     connectionError,

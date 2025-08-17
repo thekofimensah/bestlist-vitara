@@ -48,12 +48,12 @@ export const RatingOverlay = ({
   // Animation sequence - optimized for speed
   useEffect(() => {
     if (isVisible) {
-      // Show sparkles first with faster timing
-      const sparklePositions = Array.from({ length: 6 }, (_, i) => ({
+      // Show sparkles with minimal delay
+      const sparklePositions = Array.from({ length: 4 }, (_, i) => ({ // Reduced from 6 to 4
         id: i,
         x: Math.random() * 100,
         y: Math.random() * 100,
-        delay: Math.random() * 0.15 // Reduced from 0.5 to 0.15
+        delay: Math.random() * 0.05 // Further reduced from 0.15 to 0.05
       }));
       setSparkles(sparklePositions);
       // Stars visible immediately for snappier UX

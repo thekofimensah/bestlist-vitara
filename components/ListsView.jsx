@@ -417,15 +417,41 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
+  const handleGalleryUpload = (listId) => {
+    // Create file input for gallery selection - single file only
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = false;
+    
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (file && onEditItem) {
+        // Find the target list
+        const targetList = lists?.find(list => list.id === listId);
+        if (targetList) {
+          // Create a mock item with the selected image for editing
+          const mockItem = {
+            id: `temp_${Date.now()}`,
+            name: '',
+            image: URL.createObjectURL(file),
+            imageFile: file, // Store the actual file for upload
+            listId: listId,
+            isNewItem: true
+          };
+          
+          // Open the AddItemModal for editing this new item
+          onEditItem(mockItem, targetList);
+        }
+      }
+    };
+    
+    input.click();
+  };
+
   const handleAddItem = (listId) => {
-    // Go to main screen (camera/home) when adding a new item from overview
-    if (typeof onNavigateToCamera === 'function') {
-      onNavigateToCamera(listId);
-      return;
-    }
-    // Fallback: navigate to list detail
-    const targetList = lists?.find(list => list.id === listId);
-    if (targetList && typeof onSelectList === 'function') onSelectList(targetList);
+    // Open gallery upload modal instead of navigating to camera
+    handleGalleryUpload(listId);
   };
 
   const handleListMenu = (list, event) => {

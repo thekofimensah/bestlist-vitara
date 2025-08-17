@@ -16,7 +16,30 @@ import { ProfileGridSkeleton, AchievementsSkeleton } from './ui/SkeletonLoader';
 import { useProfilePosts } from '../hooks/useOptimizedFeed';
 import { uploadImageToStorage } from '../lib/imageStorage';
 import { saveAvatarUrl, getAvatarUrl, saveBasicProfile, getBasicProfile } from '../lib/localUserCache';
+import { Preferences } from '@capacitor/preferences';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
+import useUserStats from '../hooks/useUserStats';
+
+// Helper functions for caching social counts
+const SOCIAL_COUNTS_KEY = (userId) => `social_counts_${userId}`;
+
+const saveSocialCounts = async (userId, counts) => {
+  if (!userId || !counts) return;
+  try {
+    await Preferences.set({ 
+      key: SOCIAL_COUNTS_KEY(userId), 
+      value: JSON.stringify(counts) 
+    });
+  } catch (_) {}
+};
+
+const getSocialCounts = async (userId) => {
+  if (!userId) return null;
+  try {
+    const { value } = await Preferences.get({ key: SOCIAL_COUNTS_KEY(userId) });
+    return value ? JSON.parse(value) : null;
+  } catch (_) { return null; }
+};
 
 /* Smaller, quieter stat pill used in "Additional Info" */
 const StatCard = ({ icon, value, label }) => (
@@ -62,10 +85,30 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     refresh: refreshPosts 
   } = useProfilePosts(user?.id);
   
-  const [postsCount, setPostsCount] = useState(null);
+  // Use the optimized stats hook for posts count (from profile_stats table)
+  const { stats: userStats, loading: statsLoading, refreshStats } = useUserStats(user?.id);
+  
+  // Separate state for followers/following counts (not in profile_stats table)
   const [followersCount, setFollowersCount] = useState(null);
   const [followingCount, setFollowingCount] = useState(null);
-  const [countsLoading, setCountsLoading] = useState(true);
+  const [socialCountsLoading, setSocialCountsLoading] = useState(true);
+  
+  // Extract posts count from userStats
+  const postsCount = userStats?.totalItems || 0;
+  const countsLoading = statsLoading || socialCountsLoading;
+  
+  // Debug logging for stats
+  useEffect(() => {
+    console.log('📊 [ProfileView] Stats updated:', {
+      userStats,
+      statsLoading,
+      postsCount,
+      followersCount,
+      followingCount,
+      socialCountsLoading,
+      countsLoading
+    });
+  }, [userStats, statsLoading, postsCount, followersCount, followingCount, socialCountsLoading, countsLoading]);
 
   // Followers/Following list views
   const [showFollowers, setShowFollowers] = useState(false);
@@ -79,10 +122,31 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const [showAchievementModal, setShowAchievementModal] = useState(false);
   const fileInputRef = React.useRef(null);
 
+  // Function to refresh all profile data
+  const refreshProfileData = async () => {
+    console.log('🔄 [ProfileView] Refreshing all profile data...');
+    
+    // Refresh stats (posts count, etc.)
+    if (refreshStats) {
+      await refreshStats();
+    }
+    
+    // Refresh posts
+    if (refreshPosts) {
+      await refreshPosts();
+    }
+    
+    // Refresh social counts
+    await loadSocialCounts(true);
+    
+    console.log('✅ [ProfileView] Profile data refresh completed');
+  };
+
   // Expose imperative API to open/close settings from parent
   useImperativeHandle(ref, () => ({
     openSettings: () => setShowSettings(true),
     closeSettings: () => setShowSettings(false),
+    refresh: refreshProfileData,
   }));
 
   // Initialize basic profile and avatar from local cache for instant display
@@ -165,21 +229,72 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const handleAvatarFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !user?.id) return;
+    
+    console.log('📷 [Avatar] Starting upload for user:', user.id);
+    
     try {
       const upload = await uploadImageToStorage(file, user.id);
-      if (upload?.error || !upload?.url) return;
-      await Promise.all([
-        supabase.from('profiles').update({ avatar_url: upload.url }).eq('id', user.id),
-        supabase.from('users').update({ avatar_url: upload.url }).eq('id', user.id)
+      console.log('📷 [Avatar] Upload result:', upload);
+      
+      if (upload?.error || !upload?.url) {
+        console.error('📷 [Avatar] Upload failed:', upload?.error);
+        return;
+      }
+      
+      console.log('📷 [Avatar] Updating database with URL:', upload.url);
+      
+      // Update both tables - profiles (main) and users (metadata)
+      const [profileResult, usersResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .update({ avatar_url: upload.url })
+          .eq('id', user.id),
+        supabase
+          .from('users')
+          .update({ avatar_url: upload.url })
+          .eq('id', user.id)
       ]);
+      
+      if (profileResult.error) {
+        console.error('📷 [Avatar] Failed to update profiles table:', profileResult.error);
+      } else {
+        console.log('📷 [Avatar] Successfully updated profiles table');
+      }
+      
+      if (usersResult.error) {
+        console.error('📷 [Avatar] Failed to update users table:', usersResult.error);
+      } else {
+        console.log('📷 [Avatar] Successfully updated users table');
+      }
+      
+      // Also try to update auth user metadata for consistency
+      try {
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { avatar_url: upload.url }
+        });
+        
+        if (authError) {
+          console.warn('📷 [Avatar] Could not update auth user metadata (this is okay):', authError);
+        } else {
+          console.log('📷 [Avatar] Successfully updated auth user metadata');
+        }
+      } catch (authErr) {
+        console.warn('📷 [Avatar] Auth update not supported (this is okay):', authErr);
+      }
+      
       // Optimistically reflect change without full reload
       setAvatarUrl(upload.url);
+      console.log('📷 [Avatar] UI updated with new avatar URL');
+      
       // Cache locally for offline use
       await saveAvatarUrl(user.id, upload.url);
+      console.log('📷 [Avatar] Cached locally for offline use');
+      
       // reset input so selecting the same file again triggers change
       if (e.target) e.target.value = '';
+      
     } catch (err) {
-      console.error('Avatar upload error', err);
+      console.error('📷 [Avatar] Upload error:', err);
     }
   };
 
@@ -194,7 +309,53 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
 
 
 
-  /* Load achievements and counts */
+  // Function to load social counts with caching
+  const loadSocialCounts = async (forceRefresh = false) => {
+    if (!user?.id) return;
+    
+    try {
+      setSocialCountsLoading(true);
+      
+      // Try to load from cache first (unless forcing refresh)
+      if (!forceRefresh) {
+        const cached = await getSocialCounts(user.id);
+        if (cached) {
+          setFollowersCount(cached.followersCount || 0);
+          setFollowingCount(cached.followingCount || 0);
+          setSocialCountsLoading(false);
+          
+          // Load fresh data in background
+          setTimeout(() => loadSocialCounts(true), 100);
+          return;
+        }
+      }
+      
+      // Load fresh data from server
+      const [followersRes, followingRes] = await Promise.all([
+        getUserFollowers(user.id),
+        getUserFollowing(user.id)
+      ]);
+
+      const newCounts = {
+        followersCount: followersRes.data?.length || 0,
+        followingCount: followingRes.data?.length || 0
+      };
+      
+      setFollowersCount(newCounts.followersCount);
+      setFollowingCount(newCounts.followingCount);
+      
+      // Cache the results
+      await saveSocialCounts(user.id, newCounts);
+      
+      console.log('📊 [ProfileView] Social stats loaded - Followers:', newCounts.followersCount, 'Following:', newCounts.followingCount);
+    } catch (e) {
+      console.error('Error loading social counts:', e);
+    } finally {
+      setSocialCountsLoading(false);
+    }
+  };
+
+  /* Load achievements */
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -205,38 +366,19 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
       } finally {
         if (alive) setAchievementsLoading(false);
       }
-
-      try {
-        if (!user?.id) {
-          // Do not flip off skeleton until we have a user id
-          return;
-        }
-        setCountsLoading(true);
-        if (user?.id) {
-          const [followersRes, followingRes, postsCountRes] = await Promise.all([
-            getUserFollowers(user.id),
-            getUserFollowing(user.id),
-            supabase.from('posts').select('items!inner(id)', { count: 'exact', head: true }).eq('user_id', user.id),
-          ]);
-
-          if (alive) {
-            setFollowersCount(followersRes.data?.length || 0);
-            setFollowingCount(followingRes.data?.length || 0);
-            setPostsCount(postsCountRes?.count || 0);
-            
-            // Basic logging for debugging
-            console.log('📊 [ProfileView] Profile stats loaded - Items:', postsCountRes?.count || 0);
-          }
-        }
-      } catch (e) {
-        console.error('Error loading profile counts:', e);
-      } finally {
-        if (alive) setCountsLoading(false);
-      }
     };
-    load();
+    if (user?.id) {
+      load();
+    }
     return () => { alive = false; };
   }, [user?.id, getUserAchievements]);
+
+  /* Load social counts */
+  useEffect(() => {
+    if (user?.id) {
+      loadSocialCounts();
+    }
+  }, [user?.id]);
 
   // Infinite scroll is now handled by useProfilePosts hook
 
@@ -500,6 +642,8 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       alt={post.items?.name || 'Item'}
                       className="w-full aspect-square object-cover rounded-xl"
                       priority={index < 6 ? 'high' : 'normal'} // First 6 images get high priority
+                      useLocalCache={true} // Enable local caching for offline access
+                      postId={post.items?.id}
                       viewType="profile"
                       onLoadStateChange={(loadState) => {
                         // Debug log for ProfileView images

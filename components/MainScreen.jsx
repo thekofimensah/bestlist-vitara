@@ -370,12 +370,24 @@ const MainScreen = React.forwardRef(({
     }
   };
 
+  // Track camera startup to prevent multiple simultaneous requests
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
+
   const startCamera = async (mode = 'environment') => {
-    setVideoReady(false);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+    // Prevent multiple simultaneous camera starts
+    if (isCameraStarting) {
+      console.log('📷 [MainScreen] Camera start already in progress, skipping...');
+      return;
     }
+
+    setIsCameraStarting(true);
+    setVideoReady(false);
+    
     try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
       const constraints = {
         video: {
           facingMode: { exact: mode },
@@ -439,8 +451,11 @@ const MainScreen = React.forwardRef(({
         }
         setError(null);
       } catch (err2) {
+        console.error('📷 [MainScreen] Camera access failed:', err2);
         setError('Camera access denied or unavailable');
       }
+    } finally {
+      setIsCameraStarting(false);
     }
   };
 
@@ -647,6 +662,19 @@ const MainScreen = React.forwardRef(({
           console.log('✅ [Camera] Image uploaded successfully');
           console.log('📸 [Camera] Image URL:', uploadResult.url);
           console.log('📸 [Camera] Thumbnail URL:', uploadResult.thumbnailUrl);
+          
+          // Immediately cache the uploaded image for offline access
+          try {
+            const { cacheRemoteImage } = await import('../lib/localImageCache');
+            // Cache in background - don't wait for this to complete
+            cacheRemoteImage(uploadResult.url, user.id).then(() => {
+              console.log('📦 [Camera] Image cached locally for offline access');
+            }).catch(cacheError => {
+              console.warn('⚠️ [Camera] Failed to cache image locally:', cacheError);
+            });
+          } catch (importError) {
+            console.warn('⚠️ [Camera] Failed to import cache functions:', importError);
+          }
           
           // Update captured image with storage URLs
           setCapturedImage(prev => ({
@@ -947,6 +975,19 @@ const MainScreen = React.forwardRef(({
               }
               
               console.log('✅ [Gallery] Image uploaded successfully');
+              
+              // Immediately cache the uploaded image for offline access
+              try {
+                const { cacheRemoteImage } = await import('../lib/localImageCache');
+                // Cache in background - don't wait for this to complete
+                cacheRemoteImage(uploadResult.url, user.id).then(() => {
+                  console.log('📦 [Gallery] Image cached locally for offline access');
+                }).catch(cacheError => {
+                  console.warn('⚠️ [Gallery] Failed to cache image locally:', cacheError);
+                });
+              } catch (importError) {
+                console.warn('⚠️ [Gallery] Failed to import cache functions:', importError);
+              }
               
               // Update captured image with storage URLs
               setCapturedImage(prev => ({

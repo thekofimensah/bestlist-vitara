@@ -36,29 +36,58 @@ const uploadToStorage = async (file: File, filename: string): Promise<string> =>
   }
 };
 
-// Add this function to check camera availability
+// Add this function to check camera availability with duplicate request protection
+let isRequestingPermissions = false;
+
 const checkCameraAvailability = async () => {
   try {
-    const { camera } = await Camera.checkPermissions();
-    if (camera === 'prompt') {
-      const { camera: newPermission } = await Camera.requestPermissions();
-      return newPermission === 'granted';
+    // Prevent duplicate permission requests
+    if (isRequestingPermissions) {
+      console.log('📷 [Camera] Permission request already in progress, waiting...');
+      return false;
     }
-    return camera === 'granted';
+
+    const { camera } = await Camera.checkPermissions();
+    console.log('📷 [Camera] Current permission status:', camera);
+    
+    if (camera === 'granted') {
+      return true;
+    }
+    
+    if (camera === 'prompt') {
+      // Set flag to prevent duplicate requests
+      isRequestingPermissions = true;
+      
+      try {
+        console.log('📷 [Camera] Requesting camera permissions...');
+        const { camera: newPermission } = await Camera.requestPermissions();
+        console.log('📷 [Camera] Permission request result:', newPermission);
+        return newPermission === 'granted';
+      } finally {
+        // Always reset the flag
+        isRequestingPermissions = false;
+      }
+    }
+    
+    // Permission denied
+    console.log('📷 [Camera] Permission denied or unavailable');
+    return false;
   } catch (error) {
-    console.error('Error checking camera permissions:', error);
+    console.error('📷 [Camera] Error checking camera permissions:', error);
+    isRequestingPermissions = false; // Reset flag on error
     return false;
   }
 };
 
 export const takeAndUploadPhoto = async () => {
   try {
-    // Check camera availability first
+    // Check camera availability first with duplicate protection
     const hasCamera = await checkCameraAvailability();
     if (!hasCamera) {
       throw new Error('Camera permission not granted or camera not available');
     }
 
+    console.log('📷 [Camera] Taking photo...');
     const image = await Camera.getPhoto({
       resultType: CameraResultType.Uri,
       source: CameraSource.Camera,
@@ -71,32 +100,49 @@ export const takeAndUploadPhoto = async () => {
       throw new Error('No image captured');
     }
 
+    console.log('📷 [Camera] Photo captured, processing...');
+    
+    // Handle offline gracefully
+    const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (isOffline) {
+      console.log('📷 [Camera] Device is offline, storing locally only');
+    }
+
     const blob = await fetch(image.webPath).then(res => res.blob());
     const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-    console.log('Original file size:', file.size, 'bytes');
+    console.log('📷 [Camera] Original file size:', file.size, 'bytes');
 
     const compressed = await imageCompression(file, {
       maxSizeMB: 0.8,
       maxWidthOrHeight: 1280
     });
-    console.log('Compressed file size:', compressed.size, 'bytes');
+    console.log('📷 [Camera] Compressed file size:', compressed.size, 'bytes');
 
     const base64 = await imageCompression.getDataUrlFromFile(compressed);
-    console.log('Base64 string length:', base64.length);
+    console.log('📷 [Camera] Base64 string length:', base64.length);
 
     const filename = `photo_${Date.now()}.jpeg`;
 
+    // Always save locally first
     await writeFile(filename, base64);
+    console.log('📷 [Camera] Saved locally as:', filename);
     
-    try {
-      const publicUrl = await uploadToStorage(compressed, filename);
-      return publicUrl;
-    } catch (error) {
-      console.warn('Storage upload failed, using local file:', error);
+    // Try to upload to storage if online
+    if (!isOffline) {
+      try {
+        const publicUrl = await uploadToStorage(compressed, filename);
+        console.log('📷 [Camera] Uploaded to storage:', publicUrl);
+        return publicUrl;
+      } catch (error) {
+        console.warn('📷 [Camera] Storage upload failed, using local file:', error);
+        return image.webPath;
+      }
+    } else {
+      console.log('📷 [Camera] Offline mode - returning local path');
       return image.webPath;
     }
   } catch (err) {
-    console.error('Camera error:', JSON.stringify({
+    console.error('📷 [Camera] Error:', JSON.stringify({
       message: err.message,
       name: err.name,
       details: err.details,
@@ -104,6 +150,12 @@ export const takeAndUploadPhoto = async () => {
       code: err.code,
       fullError: err
     }, null, 2));
+    
+    // Reset permission flag if it was a permission error
+    if (err.message?.includes('permission') || err.message?.includes('Permission')) {
+      isRequestingPermissions = false;
+    }
+    
     throw err; // Re-throw the error to handle it in the UI
   }
 };

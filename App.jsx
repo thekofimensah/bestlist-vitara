@@ -28,6 +28,7 @@ import useUserTracking from './hooks/useUserTracking';
 import usePendingAchievements from './hooks/usePendingAchievements';
 import useUserStats from './hooks/useUserStats';
 import { updateFeedPosts } from './hooks/useOptimizedFeed';
+import { useOfflineQueue } from './hooks/useOfflineQueue';
 
 // Helper function to format post data from database (moved from MainScreen)
   const formatPostForDisplay = (post) => {
@@ -186,6 +187,15 @@ const App = () => {
   
   // User stats hook 
   const { stats: userStats, loading: statsLoading } = useUserStats(user?.id);
+  
+  // Offline queue hook
+  const { 
+    queueStatus, 
+    queueCreateItem, 
+    queueUpdateItem,
+    sync: syncOfflineQueue,
+    clearQueue
+  } = useOfflineQueue();
   const [currentScreen, setCurrentScreen] = useState('home');
   const [previousScreen, setPreviousScreen] = useState(null);
   const [selectedList, setSelectedList] = useState(null);
@@ -1047,14 +1057,25 @@ const App = () => {
                 setUser(currentUser);
               }
               
-              // Refresh data if user is logged in
-              if (user) {
-                // Refresh lists with retry
-                await retryNetworkRequest(() => refreshLists(false));
-                
-                // Refresh feed using optimized hook
-                await refreshFeed();
+                          // Refresh data if user is logged in
+            if (user) {
+              // Sync offline queue when coming back online
+              if (queueStatus.pendingItems > 0) {
+                console.log('📱 [Sync] App resumed with pending items, starting sync...');
+                try {
+                  await syncOfflineQueue();
+                  console.log('✅ [Sync] Offline queue synced successfully');
+                } catch (syncError) {
+                  console.error('❌ [Sync] Failed to sync offline queue:', syncError);
+                }
               }
+              
+              // Refresh lists with retry
+              await retryNetworkRequest(() => refreshLists(false));
+              
+              // Refresh feed using optimized hook
+              await refreshFeed();
+            }
               
               // Restart camera if on main screen
               if (currentScreen === 'home' && mainScreenRef.current) {
@@ -1109,6 +1130,32 @@ const App = () => {
         ...item,
         is_stay_away: isStayAway
       };
+      
+      // Check if we're offline
+      if (!queueStatus.isOnline) {
+        console.log('📱 [Offline] Queueing item for later sync:', itemData.name);
+        
+        // Queue the item for offline sync
+        const queueId = await queueCreateItem({
+          selectedListIds,
+          itemData,
+          isStayAway
+        });
+        
+        console.log('📱 [Offline] Item queued with ID:', queueId);
+        
+        // Return a mock result for offline mode
+        return {
+          data: {
+            id: `offline_${queueId}`,
+            ...itemData,
+            pending_sync: true
+          },
+          achievements: [],
+          error: null
+        };
+      }
+      
       console.log('🔧 Calling addItemToList with selectedListIds array:', selectedListIds);
       const result = await addItemToList(selectedListIds, itemData, isStayAway);
       console.log('✅ addItemToList completed successfully');
@@ -1122,13 +1169,44 @@ const App = () => {
       return result; // Return the full result object including achievements
     } catch (error) {
       console.error('❌ Error in handleAddItem:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message || 'Unknown error',
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
+      
+      // If we're online but got an error, it might be a network issue
+      // Queue for offline sync as fallback
+      if (queueStatus.isOnline && (error.message?.includes('network') || error.message?.includes('fetch'))) {
+        console.log('📱 [Network Error] Queueing item for later sync due to network error');
+        try {
+          const queueId = await queueCreateItem({
+            selectedListIds,
+            itemData: {
+              ...item,
+              is_stay_away: isStayAway
+            },
+            isStayAway
+          });
+          
+          // Return a pending result
+          return {
+            data: {
+              id: `offline_${queueId}`,
+              ...item,
+              is_stay_away: isStayAway,
+              pending_sync: true
+            },
+            achievements: [],
+            error: null
+          };
+        } catch (queueError) {
+          console.error('Failed to queue item:', queueError);
+        }
+      }
+      
       throw error;
     } finally {
       setImagesLoading(false);
@@ -1151,6 +1229,25 @@ const App = () => {
     setEditingItem(null); // Close modal immediately for instant feedback
     
     try {
+      // Check if we're offline
+      if (!queueStatus.isOnline) {
+        console.log('📱 [Offline] Queueing item update for later sync:', item.name);
+        
+        // Queue the update for offline sync
+        const queueId = await queueUpdateItem(item);
+        
+        console.log('📱 [Offline] Item update queued with ID:', queueId);
+        
+        // Return a mock result for offline mode
+        return {
+          data: {
+            ...item,
+            pending_sync: true
+          },
+          error: null
+        };
+      }
+      
       // For updates, we don't need to specify listIds since we're updating by item ID
       // The item should contain its current list_id already
       const result = await updateItemInList([], item); // Empty array for listIds since we're updating existing item
@@ -1160,13 +1257,33 @@ const App = () => {
       return result; // Return the full result object
     } catch (error) {
       console.error('❌ Item update failed:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message || 'Unknown error',
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
+      
+      // If we're online but got an error, queue for offline sync as fallback
+      if (queueStatus.isOnline && (error.message?.includes('network') || error.message?.includes('fetch'))) {
+        console.log('📱 [Network Error] Queueing item update for later sync due to network error');
+        try {
+          const queueId = await queueUpdateItem(item);
+          
+          // Return a pending result
+          return {
+            data: {
+              ...item,
+              pending_sync: true
+            },
+            error: null
+          };
+        } catch (queueError) {
+          console.error('Failed to queue item update:', queueError);
+        }
+      }
+      
       // Could show a toast notification here for failed updates
     }
     
@@ -1287,9 +1404,17 @@ const App = () => {
     setRefreshing(true);
     
     try {
-      // Refresh profile data (in a real app, this would fetch updated stats)
-      // For now, just simulate a refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('🔄 [App] Starting profile refresh...');
+      
+      // Call ProfileView's refresh function if available
+      if (profileViewRef.current?.refresh) {
+        await profileViewRef.current.refresh();
+      } else {
+        // Fallback: just wait a bit
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      console.log('✅ [App] Profile refresh completed');
       
     } catch (error) {
       console.error('❌ Profile refresh error:', JSON.stringify({
@@ -1654,6 +1779,31 @@ const App = () => {
               <span className="text-white text-xs font-bold">b</span>
             </div>
             <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
+            
+            {/* Offline Status Indicator */}
+            {!queueStatus.isOnline && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 rounded-full">
+                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                <span className="text-xs font-medium text-orange-700">Offline</span>
+              </div>
+            )}
+            
+            {/* Sync Status Indicator */}
+            {queueStatus.pendingItems > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 rounded-full">
+                {queueStatus.isSyncing ? (
+                  <>
+                    <div className="w-2 h-2 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-xs font-medium text-blue-700">Syncing</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {currentScreen === 'profile' ? (

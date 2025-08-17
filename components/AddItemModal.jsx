@@ -1027,14 +1027,6 @@ const AddItemModal = ({
     setIsSaving(true);
     console.log('🔍 Starting save operation...');
     
-    console.log('🔍 Validation passed, proceeding with save');
-    console.log('🔍 selectedLists:', selectedLists);
-    console.log('🔍 selectedLists type:', typeof selectedLists);
-    console.log('🔍 selectedLists isArray:', Array.isArray(selectedLists));
-    console.log('🔍 selectedLists JSON:', JSON.stringify(selectedLists));
-    console.log('🔍 rating:', rating);
-    console.log('🔍 selectedLists.length:', selectedLists.length);
-    
     const isStayAway = rating <= 2;
     const newItem = buildItem({
       // Preserve item ID if editing
@@ -1080,121 +1072,71 @@ const AddItemModal = ({
       latitude: selectedPlaceCoords?.lat ?? photoMetadata?.latitude,
       longitude: selectedPlaceCoords?.lng ?? photoMetadata?.longitude
     });
-    console.log('🔍 Built item:', newItem);
-    console.log('🔍 Built item JSON:', JSON.stringify(newItem, null, 2));
-    console.log('🔍 Calling onSave with:', selectedLists, newItem, isStayAway);
-    console.log('🔍 onSave parameters JSON:', JSON.stringify({
-      selectedLists,
-      newItem,
-      isStayAway
-    }, null, 2));
     
     try {
-      // Save the item first
+      // FAST SAVE: Only wait for core item save
       const saveResult = await onSave(selectedLists, newItem, isStayAway);
-      const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
+      const savedItem = saveResult?.data || saveResult;
       
-      // 🏆 Check for "First in World" achievements (non-blocking)
-      console.log('🏆 [AddItemModal] Save result:', saveResult);
-      console.log('🏆 [AddItemModal] Save result achievements:', saveResult?.achievements);
-      console.log('🏆 [AddItemModal] Save result data:', saveResult?.data);
+      console.log('✅ Core save completed successfully');
       
-      let hasFirstInWorldAchievement = false;
-      if (saveResult?.achievements && Array.isArray(saveResult.achievements)) {
-        console.log('🏆 [AddItemModal] Achievements array length:', saveResult.achievements.length);
-        console.log('🏆 [AddItemModal] All achievements:', saveResult.achievements);
-        
+      // CHECK: If this is a first-in-world achievement, show it briefly
+      const hasFirstInWorldAchievement = saveResult?.achievements?.some(a => a.isGlobalFirst);
+      
+      if (hasFirstInWorldAchievement) {
+        console.log('🏆 [Fast Save] First in world achievement detected');
         const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
-        console.log('🏆 [AddItemModal] Global first achievement found:', globalFirstAchievement);
-        
-        if (globalFirstAchievement) {
-          hasFirstInWorldAchievement = true;
-          // Set the achievement state immediately
-          console.log('🏆 [AddItemModal] Setting first in world achievement:', globalFirstAchievement);
           setFirstInWorldProduct(productName || newItem.name || 'this item');
           setFirstInWorldAchievement(globalFirstAchievement);
+        
+        // Show for 2 seconds then close
+        setTimeout(() => {
+          setIsSaving(false);
+          if (isBulk && onNext) onNext();
+          else onClose();
+        }, 2000);
         } else {
-          console.log('🏆 [AddItemModal] No global first achievement found in array');
-        }
-      } else {
-        console.log('🏆 [AddItemModal] No achievements array or empty array');
+        // IMMEDIATE CLOSE: No special achievement, close right away
+        setIsSaving(false);
+        if (isBulk && onNext) onNext();
+        else onClose();
       }
       
-      // Create public post if item is public and not editing existing item
+      // BACKGROUND OPERATIONS: Don't wait for these
       if (isPublic && !item?.id && savedItem) {
-        try {
-          console.log('🔍 Creating public post for item:', savedItem.id);
-          const { data: postRow, error: postError } = await createPost(savedItem.id, selectedLists[0], true, location);
-          if (postError) throw postError;
-          console.log('✅ Public post created successfully');
+        handleBackgroundOperations(savedItem, selectedLists[0], location);
+      }
+      
+    } catch (error) {
+      console.error('❌ Save operation failed:', error);
+      alert('Failed to save item. Please try again.');
+      setIsSaving(false);
+    }
+  };
 
-          // Prepend to profile cache for instant UI update
+  // Handle background operations without blocking UI
+  const handleBackgroundOperations = async (savedItem, listId, location) => {
+    try {
+      console.log('🔄 [Background] Creating public post...');
+      const { data: postRow, error: postError } = await createPost(savedItem.id, listId, true, location);
+          if (postError) throw postError;
+
+      // Update profile cache in background
           try {
             const { data: { user } } = await supabase.auth.getUser();
             const newPost = {
               id: postRow?.id,
               user_id: user?.id,
               items: savedItem,
-              lists: { id: selectedLists[0], name: (lists || []).find(l => l.id === selectedLists[0])?.name || '' }
+          lists: { id: listId, name: (lists || []).find(l => l.id === listId)?.name || '' }
             };
             prependProfilePost(user?.id, newPost);
-            console.log('✅ Prepended new post to profile cache');
-          } catch (prependErr) {
-            console.log('⚠️ Failed to prepend to profile cache (non-fatal):', prependErr?.message || prependErr);
+        console.log('✅ [Background] Profile cache updated');
+      } catch (cacheErr) {
+        console.log('⚠️ [Background] Profile cache update failed (non-fatal)');
           }
         } catch (postError) {
-          console.error('❌ Failed to create public post:', JSON.stringify({
-          message: postError.message,
-          name: postError.name,
-          details: postError.details,
-          hint: postError.hint,
-          code: postError.code,
-          fullError: postError
-        }, null, 2));
-          // Don't block the flow if post creation fails
-        }
-      }
-      
-      console.log('✅ Save operation completed successfully');
-      
-      // If first-in-world achievement was awarded, delay closing to show the effect
-      if (hasFirstInWorldAchievement) {
-        console.log('🏆 [AddItemModal] First in world achievement awarded - delaying close to show effect');
-        // Start countdown
-        setAutoCloseCountdown(3);
-        const countdownInterval = setInterval(() => {
-          setAutoCloseCountdown(prev => {
-            if (prev <= 1) {
-              clearInterval(countdownInterval);
-              // Reset saving state before closing
-              setIsSaving(false);
-              if (isBulk && onNext) onNext();
-              else onClose();
-              return null;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      } else {
-        // No achievement, reset saving state and close immediately
-        setIsSaving(false);
-        if (isBulk && onNext) onNext();
-        else onClose();
-      }
-      
-    } catch (error) {
-      console.error('❌ Save operation failed:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-      // Show error to user (you might want to add a toast notification here)
-      alert('Failed to save item. Please try again.');
-      // Reset saving state on error
-      setIsSaving(false);
+      console.log('⚠️ [Background] Post creation failed (non-fatal)');
     }
   };
 
@@ -2171,7 +2113,7 @@ const AddItemModal = ({
                     spellCheck="true"
                   />
                   {showPlaceSearch && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-50">
+                                            <div className="absolute left-0 right-0 top-full mt-1 z-50">
                       <div className="bg-white rounded-lg shadow-xl border border-gray-200">
                         {/* Header */}
                         <div className="p-2 border-b border-gray-100 flex items-center">

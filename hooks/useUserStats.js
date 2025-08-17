@@ -17,6 +17,12 @@ const useUserStats = (userId) => {
     avgRating: 0
   });
   const [loading, setLoading] = useState(true);
+  
+  // Retry logic for realtime subscriptions
+  const [subscriptionRetryCount, setSubscriptionRetryCount] = useState(0);
+  const [lastSubscriptionAttempt, setLastSubscriptionAttempt] = useState(0);
+  const MAX_SUBSCRIPTION_RETRIES = 3;
+  const SUBSCRIPTION_RETRY_DELAY = 5000; // 5 seconds
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -36,18 +42,22 @@ const useUserStats = (userId) => {
         console.log('🔍 [useUserStats] Fetching stats for user:', userId);
         // If offline or app inactive, serve from local cache and exit
         if ((typeof navigator !== 'undefined' && navigator.onLine === false) || !isAppActive()) {
+          console.log('🔍 [useUserStats] App offline or inactive, using local cache');
           const local = await getStatsLocal(userId);
           if (local) setStats(local);
           setLoading(false);
           return;
         }
         
+        console.log('🔍 [useUserStats] Querying profile_stats table...');
         // Simple, fast query - just one row from profile_stats
         const { data, error } = await supabase
           .from('profile_stats')
           .select('*')
           .eq('user_id', userId)
           .single();
+          
+        console.log('🔍 [useUserStats] Query result:', { data, error });
 
         if (error) {
           // If no stats row exists, create one
@@ -100,36 +110,33 @@ const useUserStats = (userId) => {
             throw error;
           }
         } else {
-          setStats({
+          const newStats = {
             photosTaken: data.photos_taken || 0,
             listsCreated: data.lists_created || 0,
             uniqueIngredients: data.unique_ingredients || 0,
             likesReceived: data.likes_received || 0,
             totalItems: data.total_items || 0,
             avgRating: parseFloat(data.avg_rating) || 0
-          });
+          };
+          console.log('🔍 [useUserStats] Setting stats:', newStats);
+          setStats(newStats);
+          
           // Persist locally for offline use
-          await saveStatsLocal(userId, {
-            photosTaken: data.photos_taken || 0,
-            listsCreated: data.lists_created || 0,
-            uniqueIngredients: data.unique_ingredients || 0,
-            likesReceived: data.likes_received || 0,
-            totalItems: data.total_items || 0,
-            avgRating: parseFloat(data.avg_rating) || 0
-          });
+          await saveStatsLocal(userId, newStats);
         }
 
         console.log('✅ [useUserStats] Stats loaded successfully');
 
-        // Update cache
-        statsCache.set(userId, {
-          photosTaken: (error ? (data?.photos_taken || 0) : (data?.photos_taken || 0)),
-          listsCreated: (error ? (data?.lists_created || 0) : (data?.lists_created || 0)),
-          uniqueIngredients: (error ? (data?.unique_ingredients || 0) : (data?.unique_ingredients || 0)),
-          likesReceived: (error ? (data?.likes_received || 0) : (data?.likes_received || 0)),
-          totalItems: (error ? (data?.total_items || 0) : (data?.total_items || 0)),
-          avgRating: parseFloat(error ? (data?.avg_rating || 0) : (data?.avg_rating || 0))
-        });
+        // Update cache with current stats
+        const currentStats = {
+          photosTaken: data?.photos_taken || 0,
+          listsCreated: data?.lists_created || 0,
+          uniqueIngredients: data?.unique_ingredients || 0,
+          likesReceived: data?.likes_received || 0,
+          totalItems: data?.total_items || 0,
+          avgRating: parseFloat(data?.avg_rating || 0)
+        };
+        statsCache.set(userId, currentStats);
 
       } catch (err) {
         console.error('🚨 [useUserStats] Error fetching stats:', JSON.stringify({
@@ -146,19 +153,27 @@ const useUserStats = (userId) => {
       }
     };
 
-    // Serve from cache immediately if available; still set up subscription
+    // Serve from cache immediately if available, but always fetch fresh data
     const cached = statsCache.get(userId);
     if (cached) {
+      console.log('🔍 [useUserStats] Using cached stats, fetching fresh data in background');
       setStats(cached);
       setLoading(false);
+      // Still fetch fresh data in background
+      setTimeout(fetchStats, 100);
     } else {
       // Try local persisted cache first (for cold start offline)
       (async () => {
+        console.log('🔍 [useUserStats] No memory cache, checking local storage...');
         const local = await getStatsLocal(userId);
         if (local) {
+          console.log('🔍 [useUserStats] Using local storage cache, fetching fresh data');
           setStats(local);
           setLoading(false);
+          // Still fetch fresh data  
+          setTimeout(fetchStats, 100);
         } else {
+          console.log('🔍 [useUserStats] No cache found, fetching fresh data');
           // Initial fetch only if no cache
           fetchStats();
         }
@@ -181,14 +196,34 @@ const useUserStats = (userId) => {
         console.log('🔔 [useUserStats] Skipping subscription setup - app inactive');
         return;
       }
+      
+      // Check if we've exceeded retry limit
+      if (subscriptionRetryCount >= MAX_SUBSCRIPTION_RETRIES) {
+        console.log(`🔔 [useUserStats] Max subscription retries (${MAX_SUBSCRIPTION_RETRIES}) exceeded - giving up`);
+        setError('Realtime updates unavailable - stats will refresh manually');
+        return;
+      }
+      
+      // Implement exponential backoff
+      const now = Date.now();
+      const timeSinceLastAttempt = now - lastSubscriptionAttempt;
+      const minDelay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, subscriptionRetryCount);
+      
+      if (timeSinceLastAttempt < minDelay && subscriptionRetryCount > 0) {
+        console.log(`🔔 [useUserStats] Too soon to retry (${Math.round((minDelay - timeSinceLastAttempt) / 1000)}s remaining)`);
+        setTimeout(setupRealtimeSubscription, minDelay - timeSinceLastAttempt);
+        return;
+      }
+      
+      setLastSubscriptionAttempt(now);
 
       // Clean up existing subscription first
       cleanupSubscription();
       
-      console.log('🔔 [useUserStats] Setting up real-time subscription for user:', userId);
+      console.log(`🔔 [useUserStats] Setting up real-time subscription for user: ${userId} (attempt ${subscriptionRetryCount + 1})`);
       
       subscription = supabase
-        .channel(`user_stats_${userId}`)
+        .channel(`user_stats_${userId}_${now}`) // Unique channel name to avoid conflicts
         .on(
           'postgres_changes',
           { 
@@ -199,6 +234,10 @@ const useUserStats = (userId) => {
           },
           (payload) => {
             console.log('🔔 [useUserStats] Real-time stats update received:', payload);
+            
+            // Reset retry count on successful message
+            setSubscriptionRetryCount(0);
+            setError(null);
             
             if (payload.new) {
               setStats({
@@ -223,6 +262,31 @@ const useUserStats = (userId) => {
         )
         .subscribe((status) => {
           console.log('🔔 [useUserStats] Subscription status:', status);
+          
+          if (status === 'SUBSCRIBED') {
+            // Reset retry count on successful subscription
+            setSubscriptionRetryCount(0);
+            setError(null);
+          } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+            console.log(`🔔 [useUserStats] Subscription failed (${status}) - will retry if under limit`);
+            
+            // Increment retry count and attempt to reconnect
+            setSubscriptionRetryCount(prev => {
+              const newCount = prev + 1;
+              if (newCount < MAX_SUBSCRIPTION_RETRIES) {
+                const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
+                console.log(`🔔 [useUserStats] Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+                setTimeout(() => {
+                  if (!isAppActive()) return; // Don't retry if app went inactive
+                  setupRealtimeSubscription();
+                }, delay);
+              } else {
+                console.log('🔔 [useUserStats] Max retries exceeded - realtime updates disabled');
+                setError('Realtime updates unavailable - stats will refresh manually');
+              }
+              return newCount;
+            });
+          }
         });
     };
 
@@ -230,7 +294,10 @@ const useUserStats = (userId) => {
     const setupAppStateListener = () => {
       appStateHandler = () => {
         if (isAppActive()) {
-          console.log('🔔 [useUserStats] App became active - setting up subscription');
+          console.log('🔔 [useUserStats] App became active - resetting retry count and setting up subscription');
+          // Reset retry count when app becomes active to give users a fresh chance
+          setSubscriptionRetryCount(0);
+          setError(null);
           setupRealtimeSubscription();
         } else {
           console.log('🔔 [useUserStats] App became inactive - cleaning up subscription');
@@ -256,8 +323,21 @@ const useUserStats = (userId) => {
           }
         }, 2000);
         
+        // Additional cleanup on visibility change to prevent background requests
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'hidden') {
+            console.log('🔔 [useUserStats] App backgrounded - pausing interval');
+            clearInterval(intervalId);
+          }
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
         // Store cleanup function
-        appStateHandler.cleanup = () => clearInterval(intervalId);
+        appStateHandler.cleanup = () => {
+          clearInterval(intervalId);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
       }
     };
 
@@ -274,8 +354,7 @@ const useUserStats = (userId) => {
     };
   }, [userId]);
 
-  // No more manual refresh needed - stats update automatically via triggers!
-  // But keeping a simple refresh function for edge cases
+  // Manual refresh function with database recalculation
   const refreshStats = async () => {
     if (!userId) return;
     
@@ -283,22 +362,70 @@ const useUserStats = (userId) => {
     setLoading(true);
     
     try {
+      // First, try to recalculate stats in the database
+      console.log('🔄 [useUserStats] Recalculating stats in database...');
+      const { error: rpcError } = await supabase.rpc('ensure_profile_stats', { 
+        target_user_id: userId 
+      });
+      
+      if (rpcError) {
+        console.warn('⚠️ [useUserStats] RPC call failed, proceeding with direct query:', rpcError);
+      }
+      
+      // Now fetch the updated stats
       const { data, error } = await supabase
         .from('profile_stats')
         .select('*')
         .eq('user_id', userId)
         .single();
 
-      if (error) throw error;
-
-      setStats({
-        photosTaken: data.photos_taken || 0,
-        listsCreated: data.lists_created || 0,
-        uniqueIngredients: data.unique_ingredients || 0,
-        likesReceived: data.likes_received || 0,
-        totalItems: data.total_items || 0,
-        avgRating: parseFloat(data.avg_rating) || 0
-      });
+      if (error) {
+        // If no stats row exists, try to create one
+        if (error.code === 'PGRST116') {
+          console.log('🔧 [useUserStats] No stats row found, creating one...');
+          const { error: createError } = await supabase.rpc('ensure_profile_stats', { 
+            target_user_id: userId 
+          });
+          
+          if (createError) {
+            throw new Error(`Failed to create stats row: ${createError.message}`);
+          }
+          
+          // Try fetching again
+          const { data: newData, error: newError } = await supabase
+            .from('profile_stats')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+            
+          if (newError) throw newError;
+          
+          setStats({
+            photosTaken: newData.photos_taken || 0,
+            listsCreated: newData.lists_created || 0,
+            uniqueIngredients: newData.unique_ingredients || 0,
+            likesReceived: newData.likes_received || 0,
+            totalItems: newData.total_items || 0,
+            avgRating: parseFloat(newData.avg_rating) || 0
+          });
+        } else {
+          throw error;
+        }
+      } else {
+        setStats({
+          photosTaken: data.photos_taken || 0,
+          listsCreated: data.lists_created || 0,
+          uniqueIngredients: data.unique_ingredients || 0,
+          likesReceived: data.likes_received || 0,
+          totalItems: data.total_items || 0,
+          avgRating: parseFloat(data.avg_rating) || 0
+        });
+      }
+      
+      // Reset error state on successful refresh
+      setError(null);
+      console.log('✅ [useUserStats] Stats refreshed successfully');
+      
     } catch (err) {
       console.error('🚨 [useUserStats] Error refreshing stats:', JSON.stringify({
         message: err?.message || 'Unknown error',

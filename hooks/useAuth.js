@@ -1,26 +1,49 @@
 import { useState, useEffect } from 'react';
-import { supabase, getSessionOptimized, createUserProfile } from '../lib/supabase';
+import { supabase, getSessionOptimized, createUserProfile, getOfflineSession, signInOffline } from '../lib/supabase';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
   
 
   useEffect(() => {
-    // Optimized session restoration
+    // Optimized session restoration with offline fallback
     const initializeAuth = async () => {
       try {
-        // Use fast session restoration
+        // First try online session restoration
         const user = await getSessionOptimized();
-        setUser(user);
-        
-        // Load profile in background without blocking
         if (user) {
+          setUser(user);
+          setIsOffline(false);
+          
+          // Load profile in background without blocking
           fetchUserProfile(user.id); // Don't await - load in background
+          return;
         }
+        
+        // If no online session, try offline authentication
+        console.log('🔌 [useAuth] No online session, checking offline...');
+        const offlineResult = await signInOffline();
+        
+        if (offlineResult.data?.user) {
+          setUser(offlineResult.data.user);
+          setIsOffline(offlineResult.data.isOffline || false);
+          console.log('🔌 [useAuth] Using offline session for user:', offlineResult.data.user.id);
+          
+          // Try to load cached profile data
+          // Note: Full profile sync will happen when network is restored
+        } else {
+          console.log('🔌 [useAuth] No offline session available');
+          setUser(null);
+          setIsOffline(false);
+        }
+        
       } catch (error) {
         console.error('Error initializing auth:', error);
+        setUser(null);
+        setIsOffline(false);
       } finally {
         // Stop loading immediately to prevent UI blocking
         setLoading(false);
@@ -113,6 +136,7 @@ export const useAuth = () => {
     user,
     userProfile,
     loading,
+    isOffline,
     updateProfile,
     refetchProfile: () => user?.id ? fetchUserProfile(user.id) : null
   };

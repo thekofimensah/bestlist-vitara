@@ -19,6 +19,12 @@ export const useNotifications = (userId) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Retry logic for realtime subscriptions
+  const [subscriptionRetryCount, setSubscriptionRetryCount] = useState(0);
+  const [lastSubscriptionAttempt, setLastSubscriptionAttempt] = useState(0);
+  const MAX_SUBSCRIPTION_RETRIES = 3;
+  const SUBSCRIPTION_RETRY_DELAY = 5000; // 5 seconds
   const [ready, setReady] = useState(false);
 
   // Achievement-related notification types that should NOT appear in the bell
@@ -63,14 +69,36 @@ export const useNotifications = (userId) => {
         logToAndroid('🔔 Skipping notifications subscription setup - app inactive');
         return;
       }
+      
+      // Check if we've exceeded retry limit
+      if (subscriptionRetryCount >= MAX_SUBSCRIPTION_RETRIES) {
+        logToAndroid(`🔔 Max subscription retries (${MAX_SUBSCRIPTION_RETRIES}) exceeded - giving up`);
+        logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+        return;
+      }
+      
+      // Implement exponential backoff
+      const now = Date.now();
+      const timeSinceLastAttempt = now - lastSubscriptionAttempt;
+      const minDelay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, subscriptionRetryCount);
+      
+      if (timeSinceLastAttempt < minDelay && subscriptionRetryCount > 0) {
+        logToAndroid(`🔔 Too soon to retry (${Math.round((minDelay - timeSinceLastAttempt) / 1000)}s remaining)`);
+        setTimeout(setupSubscription, minDelay - timeSinceLastAttempt);
+        return;
+      }
+      
+      setLastSubscriptionAttempt(now);
 
       // Clean up existing subscription first
       cleanupSubscription();
 
       // Subscribe to new notifications (with error handling for Realtime)
       try {
+        logToAndroid(`🔔 Setting up notifications subscription (attempt ${subscriptionRetryCount + 1})`);
+        
         subscription = supabase
-          .channel(`notifications:${userId}`)
+          .channel(`notifications:${userId}_${now}`) // Unique channel name to avoid conflicts
           .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
@@ -78,6 +106,10 @@ export const useNotifications = (userId) => {
             filter: `user_id=eq.${userId}`
           }, (payload) => {
             logToAndroid('🔔 Received new notification:', payload.new);
+            
+            // Reset retry count on successful message
+            setSubscriptionRetryCount(0);
+            
             // Ignore achievement-related notifications in the bell
             if (payload?.new?.type && ACHIEVEMENT_TYPES.has(payload.new.type)) {
               logToAndroid('🔔 Ignoring achievement-type notification for bell:', payload.new.type);
@@ -90,18 +122,51 @@ export const useNotifications = (userId) => {
             setUnreadCount(prev => prev + 1);
           })
           .subscribe((status) => {
+            logToAndroid('🔔 Notifications subscription status:', status);
+            
             if (status === 'SUBSCRIBED') {
               logToAndroid('🔔 Successfully subscribed to notifications channel');
-            } else if (status === 'CHANNEL_ERROR') {
-              logToAndroid('🔔 Failed to subscribe to notifications - Realtime may not be enabled');
-              logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+              // Reset retry count on successful subscription
+              setSubscriptionRetryCount(0);
+            } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+              logToAndroid(`🔔 Subscription failed (${status}) - will retry if under limit`);
+              
+              // Increment retry count and attempt to reconnect
+              setSubscriptionRetryCount(prev => {
+                const newCount = prev + 1;
+                if (newCount < MAX_SUBSCRIPTION_RETRIES) {
+                  const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
+                  logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+                  setTimeout(() => {
+                    if (!isAppActive()) return; // Don't retry if app went inactive
+                    setupSubscription();
+                  }, delay);
+                } else {
+                  logToAndroid('🔔 Max retries exceeded - realtime updates disabled');
+                  logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+                }
+                return newCount;
+              });
             }
           });
 
-        logToAndroid('🔔 Attempted to subscribe to notifications channel');
       } catch (error) {
         logToAndroid('🔔 Error setting up notifications subscription:', error.message);
         logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+        
+        // Increment retry count on error
+        setSubscriptionRetryCount(prev => {
+          const newCount = prev + 1;
+          if (newCount < MAX_SUBSCRIPTION_RETRIES) {
+            const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
+            logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+            setTimeout(() => {
+              if (!isAppActive()) return;
+              setupSubscription();
+            }, delay);
+          }
+          return newCount;
+        });
       }
     };
 
@@ -109,7 +174,9 @@ export const useNotifications = (userId) => {
     const setupAppStateListener = () => {
       appStateHandler = () => {
         if (isAppActive()) {
-          logToAndroid('🔔 App became active - setting up notifications subscription');
+          logToAndroid('🔔 App became active - resetting retry count and setting up notifications subscription');
+          // Reset retry count when app becomes active to give users a fresh chance
+          setSubscriptionRetryCount(0);
           setupSubscription();
         } else {
           logToAndroid('🔔 App became inactive - cleaning up notifications subscription');
@@ -135,8 +202,21 @@ export const useNotifications = (userId) => {
           }
         }, 2000);
         
+        // Additional cleanup on visibility change to prevent background requests
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'hidden') {
+            logToAndroid('🔔 [useNotifications] App backgrounded - pausing interval');
+            clearInterval(intervalId);
+          }
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
         // Store cleanup function
-        appStateHandler.cleanup = () => clearInterval(intervalId);
+        appStateHandler.cleanup = () => {
+          clearInterval(intervalId);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
       }
     };
 

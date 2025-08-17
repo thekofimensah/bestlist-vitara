@@ -353,10 +353,27 @@ const useUserTracking = () => {
       flushTimer = setInterval(() => updateSessionTotals(false), FLUSH_MS);
     };
 
+    // Stop timers when app goes to background to prevent network requests
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('📊 [useUserTracking] App backgrounded - stopping timers');
+        if (tickTimer) clearInterval(tickTimer);
+        if (flushTimer) clearInterval(flushTimer);
+        // Final flush before stopping
+        updateSessionTotals(false);
+      } else if (document.visibilityState === 'visible' && user?.id) {
+        console.log('📊 [useUserTracking] App foregrounded - restarting timers');
+        schedule();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     schedule();
+    
     return () => {
       if (tickTimer) clearInterval(tickTimer);
       if (flushTimer) clearInterval(flushTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [user?.id, updateSessionTotals]);
 

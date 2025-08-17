@@ -3,9 +3,8 @@
 // Response: { access_token, refresh_token }
 
 // deno-lint-ignore-file no-explicit-any
-// deno-types: references provided via supabase/functions/deno.json
-import { serve } from 'std/http/server.ts'
-import { createClient } from 'supabase'
+import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -27,9 +26,9 @@ serve(async (req: Request): Promise<Response> => {
       return new Response(JSON.stringify({ error: 'Missing username or password' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } })
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL as string
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string
-    const anonKey = process.env.SUPABASE_ANON_KEY || serviceKey
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || serviceKey
 
     if (!supabaseUrl || !serviceKey) {
       return new Response(JSON.stringify({ error: 'Server misconfigured' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } })

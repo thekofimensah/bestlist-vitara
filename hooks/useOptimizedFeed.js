@@ -8,20 +8,41 @@ const profilePostsCache = new Map();
 // In-memory cache for feed posts by feedType (e.g., 'following')
 // Map<feedType, { posts: any[], hasMore: boolean, offset: number, lastUpdated: number }>
 const feedPostsCache = new Map();
+// Offline posts cache for immediate display before sync
+// Map<userId, { posts: any[] }>
+const offlinePostsCache = new Map();
 const FEED_CACHE_MAX_POSTS = 300;
 // Simple offline detector (Capacitor-aware would be nicer, but this is safe & synchronous)
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
 
 
-// Helper to deduplicate by id
+// Helper to deduplicate by id and content
 const dedupeById = (posts) => {
   const seen = new Set();
+  const seenItems = new Set();
   const result = [];
+  
   for (const p of posts) {
     const id = p?.id;
-    if (id == null || seen.has(id)) continue;
-    seen.add(id);
+    const itemId = p?.items?.id || p?.item_id;
+    const itemName = p?.items?.name || p?.items?.user_product_name;
+    
+    // Skip if we've seen this exact ID
+    if (id != null && seen.has(id)) continue;
+    
+    // Skip offline posts if we have a real post with the same item
+    if (p?.offline && itemName) {
+      const itemKey = `${itemName}_${p?.items?.rating || 0}_${p?.lists?.id || ''}`;
+      if (seenItems.has(itemKey)) continue;
+      seenItems.add(itemKey);
+    } else if (itemId && itemName) {
+      // For real posts, track by item info to prevent duplicates
+      const itemKey = `${itemName}_${p?.items?.rating || 0}_${p?.lists?.id || ''}`;
+      seenItems.add(itemKey);
+    }
+    
+    if (id != null) seen.add(id);
     result.push(p);
   }
   return result;
@@ -42,6 +63,106 @@ export const prependProfilePost = (userId, post) => {
   profilePostsCache.set(userId, newCache);
   // Notify listeners (e.g., useProfilePosts) that cache changed
   try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
+};
+
+// Public API to add offline posts for immediate display
+export const addOfflineProfilePost = (userId, item, listId, listName) => {
+  if (!userId || !item) return;
+  
+  const offlinePost = {
+    id: `offline_post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    user_id: userId,
+    items: {
+      ...item,
+      pending_sync: true,
+      offline: true
+    },
+    lists: {
+      id: listId,
+      name: listName || 'Unknown List'
+    },
+    created_at: new Date().toISOString(),
+    pending_sync: true,
+    offline: true
+  };
+  
+  // Add to offline cache
+  const offlineCached = offlinePostsCache.get(userId) || { posts: [] };
+  const updatedOfflinePosts = dedupeById([offlinePost, ...offlineCached.posts]);
+  offlinePostsCache.set(userId, { posts: updatedOfflinePosts });
+  
+  // Also add to main cache so it appears immediately
+  const mainCached = profilePostsCache.get(userId) || { posts: [], hasMore: true, offset: 0, lastUpdated: 0 };
+  const updated = dedupeById([offlinePost, ...mainCached.posts]);
+  const newCache = {
+    ...mainCached,
+    posts: updated,
+    offset: Math.max(updated.length, mainCached.offset),
+    lastUpdated: Date.now()
+  };
+  profilePostsCache.set(userId, newCache);
+  
+  // Notify listeners
+  try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
+  
+  console.log('📱 [OfflineCache] Added offline post for item:', item.name || item.user_product_name || 'Unknown');
+  return offlinePost.id;
+};
+
+// Public API to remove offline posts when they sync successfully
+export const removeOfflineProfilePost = (userId, offlinePostId) => {
+  if (!userId || !offlinePostId) return;
+  
+  // Remove from offline cache
+  const offlineCached = offlinePostsCache.get(userId);
+  if (offlineCached) {
+    const filteredOffline = offlineCached.posts.filter(p => p.id !== offlinePostId);
+    offlinePostsCache.set(userId, { posts: filteredOffline });
+  }
+  
+  // Remove from main cache
+  const mainCached = profilePostsCache.get(userId);
+  if (mainCached) {
+    const filteredMain = mainCached.posts.filter(p => p.id !== offlinePostId);
+    const newCache = {
+      ...mainCached,
+      posts: filteredMain,
+      offset: Math.min(mainCached.offset, filteredMain.length),
+      lastUpdated: Date.now()
+    };
+    profilePostsCache.set(userId, newCache);
+    
+    // Notify listeners
+    try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
+  }
+  
+  console.log('🧹 [OfflineCache] Removed offline post:', offlinePostId);
+};
+
+// Public API to clear all offline posts for a user (used after successful sync)
+export const clearOfflinePostsForUser = (userId) => {
+  if (!userId) return;
+  
+  // Clear offline cache
+  offlinePostsCache.set(userId, { posts: [] });
+  
+  // Remove offline posts from main cache
+  const mainCached = profilePostsCache.get(userId);
+  if (mainCached) {
+    const filteredMain = mainCached.posts.filter(p => !p.offline && !p.pending_sync);
+    const newCache = {
+      ...mainCached,
+      posts: filteredMain,
+      offset: Math.min(mainCached.offset, filteredMain.length),
+      lastUpdated: Date.now()
+    };
+    profilePostsCache.set(userId, newCache);
+    
+    // Notify listeners
+    try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
+  }
+  
+  console.log('🧹 [OfflineCache] Cleared all offline posts for user:', userId);
 };
 
 // Public API to update feed posts (used for immediate comment count updates)
@@ -556,10 +677,16 @@ export const useProfilePosts = (userId) => {
   const loadInitialPosts = useCallback(async () => {
     if (!userId || loadingRef.current) return;
     
+    // Always include offline posts at the beginning
+    const offlineCached = offlinePostsCache.get(userId);
+    const offlinePosts = offlineCached?.posts || [];
+    
     // Serve from cache immediately if available (no network)
     const cached = profilePostsCache.get(userId);
     if (cached && cached.posts && cached.posts.length > 0) {
-      setPosts(cached.posts);
+      // Merge offline posts with cached posts, offline posts first
+      const mergedPosts = dedupeById([...offlinePosts, ...cached.posts]);
+      setPosts(mergedPosts);
       setOffset(cached.offset || cached.posts.length);
       setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
       setLoading(false);
@@ -575,7 +702,9 @@ export const useProfilePosts = (userId) => {
           if (!mountedRef.current) return;
           if (Array.isArray(data) && data.length > 0) {
             setPosts(prev => {
-              const merged = dedupeById([...data, ...prev]);
+              // Keep offline posts, merge with fresh data
+              const currentOffline = offlinePostsCache.get(userId)?.posts || [];
+              const merged = dedupeById([...currentOffline, ...data, ...prev]);
               profilePostsCache.set(userId, {
                 posts: merged,
                 hasMore: merged.length >= prev.length ? (merged.length === batchSize) : true,
@@ -590,6 +719,13 @@ export const useProfilePosts = (userId) => {
         }).catch(() => {});
       }
       return; // Render cached immediately
+    }
+    
+    // If no cache but we have offline posts, show them immediately
+    if (offlinePosts.length > 0) {
+      setPosts(offlinePosts);
+      setLoading(false);
+      console.log('📱 [ProfilePosts] Showing offline posts while loading:', offlinePosts.length);
     }
     
     try {
@@ -616,13 +752,18 @@ export const useProfilePosts = (userId) => {
       if (!mountedRef.current) return;
       
       const newPosts = data || [];
-      setPosts(newPosts);
+      
+      // Include offline posts at the beginning
+      const currentOffline = offlinePostsCache.get(userId)?.posts || [];
+      const mergedPosts = dedupeById([...currentOffline, ...newPosts]);
+      
+      setPosts(mergedPosts);
       setOffset(newPosts.length);
       setHasMore(newPosts.length === batchSize);
       
       // Update cache
       profilePostsCache.set(userId, {
-        posts: newPosts,
+        posts: mergedPosts,
         hasMore: newPosts.length === batchSize,
         offset: newPosts.length,
         lastUpdated: Date.now()
@@ -708,13 +849,17 @@ export const useProfilePosts = (userId) => {
       const { data } = result;
       if (!mountedRef.current) return;
       const newPosts = data || [];
-      // Do not clear; merge to avoid flicker and keep thumbnails stable
-      setPosts(prev => dedupeById([...newPosts, ...prev]));
+      
+      // Include offline posts at the beginning, then fresh data, then existing
+      const currentOffline = offlinePostsCache.get(userId)?.posts || [];
+      const mergedPosts = dedupeById([...currentOffline, ...newPosts, ...posts]);
+      
+      setPosts(mergedPosts);
       setOffset(newPosts.length);
       setHasMore(newPosts.length === batchSize);
       // Update cache
       profilePostsCache.set(userId, {
-        posts: dedupeById([...newPosts, ...(profilePostsCache.get(userId)?.posts || [])]),
+        posts: mergedPosts,
         hasMore: newPosts.length === batchSize,
         offset: newPosts.length,
         lastUpdated: Date.now()

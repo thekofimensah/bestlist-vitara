@@ -185,9 +185,9 @@ const PullToRefresh = ({
       }
     };
 
-    // Add event listeners. Use passive: true everywhere to avoid intercepting gesture typing on Android
+    // Add event listeners. Use passive: true for start/end, but not for move since we need preventDefault
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {

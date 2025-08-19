@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { shouldRetrySubscription, isOffline } from '../lib/onlineDetection';
 
 // Check if app is active (same as useUserStats)
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
@@ -63,10 +64,15 @@ export const useNotifications = (userId) => {
       }
     };
 
-    // Set up subscription only if app is active
+    // Set up subscription only if app is active and online
     const setupSubscription = () => {
       if (!isAppActive()) {
         logToAndroid('🔔 Skipping notifications subscription setup - app inactive');
+        return;
+      }
+      
+      if (isOffline()) {
+        logToAndroid('🔔 Skipping notifications subscription setup - device offline');
         return;
       }
       
@@ -134,7 +140,7 @@ export const useNotifications = (userId) => {
               // Increment retry count and attempt to reconnect
               setSubscriptionRetryCount(prev => {
                 const newCount = prev + 1;
-                if (newCount < MAX_SUBSCRIPTION_RETRIES) {
+                if (shouldRetrySubscription(newCount, MAX_SUBSCRIPTION_RETRIES)) {
                   const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
                   logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
                   setTimeout(() => {
@@ -142,7 +148,7 @@ export const useNotifications = (userId) => {
                     setupSubscription();
                   }, delay);
                 } else {
-                  logToAndroid('🔔 Max retries exceeded - realtime updates disabled');
+                  logToAndroid('🔔 Max retries exceeded or device offline - realtime updates disabled');
                   logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
                 }
                 return newCount;

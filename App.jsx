@@ -27,7 +27,7 @@ import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
 import useUserTracking from './hooks/useUserTracking';
 import usePendingAchievements from './hooks/usePendingAchievements';
 import useUserStats from './hooks/useUserStats';
-import { updateFeedPosts } from './hooks/useOptimizedFeed';
+import { updateFeedPosts, addOfflineProfilePost } from './hooks/useOptimizedFeed';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 
 // Helper function to format post data from database (moved from MainScreen)
@@ -213,6 +213,7 @@ const App = () => {
   const [editingList, setEditingList] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deepLinkData, setDeepLinkData] = useState(null);
+  const [isListsReorderMode, setIsListsReorderMode] = useState(false);
   const mainScreenRef = useRef(null);
   const hasInitialized = useRef(false);
 
@@ -1141,6 +1142,10 @@ const App = () => {
         // Add to local cache so it appears immediately in lists
         const offlineId = addOfflineItemToCache(selectedListIds, itemData, isStayAway);
         
+        // Also add to profile posts cache for immediate display in recent photos
+        const listName = lists.find(l => l.id === selectedListIds[0])?.name || 'Unknown List';
+        addOfflineProfilePost(user?.id, itemData, selectedListIds[0], listName);
+        
         // Return a mock result for offline mode
         return {
           data: {
@@ -1400,6 +1405,10 @@ const App = () => {
     }
   };
 
+  const handleReorderModeChange = (isReorderMode) => {
+    setIsListsReorderMode(isReorderMode);
+  };
+
   const handleProfileRefresh = async () => {
     setRefreshing(true);
     
@@ -1535,7 +1544,7 @@ const App = () => {
         );
       case 'lists':
         return (
-          <PullToRefresh onRefresh={handleListsRefresh} disabled={refreshing}>
+          <PullToRefresh onRefresh={handleListsRefresh} disabled={refreshing || isListsReorderMode}>
             <ListsView
               lists={lists}
               onSelectList={handleSelectList}
@@ -1548,6 +1557,15 @@ const App = () => {
               onUpdateList={updateList}
               onItemDeleted={handleItemDeleted}
               onNavigateToCamera={() => navigateToScreen('home')}
+              onSearch={handleSearch}
+              onNotifications={handleNotifications}
+              unreadCount={unreadCount}
+              notifications={notifications}
+              isNotificationsOpen={isOpen}
+              onMarkRead={markAsRead}
+              onMarkAllRead={markAllAsRead}
+              onNavigateToPost={handleNavigateToPost}
+              onReorderModeChange={handleReorderModeChange}
             />
           </PullToRefresh>
         );
@@ -1763,100 +1781,101 @@ const App = () => {
       {/* Connection Status Bar */}
       <ConnectionStatus />
       
-      {/* Header */}
-      <div 
-        className="sticky bg-stone-50 z-10 pb-2" 
-        style={{ 
-          backgroundColor: '#F6F6F4',
-          top: (connectionError || isRetrying) ? '48px' : '0',
-          paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
-          paddingLeft: 'env(safe-area-inset-left)',
-          paddingRight: 'env(safe-area-inset-right)'
-        }}
-      >
-        <div className="px-4 mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
-              <span className="text-white text-xs font-bold">b</span>
-            </div>
-            <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
-            
-            {/* Offline Status Indicator */}
-            {!queueStatus.isOnline && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 rounded-full">
-                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                <span className="text-xs font-medium text-orange-700">Offline</span>
+      {/* Header - Only show on MainScreen (home) */}
+      {currentScreen === 'home' && (
+        <div 
+          className="sticky bg-stone-50 z-10 pb-2" 
+          style={{ 
+            backgroundColor: '#F6F6F4',
+            top: (connectionError || isRetrying) ? '48px' : '0',
+            paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
+            paddingLeft: 'env(safe-area-inset-left)',
+            paddingRight: 'env(safe-area-inset-right)'
+          }}
+        >
+          <div className="px-4 mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
+                <span className="text-white text-xs font-bold">b</span>
               </div>
-            )}
-            
-            {/* Sync Status Indicator */}
-            {queueStatus.pendingItems > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 rounded-full">
-                {queueStatus.isSyncing ? (
-                  <>
-                    <div className="w-2 h-2 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-xs font-medium text-blue-700">Syncing</span>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-xs font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {currentScreen === 'profile' ? (
-              <button
-                onClick={() => profileViewRef.current?.openSettings?.()}
-                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
-                aria-label="Settings"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 15a1.65 1.65 0 0 0-1.51-1H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 3.6c.19 0 .37-.04.54-.1H9a2 2 0 1 1 4 0h.46c.17.06.35.1.54.1a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c0 .19.04.37.1.54V9a2 2 0 1 1 0 4h-.09c-.17.06-.35.1-.51.1Z"/>
-                </svg>
-              </button>
-            ) : (
-              <>
-                <button 
-                  onClick={handleSearch}
-                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
-                >
-                  <Search className="w-4 h-4 text-gray-700" />
-                </button>
-                {/* Achievements header icon removed per redesign */}
-                <div className="relative">
-                  <button 
-                    onClick={handleNotifications}
-                    className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
-                  >
-                    <Bell className="w-4 h-4 text-gray-700" />
-                    {unreadCount > 0 && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                        <span className="text-[10px] font-medium text-white">{unreadCount}</span>
-                      </div>
-                    )}
-                  </button>
-                  <div className="relative z-30">
-                    <NotificationsDropdown
-                      notifications={notifications}
-                      unreadCount={unreadCount}
-                      isOpen={isOpen}
-                      onClose={toggleOpen}
-                      onMarkRead={markAsRead}
-                      onMarkAllRead={markAllAsRead}
-                      onNavigateToPost={handleNavigateToPost}
-                    />
-                  </div>
+              <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
+              
+              {/* Offline Status Indicator */}
+              {!queueStatus.isOnline && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 rounded-full">
+                  <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                  <span className="text-xs font-medium text-orange-700">Offline</span>
                 </div>
-                {/* Dropdown removed */}
-              </>
-            )}
+              )}
+              
+              {/* Sync Status Indicator */}
+              {queueStatus.pendingItems > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!queueStatus.isSyncing) {
+                      console.log('🔄 [UI] Manual sync triggered by user');
+                      try {
+                        await syncOfflineQueue();
+                        console.log('✅ [UI] Manual sync completed');
+                      } catch (error) {
+                        console.error('❌ [UI] Manual sync failed:', error);
+                      }
+                    }
+                  }}
+                  disabled={queueStatus.isSyncing}
+                  className="flex items-center gap-1 px-2 py-1 bg-blue-100 rounded-full hover:bg-blue-200 transition-colors disabled:cursor-not-allowed"
+                >
+                  {queueStatus.isSyncing ? (
+                    <>
+                      <div className="w-2 h-2 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs font-medium text-blue-700">Syncing</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span className="text-xs font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={handleSearch}
+                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+              >
+                <Search className="w-4 h-4 text-gray-700" />
+              </button>
+              {/* Achievements header icon removed per redesign */}
+              <div className="relative">
+                <button 
+                  onClick={handleNotifications}
+                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+                >
+                  <Bell className="w-4 h-4 text-gray-700" />
+                  {unreadCount > 0 && (
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                      <span className="text-[10px] font-medium text-white">{unreadCount}</span>
+                    </div>
+                  )}
+                </button>
+                <div className="relative z-30">
+                  <NotificationsDropdown
+                    notifications={notifications}
+                    unreadCount={unreadCount}
+                    isOpen={isOpen}
+                    onClose={toggleOpen}
+                    onMarkRead={markAsRead}
+                    onMarkAllRead={markAllAsRead}
+                    onNavigateToPost={handleNavigateToPost}
+                  />
+                </div>
+              </div>
+              {/* Dropdown removed */}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content */}
       <main className="relative flex-1">

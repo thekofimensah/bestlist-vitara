@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { saveStatsLocal, getStatsLocal } from '../lib/localUserCache';
+import { shouldRetrySubscription, isOffline } from '../lib/onlineDetection';
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
 
 // Simple in-memory cache to avoid refetch on navigation
@@ -197,6 +198,11 @@ const useUserStats = (userId) => {
         return;
       }
       
+      if (isOffline()) {
+        console.log('🔔 [useUserStats] Skipping subscription setup - device offline');
+        return;
+      }
+      
       // Check if we've exceeded retry limit
       if (subscriptionRetryCount >= MAX_SUBSCRIPTION_RETRIES) {
         console.log(`🔔 [useUserStats] Max subscription retries (${MAX_SUBSCRIPTION_RETRIES}) exceeded - giving up`);
@@ -273,7 +279,7 @@ const useUserStats = (userId) => {
             // Increment retry count and attempt to reconnect
             setSubscriptionRetryCount(prev => {
               const newCount = prev + 1;
-              if (newCount < MAX_SUBSCRIPTION_RETRIES) {
+              if (shouldRetrySubscription(newCount, MAX_SUBSCRIPTION_RETRIES)) {
                 const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
                 console.log(`🔔 [useUserStats] Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
                 setTimeout(() => {
@@ -281,7 +287,7 @@ const useUserStats = (userId) => {
                   setupRealtimeSubscription();
                 }, delay);
               } else {
-                console.log('🔔 [useUserStats] Max retries exceeded - realtime updates disabled');
+                console.log('🔔 [useUserStats] Max retries exceeded or device offline - realtime updates disabled');
                 setError('Realtime updates unavailable - stats will refresh manually');
               }
               return newCount;

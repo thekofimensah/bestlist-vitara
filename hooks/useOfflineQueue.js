@@ -127,9 +127,21 @@ export const useOfflineQueue = () => {
 
   // Listen for online/offline status changes
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
       console.log('📡 [useOfflineQueue] Network restored');
-      updateStatus();
+      await updateStatus();
+      
+      // Trigger sync if there are pending items
+      const status = await getQueueStatus();
+      if (status.pendingItems > 0) {
+        console.log('📡 [useOfflineQueue] Network restored with pending items, starting sync...');
+        try {
+          await triggerSync();
+          console.log('✅ [useOfflineQueue] Auto-sync completed successfully');
+        } catch (error) {
+          console.error('❌ [useOfflineQueue] Auto-sync failed:', error);
+        }
+      }
     };
 
     const handleOffline = () => {
@@ -147,7 +159,7 @@ export const useOfflineQueue = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [updateStatus]);
+  }, [updateStatus, triggerSync]);
 
   // Auto-update status periodically when there are pending items
   useEffect(() => {
@@ -163,6 +175,14 @@ export const useOfflineQueue = () => {
           console.log('📡 [useOfflineQueue] App foregrounded - resuming status updates');
           clearInterval(interval); // Clear any existing interval
           interval = setInterval(updateStatus, 5000);
+          
+          // Try to sync when app comes back to foreground if online
+          if (navigator.onLine) {
+            console.log('📡 [useOfflineQueue] App foregrounded with pending items and online, attempting sync...');
+            triggerSync().catch(error => {
+              console.error('❌ [useOfflineQueue] Foreground sync failed:', error);
+            });
+          }
         }
       };
       

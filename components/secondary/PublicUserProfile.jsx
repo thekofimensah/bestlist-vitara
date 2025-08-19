@@ -395,18 +395,20 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
       <div className="px-4 pb-20">
         {/* Profile Header */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          {/* Back Button */}
-          <div className="flex items-center gap-2 mb-4">
+          {/* Header with Back Button */}
+          <div className="flex items-center justify-between mb-4">
             <button onClick={onBack} className="w-10 h-10 flex items-center justify-center" aria-label="Back">
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
+            <h2 className="text-base font-semibold text-gray-900">Profile</h2>
+            <div className="w-10" />
           </div>
           <div className="flex items-start gap-4 mb-4">
          
 
             {/* Profile Info (username replaced by avatar here) */}
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-8">
                 <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-100">
                   {userProfile.avatar_url ? (
                     <img src={userProfile.avatar_url} alt={userProfile.username} className="w-full h-full object-cover" />
@@ -422,10 +424,19 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
               </div>
 
               {/* Stats */}
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <span><strong>{postsCount}</strong> posts</span>
-                <span><strong>{followersCount}</strong> followers</span>
-                <span><strong>{followingCount}</strong> following</span>
+              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-center items-start text-center">
+                <div>
+                  <div className="text-lg font-bold leading-none text-center">{postsCount || 0}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Posts</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold leading-none text-gray-900">{followersCount || 0}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Followers</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold leading-none text-gray-900">{followingCount || 0}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Following</div>
+                </div>
               </div>
             </div>
 

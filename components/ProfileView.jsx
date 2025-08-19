@@ -381,6 +381,22 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     }
   }, [user?.id]);
 
+  /* Listen for sync completion and refresh profile data */
+  useEffect(() => {
+    const handleRefreshNeeded = (event) => {
+      if (event?.detail?.userId === user?.id) {
+        console.log('🔄 [ProfileView] Sync completed, refreshing profile data...');
+        refreshProfileData();
+      }
+    };
+
+    window.addEventListener('profile:refresh-needed', handleRefreshNeeded);
+    
+    return () => {
+      window.removeEventListener('profile:refresh-needed', handleRefreshNeeded);
+    };
+  }, [user?.id, refreshProfileData]);
+
   // Infinite scroll is now handled by useProfilePosts hook
 
   if (showPrivacyPolicy) return <PrivacyPolicy onBack={() => setShowPrivacyPolicy(false)} />;
@@ -519,9 +535,30 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   return (
     <div 
       className="min-h-screen overflow-x-hidden" 
-      style={{ backgroundColor: '#FFFFFF' }}
+      style={{ backgroundColor: '#F6F6F4' }}
     >
-      <div className="px-4 pb-20 pt-6 space-y-6">
+      {/* Header */}
+      <div 
+        className="sticky top-0 z-20 bg-stone-50 pb-2"
+        style={{
+          backgroundColor: '#F6F6F4',
+          paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
+          paddingLeft: 'env(safe-area-inset-left)',
+          paddingRight: 'env(safe-area-inset-right)'
+        }}
+      >
+        <div className="px-6 mb-3 flex items-center justify-between">
+          <h2 className="text-2xl font-semibold text-gray-900">Profile</h2>
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-700 hover:text-gray-900 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="px-4 pb-20 space-y-6">
         {/* Header row (best-practice alignment) */}
         <div className="p-1">
           <div className="grid grid-cols-[auto,1fr] gap-4 items-start">
@@ -547,16 +584,16 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
 
             {/* Counts row (right col, second row) */}
             <div className="col-start-2 mt-2">
-              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-start items-start text-left">
+              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-center items-start text-center">
                 <div>
                   {countsLoading || postsCount === null ? (
                     <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
                   ) : (
-                    <div className="text-2xl font-bold leading-none text-left">{postsCount}</div>
+                    <div className="text-2xl font-bold leading-none text-center">{postsCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-left">Items</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Items</div>
                 </div>
-                <button className="text-left" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
+                <button className="text-center" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
                   {countsLoading || followersCount === null ? (
                     <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
                   ) : (
@@ -564,7 +601,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                   )}
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight">Followers</div>
                 </button>
-                <button className="text-left" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
+                <button className="text-center" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
                   {countsLoading || followingCount === null ? (
                     <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
                   ) : (

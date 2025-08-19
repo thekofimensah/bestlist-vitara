@@ -16,6 +16,7 @@ import imageCompression from 'browser-image-compression';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import { uploadImageToStorage, dataURLtoFile, generateImageSizes } from '../lib/imageStorage';
 import { supabase, likePost, unlikePost, getPostCommentCount, isUserFollowingAnyone } from '../lib/supabase';
+import { cacheRemoteImage } from '../lib/localImageCache';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -665,7 +666,6 @@ const MainScreen = React.forwardRef(({
           
           // Immediately cache the uploaded image for offline access
           try {
-            const { cacheRemoteImage } = await import('../lib/localImageCache');
             // Cache in background - don't wait for this to complete
             cacheRemoteImage(uploadResult.url, user.id).then(() => {
               console.log('📦 [Camera] Image cached locally for offline access');
@@ -978,7 +978,6 @@ const MainScreen = React.forwardRef(({
               
               // Immediately cache the uploaded image for offline access
               try {
-                const { cacheRemoteImage } = await import('../lib/localImageCache');
                 // Cache in background - don't wait for this to complete
                 cacheRemoteImage(uploadResult.url, user.id).then(() => {
                   console.log('📦 [Gallery] Image cached locally for offline access');

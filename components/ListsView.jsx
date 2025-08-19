@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { Plus, MoreHorizontal, Star, X, ArrowLeft, Grid3X3, Share, Trash2, Check } from 'lucide-react';
+import { Plus, MoreHorizontal, Star, X, ArrowLeft, Share, Trash2, Check, Search, Bell, MoreVertical } from 'lucide-react';
 import ShareModal from './secondary/ShareModal';
+import { NotificationsDropdown } from './secondary/NotificationsDropdown';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
 import { deleteItemAndRelated } from '../lib/supabase';
@@ -33,8 +34,8 @@ const ItemTile = ({
     return (
       <div
         onClick={onTap}
-        className="flex-shrink-0 w-26 h-26 bg-stone-100 border-2 border-dashed border-gray-300 rounded-2xl flex items-center justify-center cursor-pointer hover:bg-stone-200 transition-colors"
-        style={{ width: '200px', height: '200px', backgroundColor: '#F1F1EF' }}
+        className="flex-shrink-0 w-20 h-20 bg-stone-100 border-2 border-dashed border-gray-300 rounded-2xl flex items-center justify-center cursor-pointer hover:bg-stone-200 transition-colors"
+        style={{ width: '170px', height: '170px', backgroundColor: '#F1F1EF' }}
       >
         <Plus className="w-6 h-6 text-gray-500" />
       </div>
@@ -57,7 +58,7 @@ const ItemTile = ({
   return (
     <div
       className={`flex-shrink-0 relative cursor-pointer group`}
-      style={{ width: '200px' }}
+      style={{ width: '170px' }}
       onContextMenu={(e) => {
         e.preventDefault();
         onLongPress?.(item, e);
@@ -95,8 +96,8 @@ const ItemTile = ({
         <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
-          className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
-          style={{ width: '200px', height: '200px', userSelect: 'none' }}
+          className="w-20 h-20 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
+          style={{ width: '170px', height: '170px', userSelect: 'none' }}
           useThumbnail={true}
           size="small"
           lazyLoad={true}
@@ -140,7 +141,8 @@ const ListRow = ({
   onListTitleTap,
   onShareList,
   isReorderMode = false,
-  sortMode = 'recent'
+  sortMode = 'recent',
+  onEnterReorderMode
 }) => {
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
   const mode = list.__sortMode || sortMode;
@@ -185,23 +187,49 @@ const ListRow = ({
       layout
     >
       {/* List Header */}
-      <div className="flex items-center justify-between mb-3 px-6">
-        {/* Drag Handle - only visible in reorder mode */}
-        <AnimatePresence>
-          {isReorderMode && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              className="w-6 h-6 flex items-center justify-center text-gray-400 mr-2 cursor-grab active:cursor-grabbing"
-            >
-              <Grid3X3 className="w-4 h-4" />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
+      <div className="flex items-center justify-between mb-3 px-4">
         <button 
           onClick={() => !isReorderMode && onListTitleTap(list)}
+          onMouseDown={(e) => {
+            if (isReorderMode) return;
+            const longPressTimer = setTimeout(() => {
+              // Haptic feedback
+              if (navigator.vibrate) {
+                navigator.vibrate(50);
+              }
+              // Enable reorder mode
+              onEnterReorderMode?.();
+            }, 500);
+            
+            const clearTimer = () => {
+              clearTimeout(longPressTimer);
+              document.removeEventListener('mouseup', clearTimer);
+            };
+            
+            document.addEventListener('mouseup', clearTimer);
+          }}
+          onTouchStart={(e) => {
+            if (isReorderMode) return;
+            const longPressTimer = setTimeout(() => {
+              // Haptic feedback
+              if (navigator.vibrate) {
+                navigator.vibrate(50);
+              }
+              // Enable reorder mode
+              onEnterReorderMode?.();
+            }, 500);
+            
+            const clearTimer = () => {
+              clearTimeout(longPressTimer);
+              document.removeEventListener('touchend', clearTimer);
+              document.removeEventListener('touchcancel', clearTimer);
+              document.removeEventListener('touchmove', clearTimer);
+            };
+            
+            document.addEventListener('touchend', clearTimer);
+            document.removeEventListener('touchcancel', clearTimer);
+            document.addEventListener('touchmove', clearTimer);
+          }}
           className="flex-1 text-left"
           disabled={isReorderMode}
         >
@@ -209,27 +237,31 @@ const ListRow = ({
           <p className="text-xs text-gray-500">{allItems.length} items</p>
         </button>
         
-        {!isReorderMode && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onShareList(list)}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <Share className="w-4 h-4" />
-            </button>
-            <button
-              onClick={(e) => onListMenu(list, e)}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+
+        
+        <div className="flex items-center gap-2">
+          {!isReorderMode && (
+            <>
+              <button
+                onClick={() => onShareList(list)}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <Share className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => onListMenu(list, e)}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Horizontal Scroll Container - disabled in reorder mode */}
       <div className={`overflow-x-auto ${isReorderMode ? 'pointer-events-none opacity-60' : ''}`}>
-        <div className="flex gap-3 px-6" style={{ paddingRight: '24px' }}>
+        <div className="flex gap-3 px-4" style={{ paddingRight: '16px' }}>
           {sortedItems.map((item) => (
             <ItemTile
               key={item.id}
@@ -251,7 +283,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onReorderModeChange }) => {
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   const [isCreatingList, setIsCreatingList] = useState(false);
   // New list composer state (Best only)
@@ -271,6 +303,11 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   const [selectionEnabled, setSelectionEnabled] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState({ isOpen: false });
+
+  // Notify parent when reorder mode changes
+  useEffect(() => {
+    onReorderModeChange?.(isReorderMode);
+  }, [isReorderMode, onReorderModeChange]);
 
   // Update reordered lists when lists prop changes
   useEffect(() => {
@@ -576,6 +613,88 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       className="h-screen bg-stone-50 overflow-y-auto" 
       style={{ backgroundColor: '#F6F6F4' }}
     >
+      {/* Header */}
+      <div 
+        className="sticky top-0 z-20 bg-stone-50 pb-2"
+        style={{
+          backgroundColor: '#F6F6F4',
+          paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
+          paddingLeft: 'env(safe-area-inset-left)',
+          paddingRight: 'env(safe-area-inset-right)'
+        }}
+      >
+        <div className="px-6 mb-3 flex items-center justify-between">
+          <h2 className="text-2xl font-semibold text-gray-900">Lists</h2>
+          <div className="flex items-center gap-3">
+            {isReorderMode ? (
+              <button
+                onClick={handleExitReorderMode}
+                className="px-4 py-2 bg-teal-700 text-white rounded-full text-sm font-medium"
+                style={{ backgroundColor: '#1F6D5A' }}
+              >
+                Done
+              </button>
+            ) : selectionEnabled ? (
+              <>
+                <button
+                  onClick={() => { setSelectionEnabled(false); setSelectedItemIds([]); }}
+                  className="px-3 py-1.5 bg-gray-100 rounded-full text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => setBulkDeleteDialog({ isOpen: true })}
+                  disabled={selectedItemIds.length === 0}
+                  className="px-3 py-1.5 bg-red-600 text-white rounded-full text-sm disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete ({selectedItemIds.length})</span>
+                  </div>
+                </button>
+              </>
+            ) : (
+              <>
+                {onSearch && (
+                  <button 
+                    onClick={onSearch}
+                    className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+                  >
+                    <Search className="w-4 h-4 text-gray-700" />
+                  </button>
+                )}
+                {onNotifications && (
+                  <div className="relative">
+                    <button 
+                      onClick={onNotifications}
+                      className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+                    >
+                      <Bell className="w-4 h-4 text-gray-700" />
+                      {unreadCount > 0 && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                          <span className="text-[10px] font-medium text-white">{unreadCount}</span>
+                        </div>
+                      )}
+                    </button>
+                    <div className="relative z-30">
+                      <NotificationsDropdown
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        isOpen={isNotificationsOpen}
+                        onClose={onNotifications}
+                        onMarkRead={onMarkRead}
+                        onMarkAllRead={onMarkAllRead}
+                        onNavigateToPost={onNavigateToPost}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Content */}
       <div className="pb-32">
         {(!lists || lists.length === 0) ? (
@@ -593,58 +712,8 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           </div>
         ) : (
           <>
-            {/* Header with reorder button */}
-            <div className="flex items-center justify-between px-6 pt-4 pb-2">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Your Lists
-              </h2>
-              <div className="flex items-center gap-2">
-                {isReorderMode ? (
-                  <button
-                    onClick={handleExitReorderMode}
-                    className="px-4 py-2 bg-teal-700 text-white rounded-full text-sm font-medium"
-                    style={{ backgroundColor: '#1F6D5A' }}
-                  >
-                    Done
-                  </button>
-                ) : (
-                  <>
-                    {!selectionEnabled && (
-                      <button
-                        onClick={handleEnterReorderMode}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-                        title="Reorder lists"
-                        disabled={isRefreshing}
-                      >
-                    <Grid3X3 className="w-4 h-4" />
-                      </button>
-                    )}
-                    {selectionEnabled && (
-                      <>
-                        <button
-                          onClick={() => { setSelectionEnabled(false); setSelectedItemIds([]); }}
-                          className="px-3 py-1.5 bg-gray-100 rounded-full text-sm"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => setBulkDeleteDialog({ isOpen: true })}
-                          disabled={selectedItemIds.length === 0}
-                          className="px-3 py-1.5 bg-red-600 text-white rounded-full text-sm disabled:opacity-50"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Trash2 className="w-4 h-4" />
-                            <span>Delete ({selectedItemIds.length})</span>
-                          </div>
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="pt-2">
+            {/* Lists Content with proper padding */}
+            <div className="pt-4">
               {isReorderMode ? (
                 <Reorder.Group
                   axis="y"
@@ -678,6 +747,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         onListTitleTap={handleListTitleTap}
                         onShareList={handleShareList}
                         isReorderMode={isReorderMode}
+                        onEnterReorderMode={handleEnterReorderMode}
                       />
                     </Reorder.Item>
                   ))}
@@ -699,6 +769,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                       onListTitleTap={handleListTitleTap}
                       onShareList={handleShareList}
                       isReorderMode={isReorderMode}
+                      onEnterReorderMode={handleEnterReorderMode}
                     />
                   ))}
                 </div>
@@ -852,6 +923,15 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
               className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
             >
               Rename
+            </button>
+            <button
+              onClick={() => {
+                setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
+                onEnterReorderMode?.();
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
+            >
+              Rearrange
             </button>
             <button
               onClick={() => {

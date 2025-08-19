@@ -202,6 +202,12 @@ async function logVersionToSupabase(version) {
 }
 
 async function logErrorToSupabase(errorType, errorMessage) {
+  // Skip error logging when offline
+  if (navigator.onLine === false) {
+    console.log('🌐 [UpdateManager] Skipping error logging - device is offline');
+    return;
+  }
+  
   try {
     const deviceInfo = await Device.getInfo();
     const { error } = await supabase

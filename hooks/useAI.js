@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { trackAIRequest } from '../lib/performanceTracking';
+import { safeFetch, isOffline } from '../lib/onlineDetection';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -49,6 +50,10 @@ export const useAI = () => {
   const analyzeImage = useCallback(async (imageFile, location = null) => {
     if (!GEMINI_API_KEY) {
       throw new Error('Gemini API key not configured');
+    }
+
+    if (isOffline()) {
+      throw new Error('AI analysis requires internet connection');
     }
 
     // Cancel any existing request
@@ -159,7 +164,7 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
           }
         };
 
-        const response = await fetch(
+        const response = await safeFetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
           {
             method: 'POST',

@@ -604,6 +604,10 @@ const useAchievements = () => {
           .ilike('location', `%${country}%`)
           .not('image_url', 'is', null)
           .in('list_id', userListIds); //remove this .in('list_id', userListIds) filter to check across all users. if you want to change in the future. currently current user only
+      } else {
+        // Unsupported scope type
+        console.log('🏆 [GlobalFirst] Unsupported scope:', criteria.scope);
+        return null;
       }
 
       if (!query) return null;
@@ -661,24 +665,24 @@ const useAchievements = () => {
           }
         }
         
-        // SECONDARY: Award achievement to user (only if item update succeeded)
+        // SECONDARY: Award achievement to user (only if item update succeeded for product scope)
         const result = await awardAchievement(achievement.id, { context });
         if (result?.success) {
           console.log('✅ [FirstInWorld] SECONDARY: Achievement awarded to user');
           return { 
             achievement, 
             awarded: true, 
-            isGlobalFirst: true, // All global_first achievements should trigger glow effects, not modals
+            isGlobalFirst: criteria.scope === 'product', // Only product-scope achievements get badges and special effects
             count: result.count,
             isRepeatable: true
           };
         } else {
           console.error('❌ [FirstInWorld] SECONDARY action failed - user achievement not awarded');
-          // Item is already marked, which is the most important part
+          // Item is already marked for product scope, which is the most important part
           return { 
             achievement, 
             awarded: false, 
-            isGlobalFirst: true,
+            isGlobalFirst: criteria.scope === 'product', // Only product-scope achievements get badges and special effects
             count: 0,
             isRepeatable: true
           };
@@ -921,6 +925,9 @@ const useAchievements = () => {
           .ilike('location', `%${country}%`)
           .not('image_url', 'is', null)
           .in('list_id', userListIds);
+      } else {
+        // Unsupported scope type
+        return false;
       }
 
       if (!query) return false;
@@ -951,6 +958,8 @@ const useAchievements = () => {
     isProcessing
   };
 };
+
+
 
 // Helper function to extract country from location string
 const extractCountryFromLocation = (location) => {

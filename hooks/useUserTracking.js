@@ -7,6 +7,20 @@ import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
+// Helper function to log errors only when online
+const logErrorEventSafely = async (errorData) => {
+  if (navigator.onLine === false) {
+    console.log('🌐 [UserTracking] Skipping error logging - device is offline');
+    return;
+  }
+  
+  try {
+    await supabase.from('error_events').insert(errorData);
+  } catch (logError) {
+    console.error('❌ Failed to log error to Supabase:', logError);
+  }
+};
+
 const useUserTracking = () => {
   const { user } = useAuth();
   const [isTracking, setIsTracking] = useState(false);
@@ -191,26 +205,22 @@ const useUserTracking = () => {
         fullError: e
       }, null, 2));
       
-      // Log error to Supabase error_events table
-      try {
-        await supabase.from('error_events').insert({
-          error_type: 'user_tracking_session_insert',
-          error_message: JSON.stringify({
-            message: e.message,
-            name: e.name,
-            details: e.details,
-            hint: e.hint,
-            code: e.code,
-            user_id: user?.id,
-            function: 'insertSession'
-          }),
-          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
-          os_version: navigator?.userAgent || null,
-          user_id: user?.id
-        });
-      } catch (logError) {
-        console.error('❌ Failed to log error to Supabase:', logError);
-      }
+      // Log error to Supabase error_events table (skip if offline)
+      await logErrorEventSafely({
+        error_type: 'user_tracking_session_insert',
+        error_message: JSON.stringify({
+          message: e.message,
+          name: e.name,
+          details: e.details,
+          hint: e.hint,
+          code: e.code,
+          user_id: user?.id,
+          function: 'insertSession'
+        }),
+        platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+        os_version: navigator?.userAgent || null,
+        user_id: user?.id
+      });
       
       return null;
     }
@@ -245,27 +255,23 @@ const useUserTracking = () => {
       }, null, 2));
       
       // Log error to Supabase error_events table
-      try {
-        await supabase.from('error_events').insert({
-          error_type: 'user_tracking_session_update',
-          error_message: JSON.stringify({
-            message: e.message,
-            name: e.name,
-            details: e.details,
-            hint: e.hint,
-            code: e.code,
-            user_id: user?.id,
-            session_id: sessionIdRef.current,
-            function: 'updateSessionTotals',
-            finalize: finalize
-          }),
-          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
-          os_version: navigator?.userAgent || null,
-          user_id: user?.id
-        });
-      } catch (logError) {
-        console.error('❌ Failed to log error to Supabase:', logError);
-      }
+      await logErrorEventSafely({
+        error_type: 'user_tracking_session_update',
+        error_message: JSON.stringify({
+          message: e.message,
+          name: e.name,
+          details: e.details,
+          hint: e.hint,
+          code: e.code,
+          user_id: user?.id,
+          session_id: sessionIdRef.current,
+          function: 'updateSessionTotals',
+          finalize: finalize
+        }),
+        platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+        os_version: navigator?.userAgent || null,
+        user_id: user?.id
+      });
     }
   }, [user]);
 
@@ -432,25 +438,21 @@ const useUserTracking = () => {
         }, null, 2));
         
         // Log error to Supabase error_events table
-        try {
-          await supabase.from('error_events').insert({
-            error_type: 'user_tracking_signin_fetch',
-            error_message: JSON.stringify({
-              message: fetchError.message,
-              name: fetchError.name,
-              details: fetchError.details,
-              hint: fetchError.hint,
-              code: fetchError.code,
-              user_id: user?.id,
-              function: 'incrementSignInCount'
-            }),
-            platform: Capacitor.isNativePlatform() ? 'native' : 'web',
-            os_version: navigator?.userAgent || null,
-            user_id: user?.id
-          });
-        } catch (logError) {
-          console.error('❌ Failed to log error to Supabase:', logError);
-        }
+        await logErrorEventSafely({
+          error_type: 'user_tracking_signin_fetch',
+          error_message: JSON.stringify({
+            message: fetchError.message,
+            name: fetchError.name,
+            details: fetchError.details,
+            hint: fetchError.hint,
+            code: fetchError.code,
+            user_id: user?.id,
+            function: 'incrementSignInCount'
+          }),
+          platform: Capacitor.isNativePlatform() ? 'native' : 'web',
+          os_version: navigator?.userAgent || null,
+          user_id: user?.id
+        });
         
         return;
       }
@@ -478,8 +480,7 @@ const useUserTracking = () => {
         }, null, 2));
         
         // Log error to Supabase error_events table
-        try {
-          await supabase.from('error_events').insert({
+        await logErrorEventSafely({
             error_type: 'user_tracking_signin_update',
             error_message: JSON.stringify({
               message: error.message,
@@ -494,9 +495,6 @@ const useUserTracking = () => {
             os_version: navigator?.userAgent || null,
             user_id: user?.id
           });
-        } catch (logError) {
-          console.error('❌ Failed to log error to Supabase:', logError);
-        }
       } else {
         console.log(`📊 Sign in count: ${newCount}`);
       }
@@ -512,7 +510,7 @@ const useUserTracking = () => {
       
       // Log error to Supabase error_events table
       try {
-        await supabase.from('error_events').insert({
+        await logErrorEventSafely({
           error_type: 'user_tracking_signin_exception',
           error_message: JSON.stringify({
             message: error.message,
@@ -565,7 +563,7 @@ const useUserTracking = () => {
       
       // Log error to Supabase error_events table
       try {
-        await supabase.from('error_events').insert({
+        await logErrorEventSafely({
           error_type: 'user_tracking_session_track',
           error_message: JSON.stringify({
             message: error.message,

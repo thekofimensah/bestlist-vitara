@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { saveStatsLocal, getStatsLocal } from '../lib/localUserCache';
-import { shouldRetrySubscription, isOffline } from '../lib/onlineDetection';
+import { shouldRetrySubscription, isOffline, useOnlineStatus } from '../lib/onlineDetection';
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
 
 // Simple in-memory cache to avoid refetch on navigation
@@ -18,13 +18,16 @@ const useUserStats = (userId) => {
     avgRating: 0
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Online status tracking
+  const { isOnline } = useOnlineStatus();
   
   // Retry logic for realtime subscriptions
   const [subscriptionRetryCount, setSubscriptionRetryCount] = useState(0);
   const [lastSubscriptionAttempt, setLastSubscriptionAttempt] = useState(0);
   const MAX_SUBSCRIPTION_RETRIES = 3;
   const SUBSCRIPTION_RETRY_DELAY = 5000; // 5 seconds
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!userId) {
@@ -192,15 +195,13 @@ const useUserStats = (userId) => {
 
     // Set up real-time subscription for automatic updates (only if app is active)
     const setupRealtimeSubscription = () => {
-      // Don't set up subscription if app is not active
+      // Don't set up subscription if app is not active or offline
       if (!isAppActive()) {
-        console.log('🔔 [useUserStats] Skipping subscription setup - app inactive');
-        return;
+        return; // Silent - no logging when app inactive
       }
       
-      if (isOffline()) {
-        console.log('🔔 [useUserStats] Skipping subscription setup - device offline');
-        return;
+      if (!isOnline) {
+        return; // Silent - no logging when offline
       }
       
       // Check if we've exceeded retry limit
@@ -267,28 +268,38 @@ const useUserStats = (userId) => {
           }
         )
         .subscribe((status) => {
-          console.log('🔔 [useUserStats] Subscription status:', status);
+          // Only log subscription status when online to reduce noise
+          if (isOnline) {
+            console.log('🔔 [useUserStats] Subscription status:', status);
+          }
           
           if (status === 'SUBSCRIBED') {
             // Reset retry count on successful subscription
             setSubscriptionRetryCount(0);
             setError(null);
           } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-            console.log(`🔔 [useUserStats] Subscription failed (${status}) - will retry if under limit`);
+            // Only log if we're online to reduce noise when offline
+            if (isOnline) {
+              console.log(`🔔 [useUserStats] Subscription failed (${status}) - will retry if under limit`);
+            }
             
             // Increment retry count and attempt to reconnect
             setSubscriptionRetryCount(prev => {
               const newCount = prev + 1;
               if (shouldRetrySubscription(newCount, MAX_SUBSCRIPTION_RETRIES)) {
                 const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
-                console.log(`🔔 [useUserStats] Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+                if (isOnline) {
+                  console.log(`🔔 [useUserStats] Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+                }
                 setTimeout(() => {
                   if (!isAppActive()) return; // Don't retry if app went inactive
                   setupRealtimeSubscription();
                 }, delay);
               } else {
-                console.log('🔔 [useUserStats] Max retries exceeded or device offline - realtime updates disabled');
-                setError('Realtime updates unavailable - stats will refresh manually');
+                if (isOnline) {
+                  console.log('🔔 [useUserStats] Max retries exceeded - realtime updates disabled');
+                  setError('Realtime updates unavailable - stats will refresh manually');
+                }
               }
               return newCount;
             });
@@ -347,7 +358,9 @@ const useUserStats = (userId) => {
       }
     };
 
-    setupRealtimeSubscription();
+    if (isOnline) {
+      setupRealtimeSubscription();
+    }
     setupAppStateListener();
 
     // Cleanup function
@@ -358,7 +371,23 @@ const useUserStats = (userId) => {
         appStateHandler.cleanup();
       }
     };
-  }, [userId]);
+  }, [userId, isOnline]); // Add isOnline dependency
+  
+  // Separate effect to handle online/offline transitions
+  useEffect(() => {
+    if (!userId) return;
+    
+    if (isOnline) {
+      // Reset retry count when coming back online
+      setSubscriptionRetryCount(0);
+      setError(null);
+      console.log('🌐 [useUserStats] Device back online - setting up subscription');
+    } else {
+      // Clean up subscription when going offline
+      console.log('🌐 [useUserStats] Device offline - cleaning up subscription');
+      // Don't set error state when going offline, just cleanup silently
+    }
+  }, [isOnline, userId]);
 
   // Manual refresh function with database recalculation
   const refreshStats = async () => {

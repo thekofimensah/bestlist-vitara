@@ -927,7 +927,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             <button
               onClick={() => {
                 setContextMenu({ isOpen: false, listId: null, x: 0, y: 0 });
-                onEnterReorderMode?.();
+                handleEnterReorderMode();
               }}
               className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 flex items-center gap-3"
             >

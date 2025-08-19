@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { shouldRetrySubscription, isOffline } from '../lib/onlineDetection';
+import { shouldRetrySubscription, isOffline, useOnlineStatus } from '../lib/onlineDetection';
 
 // Check if app is active (same as useUserStats)
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
@@ -20,6 +20,9 @@ export const useNotifications = (userId) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Online status tracking
+  const { isOnline } = useOnlineStatus();
   
   // Retry logic for realtime subscriptions
   const [subscriptionRetryCount, setSubscriptionRetryCount] = useState(0);
@@ -67,13 +70,11 @@ export const useNotifications = (userId) => {
     // Set up subscription only if app is active and online
     const setupSubscription = () => {
       if (!isAppActive()) {
-        logToAndroid('🔔 Skipping notifications subscription setup - app inactive');
-        return;
+        return; // Silent - no logging when app inactive
       }
       
-      if (isOffline()) {
-        logToAndroid('🔔 Skipping notifications subscription setup - device offline');
-        return;
+      if (!isOnline) {
+        return; // Silent - no logging when offline
       }
       
       // Check if we've exceeded retry limit
@@ -128,28 +129,38 @@ export const useNotifications = (userId) => {
             setUnreadCount(prev => prev + 1);
           })
           .subscribe((status) => {
-            logToAndroid('🔔 Notifications subscription status:', status);
+            // Only log subscription status when online to reduce noise
+            if (isOnline) {
+              logToAndroid('🔔 Notifications subscription status:', status);
+            }
             
             if (status === 'SUBSCRIBED') {
               logToAndroid('🔔 Successfully subscribed to notifications channel');
               // Reset retry count on successful subscription
               setSubscriptionRetryCount(0);
             } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-              logToAndroid(`🔔 Subscription failed (${status}) - will retry if under limit`);
+              // Only log if we're online to reduce noise when offline
+              if (isOnline) {
+                logToAndroid(`🔔 Subscription failed (${status}) - will retry if under limit`);
+              }
               
               // Increment retry count and attempt to reconnect
               setSubscriptionRetryCount(prev => {
                 const newCount = prev + 1;
                 if (shouldRetrySubscription(newCount, MAX_SUBSCRIPTION_RETRIES)) {
                   const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
-                  logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+                  if (isOnline) {
+                    logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
+                  }
                   setTimeout(() => {
                     if (!isAppActive()) return; // Don't retry if app went inactive
                     setupSubscription();
                   }, delay);
                 } else {
-                  logToAndroid('🔔 Max retries exceeded or device offline - realtime updates disabled');
-                  logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+                  if (isOnline) {
+                    logToAndroid('🔔 Max retries exceeded - realtime updates disabled');
+                    logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
+                  }
                 }
                 return newCount;
               });
@@ -226,7 +237,9 @@ export const useNotifications = (userId) => {
       }
     };
 
-    setupSubscription();
+    if (isOnline) {
+      setupSubscription();
+    }
     setupAppStateListener();
 
     return () => {
@@ -236,7 +249,21 @@ export const useNotifications = (userId) => {
         appStateHandler.cleanup();
       }
     };
-  }, [userId]);
+  }, [userId, isOnline]); // Add isOnline dependency
+  
+  // Separate effect to handle online/offline transitions
+  useEffect(() => {
+    if (!userId) return;
+    
+    if (isOnline) {
+      // Reset retry count when coming back online
+      setSubscriptionRetryCount(0);
+      logToAndroid('🌐 [useNotifications] Device back online - setting up subscription');
+    } else {
+      // Clean up subscription when going offline
+      logToAndroid('🌐 [useNotifications] Device offline - cleaning up subscription');
+    }
+  }, [isOnline, userId]);
 
   const loadNotifications = async () => {
     logToAndroid('🔔 Loading initial notifications for user:', userId);

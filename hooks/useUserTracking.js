@@ -173,6 +173,13 @@ const useUserTracking = () => {
   // ---------- Session DB operations ----------
   const insertSession = useCallback(async () => {
     if (!user?.id) return null;
+    
+    // Skip database inserts when offline
+    if (navigator.onLine === false) {
+      console.log('🌐 [useUserTracking] Skipping session insert - device is offline');
+      return null;
+    }
+    
     try {
       const deviceInfo = await getDeviceInfo();
       const startedAt = nowIso();
@@ -229,6 +236,13 @@ const useUserTracking = () => {
   const updateSessionTotals = useCallback(async (finalize = false) => {
     const sessionId = sessionIdRef.current;
     if (!user?.id || !sessionId) return;
+    
+    // Skip database updates when offline
+    if (navigator.onLine === false) {
+      console.log('🌐 [useUserTracking] Skipping session update - device is offline');
+      return;
+    }
+    
     try {
       const updates = {
         total_foreground_seconds: Math.floor(foregroundSecondsRef.current),

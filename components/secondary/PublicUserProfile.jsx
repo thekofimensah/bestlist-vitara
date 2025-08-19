@@ -424,16 +424,16 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-center items-start text-center">
-                <div>
+              <div className="flex justify-between items-start w-full">
+                <div className="text-center">
                   <div className="text-lg font-bold leading-none text-center">{postsCount || 0}</div>
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Posts</div>
                 </div>
-                <div>
+                <div className="text-center">
                   <div className="text-lg font-bold leading-none text-gray-900">{followersCount || 0}</div>
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Followers</div>
                 </div>
-                <div>
+                <div className="text-center">
                   <div className="text-lg font-bold leading-none text-gray-900">{followingCount || 0}</div>
                   <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Following</div>
                 </div>

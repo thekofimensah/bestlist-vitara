@@ -2,6 +2,70 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, Globe, Star } from 'lucide-react';
 
+// Custom First in World Icon Component
+const CustomFirstInWorldIcon = ({ className, rarity }) => {
+  // Generate unique IDs for each gradient to avoid conflicts
+  const gradientId = `earth-gradient-${rarity}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const getStrokeColor = () => `url(#${gradientId})`;
+  
+  const getGradientColors = (rarity) => {
+    switch (rarity) {
+      case 'legendary':
+        return { start: '#a855f7', end: '#ec4899' }; // purple to pink
+      case 'rare':
+        return { start: '#3b82f6', end: '#06b6d4' }; // blue to cyan
+      default:
+        return { start: '#14b8a6', end: '#10b981' }; // teal to green
+    }
+  };
+
+  const colors = getGradientColors(rarity);
+
+  return (
+    <svg 
+      className={className} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={colors.start} />
+          <stop offset="100%" stopColor={colors.end} />
+        </linearGradient>
+      </defs>
+      {/* Main earth circle - colorful border, transparent fill */}
+      <path 
+        fillRule="evenodd" 
+        clipRule="evenodd" 
+        d="M12 19.5047C16.1448 19.5047 19.5047 16.1447 19.5047 12C19.5047 7.85526 16.1448 4.4953 12 4.4953C7.85532 4.4953 4.49536 7.85526 4.49536 12C4.49536 16.1447 7.85532 19.5047 12 19.5047Z" 
+        stroke={getStrokeColor()} 
+        strokeWidth="1.5"
+        fill="transparent"
+      />
+      {/* Left continent - colorful border, transparent fill */}
+      <path 
+        fillRule="evenodd" 
+        clipRule="evenodd" 
+        d="M8.71733 14.5015C9.02546 14.5015 9.3164 14.3595 9.50599 14.1166C9.69559 13.8737 9.76271 13.557 9.68794 13.2581L9.18762 11.2568C9.07622 10.8115 8.67608 10.4991 8.21702 10.499H4.64612C4.08352 13.2627 5.11851 16.1084 7.32513 17.865L7.99755 14.5015H8.71733Z" 
+        stroke={getStrokeColor()} 
+        strokeWidth="1.5"
+        fill="transparent"
+      />
+      {/* Right continent - colorful border, transparent fill */}
+      <path 
+        fillRule="evenodd" 
+        clipRule="evenodd" 
+        d="M17.9938 7.49719H15.2828C14.8238 7.49724 14.4236 7.80966 14.3122 8.255L13.8119 10.2562C13.7371 10.5552 13.8042 10.8719 13.9938 11.1148C14.1834 11.3577 14.4744 11.4997 14.7825 11.4997H15.8358L16.3635 14.6683C16.444 15.1508 16.8616 15.5043 17.3508 15.5042H18.6349C19.9953 12.9381 19.7453 9.8161 17.9938 7.49919V7.49719Z" 
+        stroke={getStrokeColor()} 
+        strokeWidth="1.5"
+        fill="transparent"
+      />
+    </svg>
+  );
+};
+
 const FirstInWorldBadge = ({ 
   achievement, 
   size = 'medium', 
@@ -87,11 +151,11 @@ const FirstInWorldBadge = ({
   } : {};
 
   const getIcon = () => {
-    // Use the achievement's icon if available, otherwise default to Globe
+    // Use the achievement's icon if available, otherwise default to custom icon
     if (achievementIcon && achievementIcon !== '🌍') {
       return <span className="text-current">{achievementIcon}</span>;
     }
-    return <Globe className={sizes.icon} />;
+    return <CustomFirstInWorldIcon className={sizes.icon} rarity={achievementRarity} />;
   };
 
   const renderBasicBadge = () => (

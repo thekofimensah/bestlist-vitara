@@ -451,7 +451,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
           {peopleLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                <div key={i} className="h-14 bg-gray-200 rounded-xl animate-pulse" />
               ))}
             </div>
           ) : (
@@ -462,11 +462,11 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                   onClick={() => onNavigateToUser && p.username && onNavigateToUser(p.username)}
                   className="w-full flex items-center gap-3 bg-white"
                 >
-                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100">
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
                     {p.avatar_url ? (
                       <img src={p.avatar_url} alt={p.username} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center"><User className="w-5 h-5 text-gray-400" /></div>
+                      <div className="w-full h-full flex items-center justify-center"><User className="w-5 h-5 text-gray-600" /></div>
                     )}
                   </div>
                   <div className="flex-1 text-left min-w-0">
@@ -499,11 +499,11 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
             <div className="space-y-3">
             <button onClick={() => setShowPrivacyPolicy(true)} className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between hover:bg-gray-50">
               <span className="text-gray-900">Privacy Policy</span>
-              <div className="w-2 h-2 bg-gray-300 rounded-full" />
+              <div className="w-2 h-2 bg-gray-200 rounded-full" />
               </button>
             <button onClick={() => setShowTermsOfService(true)} className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between hover:bg-gray-50">
               <span className="text-gray-900">Terms of Service</span>
-              <div className="w-2 h-2 bg-gray-300 rounded-full" />
+              <div className="w-2 h-2 bg-gray-200 rounded-full" />
             </button>
           </div>
           <button onClick={handleSignOut} className="mt-6 w-full bg-red-50 border border-red-100 rounded-2xl p-4 text-red-600 font-medium">Sign Out</button>
@@ -563,12 +563,12 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         <div className="p-1">
           <div className="grid grid-cols-[auto,1fr] gap-4 items-start">
             {/* Avatar spans both rows and is vertically centered */}
-            <div className="row-span-2 self-start w-24 h-24 rounded-full overflow-hidden bg-gray-100 cursor-pointer" onClick={handleAvatarClick}>
+            <div className="row-span-2 self-start w-24 h-24 rounded-full overflow-hidden bg-gray-200 cursor-pointer" onClick={handleAvatarClick}>
               {avatarUrl ? (
                 <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <User className="w-8 h-8 text-gray-400" />
+                  <User className="w-8 h-8 text-gray-600" />
                 </div>
               )}
             </div>
@@ -582,12 +582,12 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
               <div className="text-sm text-gray-500 truncate">{user?.email}</div>
             </div>
 
-            {/* Counts row (right col, second row) */}
+            {/* Counts row (aligned with username/email) */}
             <div className="col-start-2 mt-2">
-              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-center items-start text-center">
+              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-start items-start text-center">
                 <div>
                   {countsLoading || postsCount === null ? (
-                    <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
+                    <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
                   ) : (
                     <div className="text-2xl font-bold leading-none text-center">{postsCount}</div>
                   )}
@@ -595,19 +595,19 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                 </div>
                 <button className="text-center" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
                   {countsLoading || followersCount === null ? (
-                    <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
+                    <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
                   ) : (
                     <div className="text-2xl font-bold leading-none text-gray-900">{followersCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight">Followers</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Followers</div>
                 </button>
                 <button className="text-center" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
                   {countsLoading || followingCount === null ? (
-                    <div className="h-6 w-10 bg-gray-100 rounded animate-pulse" />
+                    <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
                   ) : (
                     <div className="text-2xl font-bold leading-none text-gray-900">{followingCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight">Following</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Following</div>
                 </button>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, FlipHorizontal, Zap, Image, X, Plus, Star, Heart, MessageCircle, Send, MoreHorizontal, RefreshCw, Bookmark, Share } from 'lucide-react'; 
+import { Camera, FlipHorizontal, Zap, Image, X, Plus, Star, Heart, MessageCircle, Send, MoreHorizontal, RefreshCw, Bookmark, Share, Search, Bell } from 'lucide-react'; 
 import AddItemModal from './AddItemModal';
 import CommentsModal from './secondary/CommentsModal';
 import ShareModal from './secondary/ShareModal';
@@ -1347,29 +1347,48 @@ const MainScreen = React.forwardRef(({
         </div>
 
         {/* Tabs */}
-        <div className="px-6 mb-4 flex gap-3">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setSelectedTab(tab);
-                // Notify parent component of tab change
-                if (onTabChange) {
-                  // const feedType = tab === 'Following' ? 'following' : 'for_you'; // Commented out - always following for now
-                  const feedType = 'following'; // Always use following for now
-                  onTabChange(feedType);
-                }
-              }}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                selectedTab === tab
-                  ? 'bg-teal-700 text-white'
-                  : 'bg-white text-gray-600 hover:bg-stone-100'
-              }`}
-              style={selectedTab === tab ? { backgroundColor: '#1F6D5A' } : {}}
+        <div className="pl-6 pr-4 mb-4 flex items-center justify-between">
+          <div className="flex gap-3">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setSelectedTab(tab);
+                  // Notify parent component of tab change
+                  if (onTabChange) {
+                    // const feedType = tab === 'Following' ? 'following' : 'for_you'; // Commented out - always following for now
+                    const feedType = 'following'; // Always use following for now
+                    onTabChange(feedType);
+                  }
+                }}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  selectedTab === tab
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-white text-gray-600 hover:bg-stone-100'
+                }`}
+                style={selectedTab === tab ? { backgroundColor: '#1F6D5A' } : {}}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          
+          {/* Search and Notification Icons - matching ListsView positioning */}
+          <div className="flex items-center gap-3">
+            <button 
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
             >
-              {tab}
+              <Search className="w-4 h-4 text-gray-700" />
             </button>
-          ))}
+            <div className="relative">
+              <button 
+                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+              >
+                <Bell className="w-4 h-4 text-gray-700" />
+                {/* Notification badge would go here if needed */}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Feed Content - Real social feed */}

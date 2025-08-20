@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import iconUrl from '../assets/icon.svg';
 import {
   Mail,
   Lock,
@@ -161,10 +162,16 @@ const AuthView = () => {
         {/* logo */}
         <div className="flex flex-col items-center mb-8">
           <div
-            className="w-9 h-9 rounded-full flex items-center justify-center mb-2"
-            style={{ backgroundColor: palette.herb }}
+            className="w-9 h-9 flex items-center justify-center mb-2"
           >
-            <span className="text-white font-bold lowercase">b</span>
+            <img 
+              src={iconUrl} 
+              alt="Bestlist Logo"
+              width="36" 
+              height="36" 
+              className="drop-shadow-sm"
+              style={{ filter: `brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%)` }}
+            />
           </div>
           <h1 className="text-2xl tracking-tight font-medium text-gray-900">
             bestlist

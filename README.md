@@ -193,6 +193,8 @@ Should be easy to talk abuot (shareability) i.e. have you tried ... before?
 Should not have another same name in the same selling space
 Small bonus, it can be good if when a person talks about it, the name is slightly unpredictable to get the other person to say "Huh, that sounds interesting"
 
+"Remember the milk" as a shopping list app
+
 Features
 Track user version
 Store locally and to the supabase

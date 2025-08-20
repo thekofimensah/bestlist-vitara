@@ -1,5 +1,5 @@
 /*@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');*/
-@import url('https://fonts.googleapis.com/css2?family=Jua&family=Reenie+Beanie&family=Sen:wght@400..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Jua&family=Reenie+Beanie&family=Sen:wght@400..800&family=Katibeh&display=swap');
 @import "tailwindcss";
 
 @layer base {
@@ -27,6 +27,7 @@
     
     /* 🎨 MOST USED TYPOGRAPHY */
     --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-family-katibeh: 'Katibeh', cursive;
     
     /* 🎨 MOST USED SPACING */
     --spacing-sm: 0.5rem;    /* 8px - small gaps */
@@ -978,6 +979,9 @@
   .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
   .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
   
+  /* Font Family Utilities */
+  .font-katibeh { font-family: var(--font-family-katibeh); }
+  
   /* Font Weight Utilities */
   .font-light { font-weight: 300; }
   .font-normal { font-weight: 400; }
@@ -994,6 +998,21 @@
   .text-warning { color: var(--color-warning); }
   .text-error { color: var(--color-error); }
   .text-info { color: var(--color-info); }
+  .text-shadow { text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  
+  /* Loading Screen Specific Utilities */
+  .dots {
+    animation: dots-pulse 1.5s infinite;
+  }
+  
+  @keyframes dots-pulse {
+    0%, 50% { opacity: 1; }
+    25%, 75% { opacity: 0.3; }
+  }
+  
+  .drop-shadow-lg {
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+  }
   
   /* Background Color Utilities */
   .bg-primary { background-color: var(--color-primary); }

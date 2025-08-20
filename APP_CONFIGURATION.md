@@ -75,10 +75,10 @@ adb shell am start -W -a android.intent.action.VIEW -d "your-app-name://post/123
 
 ## 🎨 **Current Configuration**
 
-- **App Name**: `beslist`
-- **Display Name**: `beslist`
-- **URL Scheme**: `beslist://`
-- **Deep Links**: `beslist://post/123`, `beslist://list/456`
+- **App Name**: `bestlist`
+- **Display Name**: `bestlist`
+- **URL Scheme**: `bestlist://`
+- **Deep Links**: `bestlist://post/123`, `bestlist://list/456`
 
 ## 💡 **Tips**
 

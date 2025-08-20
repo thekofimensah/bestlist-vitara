@@ -29,6 +29,8 @@ import usePendingAchievements from './hooks/usePendingAchievements';
 import useUserStats from './hooks/useUserStats';
 import { updateFeedPosts, addOfflineProfilePost } from './hooks/useOptimizedFeed';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
+import LoadingScreen from './components/LoadingScreen';
+import iconUrl from './assets/icon.svg';
 
 // Helper function to format post data from database (moved from MainScreen)
   const formatPostForDisplay = (post) => {
@@ -77,50 +79,8 @@ import { useOfflineQueue } from './hooks/useOfflineQueue';
   };
 };
 
-// Custom loading component
-const MultiStepLoadingScreen = ({ step, totalSteps, messages, currentMessage }) => {
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
-      <div className="flex flex-col items-center justify-center px-8">
-        {/* Logo */}
-        <div className="w-24 h-24 bg-teal-700 rounded-3xl flex items-center justify-center mb-8 shadow-lg" style={{ backgroundColor: '#1F6D5A' }}>
-          <span className="text-white text-3xl font-bold">b</span>
-        </div>
-        
-        {/* App Name */}
-        <h1 className="text-3xl font-normal text-gray-900 mb-2 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
-        <p className="text-gray-600 text-center mb-8">Your personal food discovery companion</p>
-        
-        {/* Progress Bar */}
-        <div className="w-64 bg-gray-200 rounded-full h-2 mb-4">
-          <div 
-            className="bg-teal-700 h-2 rounded-full transition-all duration-300 ease-out"
-            style={{ 
-              width: `${(step / totalSteps) * 100}%`,
-              backgroundColor: '#1F6D5A'
-            }}
-          />
-          </div>
-        
-        {/* Step Counter */}
-        <div className="text-sm text-gray-500 mb-6">
-          Step {step} of {totalSteps}
-        </div>
-        
-        {/* Current Message */}
-        <motion.div
-          key={currentMessage}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          className="text-center"
-        >
-          <p className="text-gray-700 font-medium">{currentMessage}</p>
-        </motion.div>
-      </div>
-    </div>
-  );
-};
+
+
 
 const App = () => {
   // Enable native keyboard features globally
@@ -1680,81 +1640,7 @@ const App = () => {
 
   // Show loading screen during comprehensive data loading
   if (appLoading || (!user && appLoading)) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center px-6" style={{ backgroundColor: '#F6F6F4' }}>
-        <div className="w-full max-w-sm">
-          {/* App Logo/Branding */}
-          <div className="text-center mb-12">
-            <div className="w-20 h-20 bg-teal-700 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg" style={{ backgroundColor: '#1F6D5A' }}>
-              <span className="text-2xl">🍽️</span>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">BestList</h1>
-            <p className="text-sm text-gray-600">Discover your perfect taste</p>
-          </div>
-
-          {/* Loading Progress */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-700">Loading your experience</span>
-              <span className="text-sm text-gray-500">{progressPercentage}%</span>
-            </div>
-            
-            {/* Progress Bar */}
-            <div className="w-full bg-gray-200 rounded-full h-2 mb-6 overflow-hidden">
-              <motion.div
-                className="h-2 bg-teal-700 rounded-full"
-                style={{ backgroundColor: '#1F6D5A' }}
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPercentage}%` }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-              />
-            </div>
-
-              {/* Loading Steps (condensed to 3) */}
-              <div className="space-y-3">
-                {displaySteps.map(({ key, label, icon, done }, index) => (
-                  <motion.div
-                    key={key}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
-                      done 
-                        ? 'bg-teal-50 border border-teal-200' 
-                        : 'bg-white border border-gray-200'
-                    }`}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      done 
-                        ? 'bg-teal-700 text-white' 
-                        : 'bg-gray-100 text-gray-400'
-                    }`} style={{ backgroundColor: done ? '#1F6D5A' : undefined }}>
-                      {done ? '✓' : icon}
-                    </div>
-                    <span className={`text-sm font-medium ${
-                      done ? 'text-teal-700' : 'text-gray-600'
-                    }`} style={{ color: done ? '#1F6D5A' : undefined }}>
-                      {label}
-                    </span>
-                    {!done && (
-                      <div className="ml-auto">
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-teal-700 rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-          </div>
-
-          {/* Subtle loading message */}
-          <div className="text-center">
-            <p className="text-xs text-gray-500">
-              Preparing everything for the best experience...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoadingScreen loadingProgress={loadingProgress} appLoading={appLoading} />;
   }
 
   // Show auth view only when not loading and no user
@@ -1794,11 +1680,18 @@ const App = () => {
           }}
         >
           <div className="px-4 mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-teal-700 rounded-full flex items-center justify-center" style={{ backgroundColor: '#1F6D5A' }}>
-                <span className="text-white text-xs font-bold">b</span>
-              </div>
-              <h1 className="text-xl font-normal text-gray-900 tracking-tight" style={{ fontFamily: 'Jost, sans-serif' }}>bestlist</h1>
+            <div className="flex items-center gap-3">
+              <img 
+                src={iconUrl} 
+                alt="Bestlist Logo"
+                width="32" 
+                height="32" 
+                className="drop-shadow-sm flex-shrink-0"
+                style={{ filter: 'brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%) backgroundColor: \'#1F6D5A\'' }}
+              />
+              <h1 className="text-3xl md:text-4xl font-katibeh text-gray-700 tracking-widest leading-none">
+                bestlist
+              </h1>
               
               {/* Offline Status Indicator */}
               {!queueStatus.isOnline && (

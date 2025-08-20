@@ -1,0 +1,97 @@
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import iconUrl from '../assets/icon.svg';
+
+const LoadingScreen = ({ loadingProgress, appLoading }) => {
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+  
+  // Loading messages that correspond to the progress states
+  const loadingMessages = [
+    "Loading assets...",
+    "Loading Lists...", 
+    "Loading profile...",
+    "Done"
+  ];
+
+  // Safely handle loadingProgress if it's undefined
+  const safeLoadingProgress = loadingProgress || {};
+  
+  // Calculate loading progress (condensed into 3 buckets for UX)
+  const coreReady = safeLoadingProgress.auth && safeLoadingProgress.userTracking;
+  const contentReady = safeLoadingProgress.lists && safeLoadingProgress.feed && safeLoadingProgress.stats;
+  const extrasReady = safeLoadingProgress.achievements;
+  const displaySteps = [
+    { key: 'core', label: 'Core setup', done: coreReady },
+    { key: 'content', label: 'Content', done: contentReady },
+    { key: 'extras', label: 'Extras', done: extrasReady }
+  ];
+  const loadingComplete = displaySteps.every(s => s.done);
+  const completedSteps = displaySteps.filter(s => s.done).length;
+  const totalSteps = displaySteps.length;
+  const progressPercentage = Math.round((completedSteps / totalSteps) * 100);
+
+  // Update loading message based on progress
+  useEffect(() => {
+    if (loadingComplete) {
+      setCurrentMessageIndex(3); // "Done!"
+    } else if (contentReady) {
+      setCurrentMessageIndex(2); // "Loading profile..."
+    } else if (coreReady) {
+      setCurrentMessageIndex(1); // "Loading Lists..."
+    } else {
+      setCurrentMessageIndex(0); // "Loading assets..."
+    }
+  }, [safeLoadingProgress, loadingComplete, coreReady, contentReady]);
+
+  // Don't show loading screen if app is not loading
+  if (!appLoading) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col justify-center items-center overflow-hidden" style={{ backgroundColor: '#88b7b5' }}>
+      {/* Logo and App Name */}
+      <motion.div 
+        className="text-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, delay: 0.5 }}
+      >
+        <motion.div
+          animate={{ y: [0, -10, 0] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          className="mb-4"
+        >
+          <img 
+            src={iconUrl} 
+            alt="Bestlist Logo"
+            width="320" 
+            height="320" 
+            className="drop-shadow-lg w-72 h-72 md:w-80 md:h-80"
+            style={{ filter: 'brightness(0) saturate(100%) invert(100%)' }}
+          />
+        </motion.div>
+        <h1 className="text-5xl md:text-6xl lg:text-7xl font-katibeh text-white mt-4 text-shadow tracking-widest font-normal">
+          bestlist
+        </h1>
+      </motion.div>
+      
+      {/* Loading Text */}
+      <motion.div 
+        className="fixed bottom-12 md:bottom-16 left-0 right-0 text-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, delay: 1.5 }}
+      >
+        <div className="text-white/80 text-sm md:text-base">
+          {loadingMessages[currentMessageIndex]}
+          {currentMessageIndex < 3 && (
+            <span className="dots ml-1">...</span>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+export default LoadingScreen;

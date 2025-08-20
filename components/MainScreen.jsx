@@ -1347,7 +1347,7 @@ const MainScreen = React.forwardRef(({
         </div>
 
         {/* Tabs */}
-        <div className="pl-6 pr-4 mb-4 flex items-center justify-between">
+        <div className="pl-6 pr-4 mb-4">
           <div className="flex gap-3">
             {tabs.map((tab) => (
               <button
@@ -1371,23 +1371,6 @@ const MainScreen = React.forwardRef(({
                 {tab}
               </button>
             ))}
-          </div>
-          
-          {/* Search and Notification Icons - matching ListsView positioning */}
-          <div className="flex items-center gap-3">
-            <button 
-              className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
-            >
-              <Search className="w-4 h-4 text-gray-700" />
-            </button>
-            <div className="relative">
-              <button 
-                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
-              >
-                <Bell className="w-4 h-4 text-gray-700" />
-                {/* Notification badge would go here if needed */}
-              </button>
-            </div>
           </div>
         </div>
 

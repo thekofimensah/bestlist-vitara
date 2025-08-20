@@ -196,6 +196,45 @@ const AddItemModal = ({
   aiTriggeredAchievements
 }) => {
   
+  // Comprehensive logging of item data
+  console.log('🔍 [AddItemModal] Component initialized with item data:');
+  console.log('  📋 Item ID:', item?.id);
+  console.log('  📋 Has Item:', !!item);
+  console.log('  📋 All Item Fields:', item ? Object.keys(item) : 'no item');
+  
+  if (item) {
+    console.log('  🤖 AI Fields:', JSON.stringify({
+      ai_product_name: item?.ai_product_name,
+      ai_brand: item?.ai_brand,
+      ai_category: item?.ai_category,
+      ai_confidence: item?.ai_confidence,
+      ai_description: item?.ai_description,
+      ai_tags: item?.ai_tags,
+      ai_allergens: item?.ai_allergens,
+      ai_lookup_status: item?.ai_lookup_status
+    }, null, 2));
+    
+    console.log('  👤 User Fields:', JSON.stringify({
+      user_product_name: item?.user_product_name,
+      user_description: item?.user_description,
+      user_tags: item?.user_tags,
+      user_allergens: item?.user_allergens
+    }, null, 2));
+    
+    console.log('  📜 Legacy Fields:', JSON.stringify({
+      name: item?.name,
+      category: item?.category,
+      species: item?.species,
+      certainty: item?.certainty,
+      tags: item?.tags
+    }, null, 2));
+  }
+  
+  console.log('  ⚡ Has AI Metadata:', !!aiMetadata);
+  if (aiMetadata) {
+    console.log('  ⚡ AI Metadata Fields:', Object.keys(aiMetadata));
+  }
+  
   const [currentImage, setCurrentImage] = useState(image); // image shown & saved
   
   // Update currentImage when storage URL becomes available
@@ -393,20 +432,55 @@ const AddItemModal = ({
   const [notes, setNotes] = useState(initialState?.notes ?? item?.notes ?? '');
   const [productName, setProductName] = useState(() => {
     if (aiMetadata?.productName) return aiMetadata.productName;
-    return initialState?.productName ?? item?.name ?? '';
+    const name = initialState?.productName ?? item?.name ?? '';
+    console.log('📦 [AddItemModal] Initializing productName:', JSON.stringify({
+      aiMetadata_productName: aiMetadata?.productName,
+      initialState_productName: initialState?.productName,
+      item_name: item?.name,
+      item_ai_product_name: item?.ai_product_name,
+      item_user_product_name: item?.user_product_name,
+      final_name: name
+    }, null, 2));
+    return name;
   });
   const [productNameManuallyEdited, setProductNameManuallyEdited] = useState(false);
   const [category, setCategory] = useState(() => {
     if (aiMetadata?.category) return aiMetadata.category;
-    return initialState?.category ?? item?.category ?? '';
+    const cat = initialState?.category ?? item?.category ?? '';
+    console.log('🏷️ [AddItemModal] Initializing category:', JSON.stringify({
+      aiMetadata_category: aiMetadata?.category,
+      initialState_category: initialState?.category,
+      item_category: item?.category,
+      item_ai_category: item?.ai_category,
+      final_category: cat
+    }, null, 2));
+    return cat;
   });
   const [tags, setTags] = useState(() => {
     if (aiMetadata?.tags) return aiMetadata.tags;
-    return initialState?.tags ?? item?.tags ?? [];
+    // Check multiple sources for existing item tags
+    const tagList = initialState?.tags ?? item?.user_tags ?? item?.ai_tags ?? item?.tags ?? [];
+    console.log('🏷️ [AddItemModal] Initializing tags state:', JSON.stringify({
+      aiMetadata_tags: aiMetadata?.tags,
+      initialState_tags: initialState?.tags,
+      item_user_tags: item?.user_tags,
+      item_ai_tags: item?.ai_tags,
+      item_tags: item?.tags,
+      final_tags: tagList
+    }, null, 2));
+    return tagList;
   });
   const [certainty, setCertainty] = useState(() => {
     if (aiMetadata?.certainty) return aiMetadata.certainty;
-    return initialState?.certainty ?? item?.certainty ?? 0;
+    const cert = initialState?.certainty ?? item?.certainty ?? 0;
+    console.log('🎯 [AddItemModal] Initializing certainty:', JSON.stringify({
+      aiMetadata_certainty: aiMetadata?.certainty,
+      initialState_certainty: initialState?.certainty,
+      item_certainty: item?.certainty,
+      item_ai_confidence: item?.ai_confidence,
+      final_certainty: cert
+    }, null, 2));
+    return cert;
   });
   const [location, setLocation] = useState(initialState?.location ?? item?.location ?? 'Current Location');
   const [locationSearch, setLocationSearch] = useState('');
@@ -737,7 +811,17 @@ const AddItemModal = ({
     };
   }, [showPlaceSearch]);
 
-  const [activeTags, setActiveTags] = useState([]);
+  const [activeTags, setActiveTags] = useState(() => {
+    // Initialize from existing item data
+    const tags = item?.user_tags || item?.ai_tags || item?.tags || [];
+    console.log('🏷️ [AddItemModal] Initializing activeTags:', JSON.stringify({
+      item_user_tags: item?.user_tags,
+      item_ai_tags: item?.ai_tags,
+      item_tags: item?.tags,
+      final_tags: tags
+    }, null, 2));
+    return tags;
+  });
   const [customTag, setCustomTag] = useState('');
   const [flavorNotes, setFlavorNotes] = useState([]);
   const [newFlavorNote, setNewFlavorNote] = useState('');
@@ -755,7 +839,17 @@ const AddItemModal = ({
       return [];
     }
   });
-  const [qualityOverview, setQualityOverview] = useState('');
+  const [qualityOverview, setQualityOverview] = useState(() => {
+    // Initialize from existing item data
+    const description = item?.user_description || item?.ai_description || item?.species || '';
+    console.log('📝 [AddItemModal] Initializing qualityOverview:', JSON.stringify({
+      item_user_description: item?.user_description,
+      item_ai_description: item?.ai_description,
+      item_species: item?.species,
+      final_description: description
+    }, null, 2));
+    return description;
+  });
   
   // Public/Private toggle state
   const [isPublic, setIsPublic] = useState(true);
@@ -884,6 +978,8 @@ const AddItemModal = ({
     }
   }, [tags]);
 
+
+
   // Update selectedLists when lists change and none are selected
   useEffect(() => {
     if (selectedLists.length === 0 && lists && lists.length > 0) {
@@ -919,7 +1015,16 @@ const AddItemModal = ({
   };
 
   // State for allergens
-  const [allergens, setAllergens] = useState([]);
+  const [allergens, setAllergens] = useState(() => {
+    // Initialize from existing item data
+    const allergenList = item?.user_allergens || item?.ai_allergens || [];
+    console.log('🚨 [AddItemModal] Initializing allergens:', JSON.stringify({
+      item_user_allergens: item?.user_allergens,
+      item_ai_allergens: item?.ai_allergens,
+      final_allergens: allergenList
+    }, null, 2));
+    return allergenList;
+  });
 
   // Update state when AI metadata becomes available
   useEffect(() => {
@@ -1746,75 +1851,7 @@ const AddItemModal = ({
         {/* Scrollable content */}
         <div className="h-full overflow-y-auto">
           <div className="p-6 pb-20 min-h-full">
-            {/* Category Pills */}
-            <div className="flex gap-2 mb-4 overflow-x-auto items-center">
-              {!isAIProcessing && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setShowAdditionalTags(!showAdditionalTags)}
-                    className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap"
-                  >
-                    <div className="flex items-center gap-1">
-                      <Plus className="w-3 h-3" />
-                    </div>
-                  </button>
 
-                  {showAdditionalTags && (
-                    <div className="flex gap-1 items-center">
-                      <input
-                        type="text"
-                        value={customTag}
-                        onChange={(e) => setCustomTag(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') addCustomTag();
-                          else if (e.key === 'Escape') {
-                            setShowAdditionalTags(false);
-                            setCustomTag('');
-                          }
-                        }}
-                        placeholder="Add tag..."
-                        className="px-2 py-1 text-xs border border-gray-200 rounded-full focus:outline-none focus:border-teal-700 w-28"
-                        autoFocus
-                      />
-                      <button
-                        onClick={addCustomTag}
-                        className="px-3 py-1.5 bg-teal-700 text-white rounded-full text-xs hover:bg-teal-800 transition-colors min-w-[32px] flex items-center justify-center"
-                        style={{ backgroundColor: '#1F6D5A' }}
-                      >
-                        ✓
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Loading placeholders for tags when AI is processing */}
-              {isAIProcessing && (
-                <>
-                  <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-6 loading-tag"></div>
-                  <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-6 loading-tag"></div>
-                  <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-14 h-6 loading-tag"></div>
-                </>
-              )}
-              
-              {!isAIProcessing && activeTags.map((tag, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap"
-                  style={{ backgroundColor: '#F1F1EF' }}
-                >
-                  <span>{tag}</span>
-                  {!isAIProcessing && (
-                    <button
-                      onClick={() => removeTag(tag)}
-                      className="w-3 h-3 flex items-center justify-center hover:bg-gray-300 rounded-full"
-                    >
-                      <X className="w-2 h-2" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
 
 
 
@@ -1856,18 +1893,32 @@ const AddItemModal = ({
                     />
                   )}
                 </div>
-                {!isAIProcessing && aiMetadata && (
-                  <button 
-                    onClick={() => setShowAISparkle(!showAISparkle)}
-                    className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-0.5 hover:bg-stone-100 transition-colors" 
-                    style={{ backgroundColor: '#FAFAF9' }}
-                    title="Toggle AI indicator"
-                  >
-                    <Sparkles className={`w-2.5 h-2.5 transition-colors ${showAISparkle ? 'text-yellow-500' : 'text-gray-400'}`} />
-                    <span className="text-xs text-gray-400">AI</span>
-                    <span className="text-xs text-gray-400 whitespace-nowrap">{certainty > 0 ? `${Math.round(certainty)}%` : 'N/A'}</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {!isAIProcessing && aiMetadata && (
+                    <button 
+                      onClick={() => setShowAISparkle(!showAISparkle)}
+                      className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-0.5 hover:bg-stone-100 transition-colors" 
+                      style={{ backgroundColor: '#FAFAF9' }}
+                      title="Toggle AI indicator"
+                    >
+                      <Sparkles className={`w-2.5 h-2.5 transition-colors ${showAISparkle ? 'text-yellow-500' : 'text-gray-400'}`} />
+                      <span className="text-xs text-gray-400">AI</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{certainty > 0 ? `${Math.round(certainty)}%` : 'N/A'}</span>
+                    </button>
+                  )}
+                  
+                  {/* Share Button - only show for existing items */}
+                  {isEditingExisting && (
+                    <button
+                      onClick={() => setShowShareModal(true)}
+                      className="w-8 h-8 bg-stone-50 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
+                      style={{ backgroundColor: '#FAFAF9' }}
+                      title="Share item"
+                    >
+                      <Share className="w-4 h-4 text-gray-600" />
+                    </button>
+                  )}
+                </div>
               </div>
               
               {/* Product name validation error */}
@@ -2067,7 +2118,7 @@ const AddItemModal = ({
                 >
                   {/* AI Description */}
                   <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">Description</h4>
+                    <h4 className="text-xs font-medium text-gray-600 mb-2">AI Description</h4>
                     <textarea
                       value={qualityOverview}
                       onChange={(e) => setQualityOverview(e.target.value)}
@@ -2101,6 +2152,79 @@ const AddItemModal = ({
                       ) : (
                         <span className="text-sm text-gray-500">No allergens detected</span>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-600 mb-2">Tags</h4>
+                    <div className="flex gap-2 overflow-x-auto items-center">
+                      {!isAIProcessing && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setShowAdditionalTags(!showAdditionalTags)}
+                            className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap"
+                          >
+                            <div className="flex items-center gap-1">
+                              <Plus className="w-3 h-3" />
+                            </div>
+                          </button>
+
+                          {showAdditionalTags && (
+                            <div className="flex gap-1 items-center">
+                              <input
+                                type="text"
+                                value={customTag}
+                                onChange={(e) => setCustomTag(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') addCustomTag();
+                                  else if (e.key === 'Escape') {
+                                    setShowAdditionalTags(false);
+                                    setCustomTag('');
+                                  }
+                                }}
+                                placeholder="Add tag..."
+                                className="px-2 py-1 text-xs border border-gray-200 rounded-full focus:outline-none focus:border-teal-700 w-28"
+                                autoFocus
+                              />
+                              <button
+                                onClick={addCustomTag}
+                                className="px-3 py-1.5 bg-teal-700 text-white rounded-full text-xs hover:bg-teal-800 transition-colors min-w-[32px] flex items-center justify-center"
+                                style={{ backgroundColor: '#1F6D5A' }}
+                              >
+                                ✓
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Loading placeholders for tags when AI is processing */}
+                      {isAIProcessing && (
+                        <>
+                          <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-6 loading-tag"></div>
+                          <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-6 loading-tag"></div>
+                          <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-14 h-6 loading-tag"></div>
+                        </>
+                      )}
+                      
+                      {!isAIProcessing && activeTags.map((tag, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap"
+                          style={{ backgroundColor: '#F1F1EF' }}
+                        >
+                          <span>{tag}</span>
+                          {!isAIProcessing && (
+                            <button
+                              onClick={() => removeTag(tag)}
+                              className="w-3 h-3 flex items-center justify-center hover:bg-gray-300 rounded-full"
+                            >
+                              <X className="w-2 h-2" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </motion.div>
@@ -2408,18 +2532,6 @@ const AddItemModal = ({
                       : 'bg-gray-100'
                   }`}
                 >
-                  {showListDropdown && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowListDropdown(false);
-                      }}
-                      className="absolute -left-12 px-2 py-1 bg-teal-700 text-white text-xs rounded-lg font-medium"
-                      style={{ backgroundColor: '#1F6D5A' }}
-                    >
-                      Done
-                    </button>
-                  )}
                   <span>{getSelectedListName()}</span>
                   <ChevronDown className={`w-4 h-4 transition-transform ${showListDropdown ? 'rotate-180' : ''}`} />
                 </button>
@@ -2442,6 +2554,18 @@ const AddItemModal = ({
                   />
                   <div className="relative">
                         <div className="absolute top-0 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-200 z-50 max-h-80 overflow-y-auto mb-4" style={{ maxHeight: 'min(80vh, 320px)', marginBottom: '100px' }}>
+                      
+                      {/* Header with Done button */}
+                      <div className="flex items-center justify-between p-3 border-b border-gray-100">
+                        <h4 className="text-sm font-medium text-gray-900">Select Lists</h4>
+                        <button
+                          onClick={() => setShowListDropdown(false)}
+                          className="px-3 py-1 bg-teal-700 text-white text-xs rounded-lg font-medium hover:bg-teal-800 transition-colors"
+                          style={{ backgroundColor: '#1F6D5A' }}
+                        >
+                          Done
+                        </button>
+                      </div>
                       
                       {/* List options */}
                       <div className="py-2">
@@ -2545,16 +2669,7 @@ const AddItemModal = ({
                 )}
               </button>
 
-              {/* Share Button - only show for existing items */}
-              {isEditingExisting && (
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors mr-4"
-                  title="Share item"
-                >
-                  <Share className="w-5 h-5 text-gray-600" />
-                </button>
-              )}
+
 
               <div className="text-right relative">
                 {isEditingPrice ? (
@@ -3054,7 +3169,10 @@ const AddItemModal = ({
               </h3>
 
               <p className="text-sm text-gray-600 leading-relaxed">
-                You're the first in the world to discover this item. This badge is now permanently part of its history.
+                You just made history! 
+                <br />
+                <br />
+                You're the very first person to find and rate this product, and that's yours forever.
               </p>
             </div>
           </div>

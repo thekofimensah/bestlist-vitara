@@ -856,6 +856,10 @@ const MainScreen = React.forwardRef(({
 
   // Handle closing modals
   const handleModalClose = async (reason, itemWasSaved = null) => {
+    // Avoid double-close
+    if (!showModal) {
+      return;
+    }
     // Use explicit parameter, ref (immediate), or state (fallback) 
     const actualWasSaved = itemWasSaved !== null ? itemWasSaved : wasSavedRef.current;
     
@@ -906,19 +910,19 @@ const MainScreen = React.forwardRef(({
     }
   };
 
-  const handleSave = async (...args) => {
+  const handleSave = (...args) => {
     // Set both state and ref immediately to prevent cleanup during save process
     setWasSaved(true);
     wasSavedRef.current = true;
-    console.log('💾 [Save] Setting wasSaved=true (both state and ref) to prevent file cleanup');
-    const savedItem = await onAddItem(...args);
-    
-
-    
-    // Don't close modal here - let AddItemModal handle closing via onClose()
-    // This prevents state conflicts with the cleanup logic
-    console.log('💾 [Save] Save completed, modal will close via onClose()');
-    return savedItem; // Return the saved item for post creation
+    console.log('💾 [Save] Scheduling non-blocking save (wasSaved=true)');
+    // Fire-and-forget; Do not await to avoid blocking UI
+    const promise = onAddItem(...args);
+    // Optional: background log when finished
+    promise.then(() => console.log('💾 [Save] Background save completed')).catch(() => {});
+    // Close modal immediately; ensure files are kept by passing saved flag
+    handleModalClose('save_scheduled', true);
+    // Return the promise for callers that want to attach handlers, but we don't await here
+    return promise;
   };
 
   const handleGalleryUpload = () => {

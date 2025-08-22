@@ -3,10 +3,87 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import useUserStats from './useUserStats';
 import { useGlobalAchievements } from './useGlobalAchievements.jsx';
+import { Preferences } from '@capacitor/preferences';
 
 // In-memory cache for user achievements to avoid refetch on navigation
 // Map<userId, Array>
 const userAchievementsCache = new Map();
+
+// Persistent cache keys and helper functions
+const USER_ACHIEVEMENTS_CACHE_KEY = 'user_achievements_cache_v1';
+const ALL_ACHIEVEMENTS_CACHE_KEY = 'all_achievements_cache_v1';
+
+// Helper functions for persistent caching
+const saveUserAchievementsLocal = async (userId, achievements) => {
+  try {
+    const cacheData = {
+      userId,
+      achievements,
+      timestamp: Date.now()
+    };
+    await Preferences.set({
+      key: `${USER_ACHIEVEMENTS_CACHE_KEY}_${userId}`,
+      value: JSON.stringify(cacheData)
+    });
+    console.log('💾 [UserAchievements] Saved to persistent cache:', achievements.length, 'achievements');
+  } catch (error) {
+    console.error('Error saving user achievements to persistent cache:', error);
+  }
+};
+
+const getUserAchievementsLocal = async (userId) => {
+  try {
+    const { value } = await Preferences.get({ key: `${USER_ACHIEVEMENTS_CACHE_KEY}_${userId}` });
+    if (!value) return null;
+    
+    const cacheData = JSON.parse(value);
+    const isRecent = (Date.now() - cacheData.timestamp) < 5 * 60 * 1000; // 5 minutes
+    
+    if (cacheData.userId === userId && isRecent) {
+      console.log('📦 [UserAchievements] Serving from persistent cache:', cacheData.achievements.length, 'achievements');
+      return cacheData.achievements;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading user achievements from persistent cache:', error);
+    return null;
+  }
+};
+
+const saveAllAchievementsLocal = async (achievements) => {
+  try {
+    const cacheData = {
+      achievements,
+      timestamp: Date.now()
+    };
+    await Preferences.set({
+      key: ALL_ACHIEVEMENTS_CACHE_KEY,
+      value: JSON.stringify(cacheData)
+    });
+    console.log('💾 [AllAchievements] Saved to persistent cache:', achievements.length, 'achievements');
+  } catch (error) {
+    console.error('Error saving all achievements to persistent cache:', error);
+  }
+};
+
+const getAllAchievementsLocal = async () => {
+  try {
+    const { value } = await Preferences.get({ key: ALL_ACHIEVEMENTS_CACHE_KEY });
+    if (!value) return null;
+    
+    const cacheData = JSON.parse(value);
+    const isRecent = (Date.now() - cacheData.timestamp) < 10 * 60 * 1000; // 10 minutes
+    
+    if (isRecent) {
+      console.log('📦 [AllAchievements] Serving from persistent cache:', cacheData.achievements.length, 'achievements');
+      return cacheData.achievements;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading all achievements from persistent cache:', error);
+    return null;
+  }
+};
 
 const useAchievements = () => {
   const { user } = useAuth();
@@ -26,6 +103,12 @@ const useAchievements = () => {
   // Get all available achievements
   const getAchievements = useCallback(async () => {
     try {
+      // Check persistent cache first
+      const cachedAchievements = await getAllAchievementsLocal();
+      if (cachedAchievements) {
+        return cachedAchievements;
+      }
+
       const { data, error } = await supabase
         .from('achievements')
         .select('*')
@@ -33,7 +116,13 @@ const useAchievements = () => {
         .order('created_at');
 
       if (error) throw error;
-      return data || [];
+      
+      const achievements = data || [];
+      
+      // Save to persistent cache
+      await saveAllAchievementsLocal(achievements);
+      
+      return achievements;
     } catch (error) {
       console.error('Error fetching achievements:', JSON.stringify({
           message: error.message,
@@ -51,9 +140,23 @@ const useAchievements = () => {
   const getUserAchievements = useCallback(async (userId = user?.id) => {
     if (!userId) return [];
 
-    // Serve from cache if available
+    // Check in-memory cache first
     const cached = userAchievementsCache.get(userId);
-    if (cached && cached.length > 0) return cached;
+    if (cached && cached.length >= 0) {
+      console.log('🚀 [UserAchievements] Using in-memory cache, count:', cached.length);
+      return cached;
+    }
+
+    // Check persistent cache
+    const persistentCached = await getUserAchievementsLocal(userId);
+    if (persistentCached) {
+      console.log('📦 [UserAchievements] Using persistent cache, count:', persistentCached.length);
+      // Store in memory cache for faster subsequent access
+      userAchievementsCache.set(userId, persistentCached);
+      return persistentCached;
+    }
+
+    console.log('🔄 [UserAchievements] No cache found, fetching from database for user:', userId);
 
     try {
       const { data, error } = await supabase
@@ -110,7 +213,10 @@ const useAchievements = () => {
         return achievement;
       }));
       
+      // Save to both in-memory and persistent cache
       userAchievementsCache.set(userId, correctedList);
+      await saveUserAchievementsLocal(userId, correctedList);
+      
       return correctedList;
     } catch (error) {
       console.error('Error fetching user achievements:', JSON.stringify({
@@ -287,6 +393,11 @@ const useAchievements = () => {
           
           // Clear cache after successful update
           userAchievementsCache.delete(user.id);
+          try {
+            await Preferences.remove({ key: `${USER_ACHIEVEMENTS_CACHE_KEY}_${user.id}` });
+          } catch (error) {
+            console.error('Error clearing persistent cache:', error);
+          }
           return { success: true, count: 1 };
         } else {
           // Insert notification record for this STATE achievement
@@ -304,6 +415,11 @@ const useAchievements = () => {
           
           // Clear cache after successful insert
           userAchievementsCache.delete(user.id);
+          try {
+            await Preferences.remove({ key: `${USER_ACHIEVEMENTS_CACHE_KEY}_${user.id}` });
+          } catch (error) {
+            console.error('Error clearing persistent cache:', error);
+          }
           return { success: true, count: 1 };
         }
       }
@@ -341,6 +457,11 @@ const useAchievements = () => {
           
           // Clear cache after successful update
           userAchievementsCache.delete(user.id);
+          try {
+            await Preferences.remove({ key: `${USER_ACHIEVEMENTS_CACHE_KEY}_${user.id}` });
+          } catch (error) {
+            console.error('Error clearing persistent cache:', error);
+          }
           
           // Return the updated count so the notification system can show it
           return { success: true, count: existing.count + 1 };
@@ -366,6 +487,7 @@ const useAchievements = () => {
       
       // Clear cache after successful insert
       userAchievementsCache.delete(user.id);
+      await saveUserAchievementsLocal(user.id, []); // Clear persistent cache
       return { success: true, count: 1 };
     } catch (error) {
       console.error('Error awarding achievement:', JSON.stringify({
@@ -806,9 +928,16 @@ const useAchievements = () => {
   }, [user?.id]);
 
   // Clear cache when user data changes (called from other hooks when items are added/deleted)
-  const clearCache = useCallback((userId = user?.id) => {
+  const clearCache = useCallback(async (userId = user?.id) => {
     if (userId) {
       userAchievementsCache.delete(userId);
+      // Clear persistent cache as well
+      try {
+        await Preferences.remove({ key: `${USER_ACHIEVEMENTS_CACHE_KEY}_${userId}` });
+        console.log('🗑️ [UserAchievements] Cleared persistent cache for user:', userId);
+      } catch (error) {
+        console.error('Error clearing user achievements persistent cache:', error);
+      }
     }
   }, [user?.id]);
 

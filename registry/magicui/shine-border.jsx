@@ -26,11 +26,12 @@ export const ShineBorder = ({
           WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
           maskComposite: 'exclude',
           WebkitMaskComposite: 'xor',
+          zIndex: 1,
         }}
         animate={{ backgroundPosition: ['0% 0%', '200% 0%'] }}
         transition={{ duration, repeat: Infinity, ease: 'linear' }}
       />
-      <div className="relative rounded-[inherit]">
+      <div className="relative rounded-[inherit]" style={{ zIndex: 0 }}>
         {children}
       </div>
     </div>

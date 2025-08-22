@@ -1,18 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { shouldRetrySubscription, isOffline, useOnlineStatus } from '../lib/onlineDetection';
 
 // Check if app is active (same as useUserStats)
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
 
-// Helper function to log to Android Studio
+// Helper function to log to Android Studio with context
 const logToAndroid = (message, data = null) => {
+  const context = {
+    isDev: window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'),
+    isCapacitor: !!window.Capacitor,
+    timestamp: new Date().toISOString()
+  };
+  
   const logMessage = data ? `${message}: ${JSON.stringify(data)}` : message;
-  console.log(logMessage);
+  const fullMessage = `[${context.isDev ? 'DEV' : 'PROD'}] ${logMessage}`;
+  
+  console.log(fullMessage);
   
   // Also try to use Capacitor's logging if available
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Console) {
-    window.Capacitor.Plugins.Console.log({ message: logMessage });
+    window.Capacitor.Plugins.Console.log({ message: fullMessage });
   }
 };
 
@@ -30,6 +38,28 @@ export const useNotifications = (userId) => {
   const MAX_SUBSCRIPTION_RETRIES = 3;
   const SUBSCRIPTION_RETRY_DELAY = 5000; // 5 seconds
   const [ready, setReady] = useState(false);
+  
+  // Track timeout IDs for proper cleanup
+  const activeTimeouts = useRef(new Set());
+  const isUnmountedRef = useRef(false);
+
+  // Helper to create tracked timeouts that can be properly cleaned up
+  const createTrackedTimeout = (callback, delay) => {
+    const timeoutId = setTimeout(() => {
+      activeTimeouts.current.delete(timeoutId);
+      if (!isUnmountedRef.current && isAppActive()) {
+        callback();
+      }
+    }, delay);
+    activeTimeouts.current.add(timeoutId);
+    return timeoutId;
+  };
+
+  // Helper to clear all tracked timeouts
+  const clearAllTimeouts = () => {
+    activeTimeouts.current.forEach(timeoutId => clearTimeout(timeoutId));
+    activeTimeouts.current.clear();
+  };
 
   // Achievement-related notification types that should NOT appear in the bell
   const ACHIEVEMENT_TYPES = new Set([
@@ -91,7 +121,7 @@ export const useNotifications = (userId) => {
       
       if (timeSinceLastAttempt < minDelay && subscriptionRetryCount > 0) {
         logToAndroid(`🔔 Too soon to retry (${Math.round((minDelay - timeSinceLastAttempt) / 1000)}s remaining)`);
-        setTimeout(setupSubscription, minDelay - timeSinceLastAttempt);
+        createTrackedTimeout(setupSubscription, minDelay - timeSinceLastAttempt);
         return;
       }
       
@@ -152,10 +182,7 @@ export const useNotifications = (userId) => {
                   if (isOnline) {
                     logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
                   }
-                  setTimeout(() => {
-                    if (!isAppActive()) return; // Don't retry if app went inactive
-                    setupSubscription();
-                  }, delay);
+                  createTrackedTimeout(setupSubscription, delay);
                 } else {
                   if (isOnline) {
                     logToAndroid('🔔 Max retries exceeded - realtime updates disabled');
@@ -177,10 +204,7 @@ export const useNotifications = (userId) => {
           if (newCount < MAX_SUBSCRIPTION_RETRIES) {
             const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
             logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
-            setTimeout(() => {
-              if (!isAppActive()) return;
-              setupSubscription();
-            }, delay);
+            createTrackedTimeout(setupSubscription, delay);
           }
           return newCount;
         });
@@ -244,6 +268,8 @@ export const useNotifications = (userId) => {
 
     return () => {
       logToAndroid('🔔 Unsubscribing from notifications');
+      isUnmountedRef.current = true;
+      clearAllTimeouts();
       cleanupSubscription();
       if (appStateHandler?.cleanup) {
         appStateHandler.cleanup();

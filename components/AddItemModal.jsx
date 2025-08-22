@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation, Trash2, Share } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
@@ -444,6 +444,7 @@ const AddItemModal = ({
     return name;
   });
   const [productNameManuallyEdited, setProductNameManuallyEdited] = useState(false);
+  const [isProductNameEditing, setIsProductNameEditing] = useState(false);
   const [category, setCategory] = useState(() => {
     if (aiMetadata?.category) return aiMetadata.category;
     const cat = initialState?.category ?? item?.category ?? '';
@@ -1660,6 +1661,16 @@ const AddItemModal = ({
 
   // Refs for scrolling to validation errors
   const productNameRef = useRef(null);
+  // Ensure product name textarea auto-resizes so wrapped lines aren't hidden
+  useLayoutEffect(() => {
+    const el = productNameRef.current;
+    if (el) {
+      try {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+      } catch (_) {}
+    }
+  }, [productName]);
   const listsRef = useRef(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const isEditingExisting = Boolean(item?.id);
@@ -1858,7 +1869,7 @@ const AddItemModal = ({
             {/* Item Header */}
             <div className="mb-4 pt-6">
               <div className="flex items-center justify-between mb-2">
-                <div className="flex-1 relative min-h-[32px]">
+                <div className="flex-1 relative min-h-[32px]" style={{ maxWidth: '66%' }}>
                   {isAIProcessing && !aiCancelled && !aiError ? (
                     // Match tags overlay style with shimmer pills
                     <div className="flex items-center gap-2">
@@ -1886,7 +1897,7 @@ const AddItemModal = ({
                            e.preventDefault();
                          }
                        }}
-                       className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full leading-tight resize-none placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
+                       className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full leading-tight resize-none placeholder:text-base placeholder:font-normal placeholder:text-gray-400 select-text ${
                          showValidationErrors && validationErrors.productName 
                            ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
                            : ''
@@ -1903,7 +1914,9 @@ const AddItemModal = ({
                          minHeight: '32px',
                          height: 'auto',
                          maxHeight: '80px',
-                         overflow: 'hidden'
+                         overflow: 'hidden',
+                         WebkitUserSelect: 'text',
+                         userSelect: 'text'
                        }}
                        onInput={(e) => {
                          // Auto-resize textarea
@@ -1913,7 +1926,7 @@ const AddItemModal = ({
                      />
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
                   {!isAIProcessing && aiMetadata && (
                     <button 
                       onClick={() => setShowAISparkle(!showAISparkle)}

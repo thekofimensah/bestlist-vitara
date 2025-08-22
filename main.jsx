@@ -17,10 +17,4 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 );
 
-// Hide native splash screen immediately after React renders
-// This creates seamless handoff from native splash to React LoadingScreen
-requestAnimationFrame(() => {
-  SplashScreen.hide({ fadeOutDuration: 150 }).catch(() => {
-    // Gracefully handle if SplashScreen plugin isn't available (web)
-  });
-});
+// Splash screen hiding is now handled in App.jsx after React initializes

@@ -587,72 +587,52 @@ export const useLists = (userId) => {
         return list;
       }));
       
-      // This is the primary item that will be returned, possibly updated
-      let primaryItem = results[0]?.data;
-      let achievements = [];
+      // Primary item to return immediately
+      const primaryItem = results[0]?.data;
 
-      // --- Achievement Checking (run synchronously after item insert) ---
-      try {
-        // IMPORTANT: Run achievement check AFTER the item is successfully inserted and we have an ID
-        const context = {
-          itemId: primaryItem.id,
-          // Pass all AI and user-entered data from the item object
-          ai_brand: item.ai_brand,
-          ai_confidence: item.ai_confidence,
-          ai_product_name: item.ai_product_name,
-          user_product_name: item.user_product_name, // This will be null if user didn't edit
-          location: item.location,
-          category: item.category,
-          tags: item.tags,
-          is_public: item.is_public
-        };
-        
-        // Only check achievements if online
-        if (navigator.onLine) {
-          console.log('🏆 [useLists] Starting synchronous achievement check with context:', JSON.stringify(context, null, 2));
-          const newAchievements = await checkAchievements('item_saved', context);
-          console.log('🏆 [useLists] Item saved achievements result:', newAchievements);
-          achievements = newAchievements || [];
-        } else {
-          console.log('📱 [useLists] Offline - skipping achievement check');
-          achievements = [];
-        }
-
-        // 🌍 CRITICAL: If any global first achievements were awarded, fetch the updated item data
-        const hasGlobalFirst = achievements.some(a => a.isGlobalFirst);
-        if (hasGlobalFirst && primaryItem?.id) {
-          console.log('🏆 [useLists] Global first achievement awarded - fetching updated item data to confirm flags.');
-          const { data: updatedItem, error: fetchError } = await supabase
-            .from('items')
-            .select('*')
-            .eq('id', primaryItem.id)
-            .single();
-            
-          if (fetchError) {
-            console.error('❌ [useLists] Failed to fetch updated item after achievement:', fetchError);
-          } else if (updatedItem) {
-            console.log('✅ [useLists] Updated item data fetched:', {
-              id: updatedItem.id,
-              is_first_in_world: updatedItem.is_first_in_world,
-              first_in_world_achievement_id: updatedItem.first_in_world_achievement_id
-            });
-            // Update the primary item with the latest data including the new flags
-            primaryItem = updatedItem;
+      // Defer achievement checking to background to avoid UI jank
+      setTimeout(async () => {
+        try {
+          if (!navigator.onLine || !primaryItem?.id) {
+            console.log('📱 [useLists] Skipping achievements (offline or no item id)');
+            return;
           }
+          const context = {
+            itemId: primaryItem.id,
+            ai_brand: item.ai_brand,
+            ai_confidence: item.ai_confidence,
+            ai_product_name: item.ai_product_name,
+            user_product_name: item.user_product_name,
+            location: item.location,
+            category: item.category,
+            tags: item.tags,
+            is_public: item.is_public
+          };
+          console.log('🏆 [useLists] (bg) Checking achievements with context');
+          const newAchievements = await checkAchievements('item_saved', context);
+          const hasGlobalFirst = (newAchievements || []).some(a => a.isGlobalFirst);
+          if (hasGlobalFirst) {
+            const { data: updatedItem, error: fetchError } = await supabase
+              .from('items')
+              .select('*')
+              .eq('id', primaryItem.id)
+              .single();
+            if (!fetchError && updatedItem) {
+              setLists(prev => prev.map(list => ({
+                ...list,
+                items: list.items.map(i => i.id === updatedItem.id ? updatedItem : i),
+                stayAways: list.stayAways.map(i => i.id === updatedItem.id ? updatedItem : i)
+              })));
+            }
+          }
+        } catch (achievementError) {
+          console.error('❌ [useLists] (bg) Achievement check failed:', achievementError);
         }
-      } catch (achievementError) {
-        console.error('❌ [useLists] Achievement check failed:', achievementError);
-        // Don't fail the main save operation if achievement checks have an error
-      }
-      
-      // Return the first result's data (or all results if multiple lists)
-      // Use updated primaryItem if it was modified by achievement checks
+      }, 0);
+
+      // Return immediately; achievements will be handled by background logic/notifications
       const returnData = results.length === 1 ? primaryItem : results.map(r => r.data);
-      return { 
-        data: returnData, 
-        error: null, 
-        achievements: achievements 
-      };
+      return { data: returnData, error: null, achievements: [] };
       
     } catch (error) {
       console.error('Error adding item:', JSON.stringify({ message: error.message, details: error.details, hint: error.hint, code: error.code }, null, 2));

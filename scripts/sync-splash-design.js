@@ -83,13 +83,19 @@ const updateAndroidStyles = () => {
   
   let styles = fs.readFileSync(stylesPath, 'utf8');
   
-  // Update the splash theme to use our color
-  const updatedStyles = styles.replace(
+  // Update the splash theme to use our color (handle both @drawable/splash and @null)
+  styles = styles.replace(
     /<item name="android:background">@drawable\/splash<\/item>/,
     `<item name="android:background">@color/splash_background</item>`
   );
   
-  fs.writeFileSync(stylesPath, updatedStyles);
+  // Also ensure the main theme uses our color
+  styles = styles.replace(
+    /<item name="android:background">@null<\/item>/,
+    `<item name="android:background">@color/splash_background</item>`
+  );
+  
+  fs.writeFileSync(stylesPath, styles);
   console.log('✅ Updated Android styles.xml');
 };
 

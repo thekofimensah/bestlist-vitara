@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, List, User, Search, Bell, X } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
+import { SplashScreen } from '@capacitor/splash-screen';
 import MainScreen from './components/MainScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import { installGlobalErrorTracking } from './lib/errorTracking';
@@ -89,6 +90,23 @@ const App = () => {
     // Install once
     installGlobalErrorTracking();
     return () => teardown && teardown();
+  }, []);
+
+  // Hide native splash screen when React app initializes
+  useEffect(() => {
+    const hideSplash = async () => {
+      try {
+        console.log('🎨 [App] Attempting to hide native splash screen...');
+        await SplashScreen.hide({ fadeOutDuration: 150 });
+        console.log('✅ [App] Native splash hidden successfully');
+      } catch (error) {
+        console.log('❌ [App] Failed to hide splash:', error);
+        console.log('🎨 [App] Plugin not available or splash already hidden');
+      }
+    };
+
+    // Hide splash immediately when App component mounts
+    hideSplash();
   }, []);
   const [user, setUser] = useState(null);
   const { notifications, unreadCount, isOpen, toggleOpen, markAsRead, markAllAsRead, ready: notificationsReady } = useNotifications(user?.id);
@@ -1124,16 +1142,16 @@ const App = () => {
       }
       
       console.log('🔧 Calling addItemToList with selectedListIds array:', selectedListIds);
-      const result = await addItemToList(selectedListIds, itemData, isStayAway);
-      console.log('✅ addItemToList completed successfully');
-      
-      if (result.error) {
-        throw result.error;
-      }
-      
-      // Stats will update automatically via database triggers
-      
-      return result; // Return the full result object including achievements
+      // Start DB work without keeping the spinner on
+      const resultPromise = addItemToList(selectedListIds, itemData, isStayAway);
+      // Stop global image loading immediately for snappy UX
+      setImagesLoading(false);
+      // Ensure cleanup/refresh after completion without blocking UI
+      resultPromise.finally(() => {
+        try { setEditingItem(null); } catch (_) {}
+        // Avoid heavy list refresh; optimistic update already applied
+      });
+      return resultPromise;
     } catch (error) {
       console.error('❌ Error in handleAddItem:', JSON.stringify({
           message: error.message || 'Unknown error',
@@ -1176,11 +1194,8 @@ const App = () => {
       
       throw error;
     } finally {
-      setImagesLoading(false);
-      setEditingItem(null);
-      if (selectedList) {
-        refreshLists();
-      }
+      // imagesLoading already cleared above for online path; ensure cleared for any unexpected paths
+      try { setImagesLoading(false); } catch (_) {}
     }
   };
 

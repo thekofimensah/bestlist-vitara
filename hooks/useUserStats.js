@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { saveStatsLocal, getStatsLocal } from '../lib/localUserCache';
 import { shouldRetrySubscription, isOffline, useOnlineStatus } from '../lib/onlineDetection';
@@ -28,6 +28,28 @@ const useUserStats = (userId) => {
   const [lastSubscriptionAttempt, setLastSubscriptionAttempt] = useState(0);
   const MAX_SUBSCRIPTION_RETRIES = 3;
   const SUBSCRIPTION_RETRY_DELAY = 5000; // 5 seconds
+  
+  // Track timeout IDs for proper cleanup
+  const activeTimeouts = useRef(new Set());
+  const isUnmountedRef = useRef(false);
+
+  // Helper to create tracked timeouts that can be properly cleaned up
+  const createTrackedTimeout = (callback, delay) => {
+    const timeoutId = setTimeout(() => {
+      activeTimeouts.current.delete(timeoutId);
+      if (!isUnmountedRef.current && isAppActive()) {
+        callback();
+      }
+    }, delay);
+    activeTimeouts.current.add(timeoutId);
+    return timeoutId;
+  };
+
+  // Helper to clear all tracked timeouts
+  const clearAllTimeouts = () => {
+    activeTimeouts.current.forEach(timeoutId => clearTimeout(timeoutId));
+    activeTimeouts.current.clear();
+  };
 
   useEffect(() => {
     if (!userId) {
@@ -43,7 +65,8 @@ const useUserStats = (userId) => {
         setLoading(true);
         setError(null);
 
-        console.log('🔍 [useUserStats] Fetching stats for user:', userId);
+        const isDev = window.location.hostname === 'localhost' || window.location.hostname.includes('192.168');
+        console.log(`[${isDev ? 'DEV' : 'PROD'}] 🔍 [useUserStats] Fetching stats for user:`, userId);
         // If offline or app inactive, serve from local cache and exit
         if ((typeof navigator !== 'undefined' && navigator.onLine === false) || !isAppActive()) {
           console.log('🔍 [useUserStats] App offline or inactive, using local cache');
@@ -218,7 +241,7 @@ const useUserStats = (userId) => {
       
       if (timeSinceLastAttempt < minDelay && subscriptionRetryCount > 0) {
         console.log(`🔔 [useUserStats] Too soon to retry (${Math.round((minDelay - timeSinceLastAttempt) / 1000)}s remaining)`);
-        setTimeout(setupRealtimeSubscription, minDelay - timeSinceLastAttempt);
+        createTrackedTimeout(setupRealtimeSubscription, minDelay - timeSinceLastAttempt);
         return;
       }
       
@@ -291,10 +314,7 @@ const useUserStats = (userId) => {
                 if (isOnline) {
                   console.log(`🔔 [useUserStats] Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
                 }
-                setTimeout(() => {
-                  if (!isAppActive()) return; // Don't retry if app went inactive
-                  setupRealtimeSubscription();
-                }, delay);
+                createTrackedTimeout(setupRealtimeSubscription, delay);
               } else {
                 if (isOnline) {
                   console.log('🔔 [useUserStats] Max retries exceeded - realtime updates disabled');
@@ -366,6 +386,8 @@ const useUserStats = (userId) => {
     // Cleanup function
     return () => {
       console.log('🧹 [useUserStats] Cleaning up useEffect');
+      isUnmountedRef.current = true;
+      clearAllTimeouts();
       cleanupSubscription();
       if (appStateHandler?.cleanup) {
         appStateHandler.cleanup();

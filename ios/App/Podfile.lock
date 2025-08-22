@@ -16,7 +16,11 @@ PODS:
     - Capacitor
   - CapacitorKeyboard (5.0.5):
     - Capacitor
+  - CapacitorNetwork (5.0.5):
+    - Capacitor
   - CapacitorPreferences (5.0.5):
+    - Capacitor
+  - CapacitorSplashScreen (5.0.5):
     - Capacitor
 
 DEPENDENCIES:
@@ -29,7 +33,9 @@ DEPENDENCIES:
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
   - "CapacitorKeyboard (from `../../node_modules/@capacitor/keyboard`)"
+  - "CapacitorNetwork (from `../../node_modules/@capacitor/network`)"
   - "CapacitorPreferences (from `../../node_modules/@capacitor/preferences`)"
+  - "CapacitorSplashScreen (from `../../node_modules/@capacitor/splash-screen`)"
 
 EXTERNAL SOURCES:
   Capacitor:
@@ -50,8 +56,12 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/geolocation"
   CapacitorKeyboard:
     :path: "../../node_modules/@capacitor/keyboard"
+  CapacitorNetwork:
+    :path: "../../node_modules/@capacitor/network"
   CapacitorPreferences:
     :path: "../../node_modules/@capacitor/preferences"
+  CapacitorSplashScreen:
+    :path: "../../node_modules/@capacitor/splash-screen"
 
 SPEC CHECKSUMS:
   Capacitor: d783fbec2a6c4ec800b97e9fe91fb2d159883552
@@ -63,8 +73,10 @@ SPEC CHECKSUMS:
   CapacitorFilesystem: 0c22d8acd149c086d4870858dab6d471d5c36741
   CapacitorGeolocation: d3bea98fda331da437dd346264ce568e8f49a2e5
   CapacitorKeyboard: 8c80f3b39c7ce66550a98402aa650000cd0a6846
+  CapacitorNetwork: 52b2ca864acec4955d79a64e47a3ecaae5e07f59
   CapacitorPreferences: 8d5f22f3e2cf4d27d7879094ad82bb2064aeb178
+  CapacitorSplashScreen: 9df4c785ad8ff4fb05eaed2161e9b85a114e6862
 
-PODFILE CHECKSUM: f4a250201bcb62f5380278c93afe533fbae6a294
+PODFILE CHECKSUM: c7dc216589bfad2224a88e9ebfa926bb26a20ded
 
 COCOAPODS: 1.16.2

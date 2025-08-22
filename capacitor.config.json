@@ -23,6 +23,11 @@
       "resize": "native",
       "style": "native",
       "resizeOnFullScreen": true
+    },
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#88b7b5",
+      "showSpinner": false
     }
   }
 }

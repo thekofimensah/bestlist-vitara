@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import useAchievements from './useAchievements';
+import { Preferences } from '@capacitor/preferences';
 
 export const useLists = (userId) => {
   const [lists, setLists] = useState([]);
@@ -13,6 +14,40 @@ export const useLists = (userId) => {
   const [retryCount, setRetryCount] = useState(0);
   const [connectionError, setConnectionError] = useState(null);
   const [isRetrying, setIsRetrying] = useState(false);
+
+  // Persistent cache functions for lists data
+  const LISTS_CACHE_KEY = `lists_data_${userId}`;
+
+  const saveListsLocal = async (listsData) => {
+    if (!userId || !listsData) return;
+    try {
+      await Preferences.set({ 
+        key: LISTS_CACHE_KEY, 
+        value: JSON.stringify({
+          lists: listsData,
+          lastUpdated: Date.now()
+        })
+      });
+      console.log('💾 [ListsCache] Saved lists to persistent storage:', listsData.length, 'lists');
+    } catch (error) {
+      console.warn('⚠️ [ListsCache] Failed to save to persistent storage:', error);
+    }
+  };
+
+  const getListsLocal = async () => {
+    if (!userId) return null;
+    try {
+      const { value } = await Preferences.get({ key: LISTS_CACHE_KEY });
+      if (value) {
+        const parsed = JSON.parse(value);
+        console.log('📦 [ListsCache] Loaded lists from persistent storage:', parsed.lists?.length || 0, 'lists');
+        return parsed.lists;
+      }
+    } catch (error) {
+      console.warn('⚠️ [ListsCache] Failed to load from persistent storage:', error);
+    }
+    return null;
+  };
 
   // Helper function to apply custom ordering from localStorage
   const applyCustomOrder = (allLists) => {
@@ -67,6 +102,24 @@ export const useLists = (userId) => {
 
   const fetchLists = async (background = false, attemptNumber = 0) => {
     if (!userId) return;
+    
+    // STEP 1: Check persistent cache first (only on initial load, not background refresh)
+    if (!background && attemptNumber === 0) {
+      const cachedLists = await getListsLocal();
+      if (cachedLists && cachedLists.length >= 0) {
+        console.log('📦 [ListsCache] Serving from persistent cache:', cachedLists.length, 'lists');
+        const orderedLists = applyCustomOrder(cachedLists);
+        setLists(orderedLists);
+        setLoading(false);
+        setIsFetching(false);
+        
+        // Start background refresh to get fresh data
+        console.log('🔄 [ListsCache] Starting background refresh...');
+        setTimeout(() => fetchLists(true), 100);
+        return;
+      }
+      console.log('🔄 [ListsCache] No cache found, loading from database...');
+    }
     
     // Allow refresh even if fetch is in progress (for pull-to-refresh)
     if (isFetching && !isRetrying && background) {
@@ -187,6 +240,8 @@ export const useLists = (userId) => {
       
       const orderedLists = applyCustomOrder(processedLists);
       setLists(orderedLists);
+      // Save to persistent storage for next app start
+      saveListsLocal(processedLists); // Save unordered data, order is applied separately
       
       const totalTime = Date.now() - start;
       const totalItems = processedLists.reduce((sum, list) => sum + list.items.length + list.stayAways.length, 0);

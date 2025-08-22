@@ -1856,7 +1856,7 @@ const AddItemModal = ({
 
 
             {/* Item Header */}
-            <div className="mb-4">
+            <div className="mb-4 pt-6">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex-1 relative min-h-[32px]">
                   {isAIProcessing && !aiCancelled && !aiError ? (
@@ -1867,30 +1867,50 @@ const AddItemModal = ({
                       <div className="hidden sm:block px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-7 loading-tag"></div>
                     </div>
                   ) : (
-                    <input
-                      ref={productNameRef}
-                      value={productName}
-                      onChange={(e) => {
-                        setProductName(e.target.value);
-                        setIsProductNameEditedByUser(true);
-                        if (validationErrors.productName) {
-                          const newErrors = { ...validationErrors };
-                          delete newErrors.productName;
-                          setValidationErrors(newErrors);
-                        }
-                      }}
-                      onFocus={() => setProductNameManuallyEdited(true)}
-                      className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
-                        showValidationErrors && validationErrors.productName 
-                          ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
-                          : ''
-                      }`}
-                      placeholder="Product name..."
-                      autoComplete="off"
-                      autoCorrect="on"
-                      autoCapitalize="words"
-                      spellCheck="true"
-                    />
+                                         <textarea
+                       ref={productNameRef}
+                       value={productName}
+                       onChange={(e) => {
+                         setProductName(e.target.value);
+                         setIsProductNameEditedByUser(true);
+                         if (validationErrors.productName) {
+                           const newErrors = { ...validationErrors };
+                           delete newErrors.productName;
+                           setValidationErrors(newErrors);
+                         }
+                       }}
+                       onFocus={() => setProductNameManuallyEdited(true)}
+                       onKeyDown={(e) => {
+                         // Prevent Enter key from creating new lines
+                         if (e.key === 'Enter') {
+                           e.preventDefault();
+                         }
+                       }}
+                       className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full leading-tight resize-none placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
+                         showValidationErrors && validationErrors.productName 
+                           ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
+                           : ''
+                       }`}
+                       placeholder="Product name..."
+                       autoComplete="off"
+                       autoCorrect="on"
+                       autoCapitalize="words"
+                       spellCheck="true"
+                       rows={1}
+                       style={{
+                         wordBreak: 'break-word',
+                         overflowWrap: 'break-word',
+                         minHeight: '32px',
+                         height: 'auto',
+                         maxHeight: '80px',
+                         overflow: 'hidden'
+                       }}
+                       onInput={(e) => {
+                         // Auto-resize textarea
+                         e.target.style.height = 'auto';
+                         e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
+                       }}
+                     />
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -2260,30 +2280,18 @@ const AddItemModal = ({
                     spellCheck="true"
                   />
                   {showPlaceSearch && (
-                                            <div className="absolute left-0 right-0 top-full mt-1 z-50">
-                      <div className="bg-white rounded-lg shadow-xl border border-gray-200">
+                    <div className="absolute left-0 right-0 top-full mt-1 z-50">
+                      <div className="bg-white rounded-lg shadow-xl border border-gray-200 min-w-[320px] max-w-[400px]">
                         {/* Header */}
-                        <div className="p-2 border-b border-gray-100 flex items-center">
-                          <span className="text-xs text-gray-500">Search places</span>
+                        <div className="p-3 border-b border-gray-100 flex items-center">
+                          <span className="text-sm font-medium text-gray-700">Search places</span>
                           {isSearchingPlaces && (
                             <div className="ml-auto w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
                           )}
                         </div>
                         
                         {/* Results */}
-                        <div className="max-h-48 overflow-y-auto">
-                          {/* DEBUG: Show test results if no real results and field is focused */}
-                          {placeResults.length === 0 && (place || '').trim().length >= 2 && (
-                            <div className="p-3 text-center text-sm">
-                              <div className="text-gray-500 mb-2">🔍 Debug: API Status</div>
-                              <div className="text-xs text-left space-y-1">
-                                <div>API Key: {import.meta.env.VITE_GOOGLE_PLACES_API_KEY ? '✅ Found' : '❌ Missing'}</div>
-                                <div>Search Query: "{(place || '').trim()}"</div>
-                                <div>Searching: {isSearchingPlaces ? 'Yes' : 'No'}</div>
-                              </div>
-                            </div>
-                          )}
-                          
+                        <div className="max-h-64 overflow-y-auto">
                           {placeResults.length > 0 ? (
                             placeResults.map((result, idx) => (
                               <button
@@ -2317,9 +2325,9 @@ const AddItemModal = ({
                                   
                                   setShowPlaceSearch(false);
                                 }}
-                                className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
+                                className="w-full p-3 text-left hover:bg-gray-50 flex items-start gap-3"
                               >
-                                <div className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0">
+                                <div className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0">
                                   {(() => {
                                     const types = result.types || [];
                                     const primaryType = result.primaryType || '';
@@ -2333,14 +2341,14 @@ const AddItemModal = ({
                                   })()}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 truncate">
+                                  <div className="text-sm font-medium text-gray-900 leading-tight break-words">
                                     {result.name}
                                   </div>
-                                  <div className="text-xs text-gray-500 truncate">
+                                  <div className="text-xs text-gray-500 leading-tight break-words mt-1">
                                     {result.display}
                                   </div>
                                   {result.rating && (
-                                    <div className="text-xs text-yellow-600 mt-0.5">
+                                    <div className="text-xs text-yellow-600 mt-1">
                                       ⭐ {result.rating}
                                     </div>
                                   )}
@@ -2348,17 +2356,17 @@ const AddItemModal = ({
                               </button>
                             ))
                           ) : (
-                            <div className="p-3 text-center text-sm text-gray-500">
+                            <div className="p-4 text-center text-sm text-gray-500">
                               {(place || '').trim().length < 2 ? 'Type to search places' : 'No places found'}
                             </div>
                           )}
                         </div>
                         
                         {/* Footer */}
-                        <div className="p-2 border-t border-gray-100">
+                        <div className="p-3 border-t border-gray-100">
                           <button
                             onClick={() => setShowPlaceSearch(false)}
-                            className="w-full px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded"
+                            className="w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
                           >
                             Cancel
                           </button>

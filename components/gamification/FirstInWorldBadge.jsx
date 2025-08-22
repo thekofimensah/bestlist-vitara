@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Trophy, Globe, Star } from 'lucide-react';
 import earthIcon from '../../assets/earth-1.svg';
+import { ShineBorder } from '@/registry/magicui/shine-border';
 
 // Earth Icon Component using imported SVG
 const EarthIcon = ({ className, rarity }) => {
@@ -24,7 +24,6 @@ const EarthIcon = ({ className, rarity }) => {
       alt="Earth Icon"
       className={className}
       style={{ 
-        filter: `brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%)`,
         // Apply gradient effect using CSS filters
         filter: rarity === 'legendary' ? 'hue-rotate(270deg) saturate(200%)' :
                 rarity === 'rare' ? 'hue-rotate(200deg) saturate(150%)' :
@@ -49,28 +48,14 @@ const FirstInWorldBadge = ({
   }
 
   const getRarityColors = (rarity) => {
+    // Keep text color mapping for labels only; border handled via hex colors below
     switch (rarity) {
       case 'legendary':
-        return {
-          bg: 'from-purple-500 to-pink-500',
-          glow: 'shadow-purple-500/40',
-          text: 'text-white',
-          border: 'border-purple-400'
-        };
+        return { text: 'text-white' };
       case 'rare':
-        return {
-          bg: 'from-blue-500 to-cyan-500',
-          glow: 'shadow-blue-500/40',
-          text: 'text-white',
-          border: 'border-blue-400'
-        };
+        return { text: 'text-white' };
       default:
-        return {
-          bg: 'from-teal-500 to-green-500',
-          glow: 'shadow-teal-500/40',
-          text: 'text-white',
-          border: 'border-teal-400'
-        };
+        return { text: 'text-white' };
     }
   };
 
@@ -79,19 +64,22 @@ const FirstInWorldBadge = ({
       case 'small':
         return {
           container: 'w-5 h-5',
-          icon: 'w-3 h-3',
+          badgeWrapper: 'w-full h-full p-0.5',
+          icon: 'w-full h-full',
           text: 'text-[8px]'
         };
       case 'large':
         return {
           container: 'w-10 h-10', // Bigger for the square variant
-          icon: 'w-6 h-6',
+          badgeWrapper: 'w-full h-full p-1',
+          icon: 'w-full h-full',
           text: 'text-sm'
         };
       default: // medium
         return {
           container: 'w-6 h-6',
-          icon: 'w-4 h-4',
+          badgeWrapper: 'w-full h-full p-0.5',
+          icon: 'w-full h-full',
           text: 'text-[10px]'
         };
     }
@@ -126,36 +114,33 @@ const FirstInWorldBadge = ({
     return <EarthIcon className={sizes.icon} rarity={achievementRarity} />;
   };
 
+  const shineColorsByRarity = {
+    legendary: ['#a855f7', '#ec4899'],
+    rare: ['#3b82f6', '#06b6d4'],
+    default: ['#14b8a6', '#10b981'],
+  };
+
   const renderBasicBadge = () => (
-    <BadgeComponent
-      {...badgeProps}
+    <ShineBorder
       className={`
         ${sizes.container}
-        bg-gradient-to-br ${colors.bg}
         ${variant === 'square' ? 'rounded-lg' : 'rounded-full'}
         flex items-center justify-center
-        ${animate ? `shadow-lg ${colors.glow}` : 'shadow-md'}
-        border-2 ${colors.border}
-        relative
-        ${className}
+        relative ${className}
       `}
-      title={`${achievementName} - First in World Achievement`}
-      onClick={onClick}
+      shineColor={shineColorsByRarity[achievementRarity] || shineColorsByRarity.default}
+      borderWidth={2}
+      duration={14}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
-      {getIcon()}
-      
-      {/* Sparkle effect for legendary - removed rotation, just gentle fade */}
-      {achievementRarity === 'legendary' && animate && (
-        <motion.div
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -top-0.5 -right-0.5"
-        >
-          <Star className="w-2 h-2 text-yellow-300" fill="currentColor" />
-        </motion.div>
-      )}
-    </BadgeComponent>
+      <BadgeComponent
+        {...badgeProps}
+        className={`flex items-center justify-center ${sizes.badgeWrapper} ${variant === 'square' ? 'rounded-lg' : 'rounded-full'}`}
+        onClick={onClick}
+      >
+        {getIcon()}
+      </BadgeComponent>
+    </ShineBorder>
   );
 
   const renderBadgeWithLabel = () => (
@@ -173,56 +158,21 @@ const FirstInWorldBadge = ({
   );
 
   const renderFloatingBadge = () => (
-    <BadgeComponent
-      {...badgeProps}
-      className={`
-        absolute top-2 right-2 z-0
-        ${sizes.container}
-        bg-gradient-to-br ${colors.bg}
-        rounded-full
-        flex items-center justify-center
-        ${animate ? `shadow-lg ${colors.glow}` : 'shadow-md'}
-        border-2 ${colors.border}
-        ${className}
-      `}
-      title={`${achievementName} - First in World Achievement`}
-      onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'hover:scale-105' }}
-    >
-      {getIcon()}
-      
-      {/* Pulse effect for floating badges */}
-      {animate && (
-        <motion.div
-          animate={{ 
-            scale: [1, 1.3, 1],
-            opacity: [0.7, 1, 0.7]
-          }}
-          transition={{ 
-            duration: 1.5, 
-            repeat: Infinity, 
-            ease: 'easeInOut' 
-          }}
-          className={`
-            absolute inset-0 
-            bg-gradient-to-br ${colors.bg} 
-            rounded-full 
-            -z-10
-          `}
-        />
-      )}
-      
-      {/* Sparkle effect for legendary floating badges - removed rotation, just gentle fade */}
-      {achievementRarity === 'legendary' && animate && (
-        <motion.div
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -top-1 -right-1"
-        >
-          <Star className="w-3 h-3 text-yellow-300" fill="currentColor" />
-        </motion.div>
-      )}
-    </BadgeComponent>
+    <div className={`absolute top-2 right-2 z-0 ${className}`}>
+      <ShineBorder
+        className={`
+          ${sizes.container}
+          rounded-full flex items-center justify-center
+        `}
+        shineColor={shineColorsByRarity[achievementRarity] || shineColorsByRarity.default}
+        borderWidth={2}
+        duration={14}
+      >
+        <BadgeComponent {...badgeProps} className={`flex items-center justify-center rounded-full ${sizes.badgeWrapper}`} onClick={onClick}>
+          {getIcon()}
+        </BadgeComponent>
+      </ShineBorder>
+    </div>
   );
 
   switch (variant) {

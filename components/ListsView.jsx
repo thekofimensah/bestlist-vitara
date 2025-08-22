@@ -122,7 +122,7 @@ const ItemTile = ({
         {/* First in World Badge removed in ListsView */}
       </div>
       <div className="mt-2" onClick={(e) => { e.stopPropagation(); onTap?.(); }}>
-        <p className="text-xs text-gray-700 font-medium truncate">{item.name}</p>
+        <p className="text-xs text-gray-700 font-medium truncate pl-2">{item.name}</p>
       </div>
     </div>
   );
@@ -233,8 +233,8 @@ const ListRow = ({
           className="flex-1 text-left"
           disabled={isReorderMode}
         >
-          <h3 className="text-base font-medium text-gray-900">{list.name}</h3>
-          <p className="text-xs text-gray-500">{allItems.length} items</p>
+          <h3 className="text-base font-medium text-gray-900 pl-2">{list.name}</h3>
+          <p className="text-xs text-gray-500 pl-2">{allItems.length} items</p>
         </button>
         
 

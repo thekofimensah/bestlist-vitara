@@ -8,10 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "upload-update": "node scripts/upload-update.js",
-    "setup-updates": "node scripts/setup-updates.js"
+    "setup-updates": "node scripts/setup-updates.js",
+    "sync-splash": "node scripts/sync-splash-design.js"
   },
   "dependencies": {
-    "@capacitor/network": "5.0.5",
     "@capacitor/android": "5.0.5",
     "@capacitor/app": "5.0.5",
     "@capacitor/camera": "5.0.5",
@@ -22,7 +22,9 @@
     "@capacitor/geolocation": "^5.0.5",
     "@capacitor/ios": "5.0.5",
     "@capacitor/keyboard": "^5.0.5",
+    "@capacitor/network": "5.0.5",
     "@capacitor/preferences": "5.0.5",
+    "@capacitor/splash-screen": "^5.0.5",
     "@headlessui/react": "^2.2.6",
     "@ionic/pwa-elements": "^3.3.0",
     "@react-native/gradle-plugin": "0.72.6",

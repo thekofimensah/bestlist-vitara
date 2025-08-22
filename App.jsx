@@ -109,6 +109,9 @@ const App = () => {
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   
+  // TODO: Critical image loading states for each tab (simplified for now)
+  // Will be implemented after confirming basic logic works
+  
   // Comprehensive loading state for all data
   const [loadingProgress, setLoadingProgress] = useState({
     auth: false,
@@ -252,6 +255,8 @@ const App = () => {
       feedResolveRef.current = null;
     }
   }, [isLoadingFeed]);
+
+  // Feed images are tracked directly via textLoaded && imagesLoaded
 
   const handleSignOut = async () => {
     try {
@@ -1423,6 +1428,7 @@ const App = () => {
   };
 
   const renderScreen = () => {
+    // Only handle detail screens - keep these as conditional renders (they should reload when context changes)
     if (currentScreen === 'post-detail' && selectedPostId) {
       return (
         <PostDetailView
@@ -1437,7 +1443,6 @@ const App = () => {
     }
 
     if (currentScreen === 'item-detail' && selectedItem) {
-      // Render individual item detail view
       return (
         <PullToRefresh onRefresh={handleListDetailRefresh} disabled={refreshing}>
           <div className="min-h-screen bg-stone-50" style={{ backgroundColor: '#F6F6F4' }}>
@@ -1448,7 +1453,6 @@ const App = () => {
               <h1>{selectedItem.name}</h1>
               <img src={selectedItem.image_url || selectedItem.image} alt={selectedItem.name} className="w-full h-64 object-cover rounded-xl" />
               <p>{selectedItem.notes}</p>
-              {/* Add more item details here */}
             </div>
           </div>
         </PullToRefresh>
@@ -1473,9 +1477,32 @@ const App = () => {
       );
     }
 
-    switch (currentScreen) {
-      case 'home':
-        return (
+    if (currentScreen === 'user-profile') {
+      return (
+        <UserProfile
+          key={userProfileKey}
+          username={selectedUsername}
+          onBack={handleBackFromUserProfile}
+          onNavigateToUser={handleNavigateToUser}
+          onImageTap={handleImageTap}
+        />
+      );
+    }
+
+    // For main tabs, return null - they're rendered persistently
+    return null;
+  };
+
+  // Persistent rendering for main tabs - prevents image reloading
+  const renderMainTabs = () => {
+    // Only render main tabs if we're not on a detail screen
+    const isDetailScreen = ['post-detail', 'item-detail', 'list-detail', 'user-profile'].includes(currentScreen);
+    if (isDetailScreen) return null;
+
+    return (
+      <>
+        {/* Home Tab - Always mounted, show/hide with CSS */}
+        <div className={currentScreen === 'home' ? 'block' : 'hidden'}>
           <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
             <MainScreen
               ref={mainScreenRef}
@@ -1488,7 +1515,6 @@ const App = () => {
               onRefreshFeed={handleFeedRefresh}
               onTabChange={handleTabChange}
               onImageTap={handleImageTap}
-              // Pass feed data down as props
               feedPosts={feedPosts}
               isLoadingFeed={isLoadingFeed}
               isLoadingMore={isLoadingMore}
@@ -1501,9 +1527,10 @@ const App = () => {
               onUpdateFeedPosts={handleUpdateFeedPosts}
             />
           </PullToRefresh>
-        );
-      case 'lists':
-        return (
+        </div>
+
+        {/* Lists Tab - Always mounted, show/hide with CSS */}
+        <div className={currentScreen === 'lists' ? 'block' : 'hidden'}>
           <PullToRefresh onRefresh={handleListsRefresh} disabled={refreshing || isListsReorderMode}>
             <ListsView
               lists={lists}
@@ -1526,11 +1553,13 @@ const App = () => {
               onMarkAllRead={markAllAsRead}
               onNavigateToPost={handleNavigateToPost}
               onReorderModeChange={handleReorderModeChange}
+
             />
           </PullToRefresh>
-        );
-      case 'profile':
-        return (
+        </div>
+
+                {/* Profile Tab - Always mounted, show/hide with CSS */}
+        <div className={currentScreen === 'profile' ? 'block' : 'hidden'}>
           <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
             <ProfileView 
               ref={profileViewRef}
@@ -1540,40 +1569,13 @@ const App = () => {
               onNavigateToUser={handleNavigateToUser}
               onImageTap={handleImageTap}
               hadNewAchievementsOnEnter={hadNewAchievementsOnEnter}
+
             />
           </PullToRefresh>
-        );
-      case 'user-profile':
-        return (
-          <UserProfile
-            key={userProfileKey}
-            username={selectedUsername}
-            onBack={handleBackFromUserProfile}
-            onNavigateToUser={handleNavigateToUser}
-            onImageTap={handleImageTap}
-          />
-        );
-      default:
-        return (
-          <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
-            <MainScreen
-              ref={mainScreenRef}
-              lists={lists}
-              loading={imagesLoading || listsLoading || refreshing}
-              onAddItem={handleAddItem}
-              onSelectList={handleSelectList}
-              onCreateList={handleCreateList}
-              onNavigateToUser={handleNavigateToUser}
-              onRefreshFeed={handleFeedRefresh}
-              onTabChange={handleTabChange}
-              updateImageLoadState={updateImageLoadState}
-              textLoaded={textLoaded}
-              imagesLoaded={imagesLoaded}
-              onUpdateFeedPosts={handleUpdateFeedPosts}
-            />
-          </PullToRefresh>
-        );
-    }
+        </div>
+      </>
+    );
+    
   };
 
 
@@ -1630,16 +1632,32 @@ const App = () => {
   const totalSteps = displaySteps.length;
   const progressPercentage = Math.round((completedSteps / totalSteps) * 100);
   
-  // Debug loading progress
-  console.log('📊 [App] Loading progress:', {
-    completedSteps,
-    totalSteps,
-    progressPercentage,
-    loadingProgress
-  });
+  // Check if all tabs have their data AND critical images ready
+  // Note: We only check essential data loading, not UI states like camera initialization
+  // If lists are available (even if still loading fresh data), consider them ready
+  const hasListsData = lists && lists.length >= 0; // Even empty array means lists are loaded
+  
+  // Check critical images: Temporarily disabled to fix white screen
+  // TODO: Add proper critical image tracking for progressive loading
+  const criticalImagesReady = true; // Temporarily disabled
+  
+  const allTabsReady = (!listsLoading || hasListsData) && !isLoadingFeed && !statsLoading && !achievementsLoading;
+  
+  // Debug loading progress (moved to useEffect to avoid infinite re-renders)
+  useEffect(() => {
+    console.log('📊 [App] Loading state changed:', JSON.stringify({
+      appLoading,
+      allTabsReady,
+      criticalImagesReady,
+      textLoaded,
+      imagesLoaded,
+      willShowLoadingScreen: appLoading || !allTabsReady,
+      timestamp: new Date().toISOString()
+    }));
+  }, [appLoading, allTabsReady, criticalImagesReady, textLoaded, imagesLoaded]);
 
-  // Show loading screen during comprehensive data loading
-  if (appLoading || (!user && appLoading)) {
+  // Show loading screen until both app initialization AND all component data is ready
+  if (appLoading || !allTabsReady) {
     return <LoadingScreen loadingProgress={loadingProgress} appLoading={appLoading} />;
   }
 
@@ -1651,6 +1669,8 @@ const App = () => {
       </ErrorBoundary>
     );
   }
+
+  // App is now ready to render
 
   return (
     <AchievementProvider>
@@ -1679,19 +1699,19 @@ const App = () => {
             paddingRight: 'env(safe-area-inset-right)'
           }}
         >
-          <div className="px-4 mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="px-4 mb-3 flex items-baseline justify-between">
+            <div className="flex items-baseline gap-3 pl-2">
               <img 
                 src={iconUrl} 
                 alt="Bestlist Logo"
-                width="32" 
-                height="32" 
+                width="30" 
+                height="30" 
                 className="drop-shadow-sm flex-shrink-0"
-                style={{ filter: 'brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%) backgroundColor: \'#1F6D5A\'' }}
+                style={{ filter: 'brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%)' }}
               />
-              <h1 className="text-3xl md:text-4xl font-katibeh text-gray-700 tracking-widest leading-none">
+              <span className="text-3xl md:text-4xl font-katibeh text-gray-700 tracking-widest leading-none pb-4">
                 bestlist
-              </h1>
+              </span>
               
               {/* Offline Status Indicator */}
               {!queueStatus.isOnline && (
@@ -1773,7 +1793,7 @@ const App = () => {
       {/* Main Content */}
       <main className="relative flex-1">
         <ErrorBoundary name="MainContent">
-          {renderScreen()}
+          {renderScreen() || renderMainTabs()}
         </ErrorBoundary>
       </main>
 

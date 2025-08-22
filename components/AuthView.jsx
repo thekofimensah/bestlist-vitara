@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { ShineBorder } from '@/registry/magicui/shine-border';
 import iconUrl from '../assets/icon.svg';
 import {
   Mail,
@@ -153,12 +154,18 @@ const AuthView = () => {
       className="min-h-screen flex items-center justify-center p-4"
       style={{ backgroundColor: palette.offWhite }}
     >
-      <motion.div
-        className="w-full max-w-md rounded-3xl p-8"
-        style={{ background: palette.card, boxShadow: palette.shadow }}
-        initial={{ scale: 0.92, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
+      <ShineBorder 
+        className="w-full max-w-md rounded-3xl overflow-hidden" 
+        borderWidth={4}
+        shineColor={[palette.herb, '#10B981']}
+        duration={12}
       >
+        <motion.div
+          className="rounded-3xl p-8"
+          style={{ background: palette.card, boxShadow: palette.shadow }}
+          initial={{ scale: 0.92, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+        >
         {/* logo */}
         <div className="flex flex-col items-center mb-8">
           <div
@@ -383,7 +390,8 @@ const AuthView = () => {
               : "Don't have an account? Sign up"}
           </button>
         </div>
-      </motion.div>
+        </motion.div>
+      </ShineBorder>
     </div>
   );
 };

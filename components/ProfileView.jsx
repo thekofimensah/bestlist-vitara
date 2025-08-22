@@ -154,11 +154,13 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   useEffect(() => {
     const initBasics = async () => {
       if (!user?.id) return;
+      console.log('⏱️ [ProfileView] Starting profile basics loading at:', new Date().toISOString());
       const basic = await getBasicProfile(user.id);
       if (basic) setCachedProfile(basic);
       const localAvatar = await getAvatarUrl(user.id);
       if (localAvatar) setAvatarUrl(localAvatar);
       else if (avatarUrl == null) setAvatarUrl(userProfile?.avatar_url || null);
+      console.log('⏱️ [ProfileView] Profile basics loading completed at:', new Date().toISOString());
     };
     initBasics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -348,6 +350,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
       // Cache the results
       await saveSocialCounts(user.id, newCounts);
       
+      console.log('⏱️ [ProfileView] Social counts loading completed at:', new Date().toISOString());
       console.log('📊 [ProfileView] Social stats loaded - Followers:', newCounts.followersCount, 'Following:', newCounts.followingCount);
     } catch (e) {
       console.error('Error loading social counts:', e);
@@ -361,9 +364,13 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
     let alive = true;
     const load = async () => {
       try {
+        console.log('⏱️ [ProfileView] Starting achievements loading at:', new Date().toISOString());
         setAchievementsLoading(true);
         const ach = await getUserAchievements(user?.id);
-        if (alive) setUserAchievements(ach || []);
+        if (alive) {
+          setUserAchievements(ach || []);
+          console.log('⏱️ [ProfileView] Achievements loading completed at:', new Date().toISOString(), 'count:', ach?.length || 0);
+        }
       } finally {
         if (alive) setAchievementsLoading(false);
       }
@@ -377,6 +384,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   /* Load social counts */
   useEffect(() => {
     if (user?.id) {
+      console.log('⏱️ [ProfileView] Starting social counts loading at:', new Date().toISOString());
       loadSocialCounts();
     }
   }, [user?.id]);

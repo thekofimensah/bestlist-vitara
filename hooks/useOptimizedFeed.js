@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getOptimizedFeedPosts, getOptimizedFeedPostsLoadMore, getOptimizedUserPosts } from '../lib/supabase';
 import { trackFeedRequest, trackFeedPhase, trackImageLoadingPhase } from '../lib/performanceTracking';
+import { Preferences } from '@capacitor/preferences';
 
 // Simple in-memory cache for profile posts to avoid refetching on navigation
 // Map<userId, { posts: any[], hasMore: boolean, offset: number, lastUpdated: number }>
@@ -15,6 +16,37 @@ const FEED_CACHE_MAX_POSTS = 300;
 // Simple offline detector (Capacitor-aware would be nicer, but this is safe & synchronous)
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
+
+// Persistent cache functions for profile posts (similar to useUserStats pattern)
+const PROFILE_POSTS_CACHE_KEY = (userId) => `profile_posts_${userId}`;
+
+const saveProfilePostsLocal = async (userId, cacheData) => {
+  if (!userId || !cacheData) return;
+  try {
+    await Preferences.set({ 
+      key: PROFILE_POSTS_CACHE_KEY(userId), 
+      value: JSON.stringify(cacheData) 
+    });
+    console.log('💾 [ProfileCache] Saved profile posts to persistent storage');
+  } catch (error) {
+    console.warn('⚠️ [ProfileCache] Failed to save to persistent storage:', error);
+  }
+};
+
+const getProfilePostsLocal = async (userId) => {
+  if (!userId) return null;
+  try {
+    const { value } = await Preferences.get({ key: PROFILE_POSTS_CACHE_KEY(userId) });
+    if (value) {
+      const parsed = JSON.parse(value);
+      console.log('📦 [ProfileCache] Loaded profile posts from persistent storage:', parsed.posts?.length || 0, 'posts');
+      return parsed;
+    }
+  } catch (error) {
+    console.warn('⚠️ [ProfileCache] Failed to load from persistent storage:', error);
+  }
+  return null;
+};
 
 
 // Helper to deduplicate by id and content
@@ -61,6 +93,8 @@ export const prependProfilePost = (userId, post) => {
     lastUpdated: Date.now()
   };
   profilePostsCache.set(userId, newCache);
+  // Save to persistent storage
+  saveProfilePostsLocal(userId, newCache);
   // Notify listeners (e.g., useProfilePosts) that cache changed
   try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
 };
@@ -101,6 +135,8 @@ export const addOfflineProfilePost = (userId, item, listId, listName) => {
     lastUpdated: Date.now()
   };
   profilePostsCache.set(userId, newCache);
+  // Save to persistent storage
+  saveProfilePostsLocal(userId, newCache);
   
   // Notify listeners
   try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
@@ -131,6 +167,8 @@ export const removeOfflineProfilePost = (userId, offlinePostId) => {
       lastUpdated: Date.now()
     };
     profilePostsCache.set(userId, newCache);
+    // Save to persistent storage
+    saveProfilePostsLocal(userId, newCache);
     
     // Notify listeners
     try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
@@ -157,6 +195,8 @@ export const clearOfflinePostsForUser = (userId) => {
       lastUpdated: Date.now()
     };
     profilePostsCache.set(userId, newCache);
+    // Save to persistent storage
+    saveProfilePostsLocal(userId, newCache);
     
     // Notify listeners
     try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
@@ -197,12 +237,15 @@ export const removeProfilePostsByItemIds = (userId, itemIds = []) => {
   if (!cached || !cached.posts) return;
   const toRemove = new Set(itemIds);
   const filtered = cached.posts.filter(p => !p?.items?.id || !toRemove.has(p.items.id));
-  profilePostsCache.set(userId, {
+  const newCache = {
     ...cached,
     posts: filtered,
     offset: Math.min(cached.offset, filtered.length),
     lastUpdated: Date.now()
-  });
+  };
+  profilePostsCache.set(userId, newCache);
+  // Save to persistent storage
+  saveProfilePostsLocal(userId, newCache);
 };
 
 // Connection quality detection (browser-only fallback)
@@ -681,14 +724,15 @@ export const useProfilePosts = (userId) => {
     const offlineCached = offlinePostsCache.get(userId);
     const offlinePosts = offlineCached?.posts || [];
     
-    // Serve from cache immediately if available (no network)
-    const cached = profilePostsCache.get(userId);
-    if (cached && cached.posts && cached.posts.length > 0) {
+    // STEP 1: Check in-memory cache first (fastest)
+    const memoryCache = profilePostsCache.get(userId);
+    if (memoryCache && memoryCache.posts && memoryCache.posts.length > 0) {
+      console.log('📦 [ProfilePosts] Serving from memory cache:', memoryCache.posts.length, 'posts');
       // Merge offline posts with cached posts, offline posts first
-      const mergedPosts = dedupeById([...offlinePosts, ...cached.posts]);
+      const mergedPosts = dedupeById([...offlinePosts, ...memoryCache.posts]);
       setPosts(mergedPosts);
-      setOffset(cached.offset || cached.posts.length);
-      setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
+      setOffset(memoryCache.offset || memoryCache.posts.length);
+      setHasMore(typeof memoryCache.hasMore === 'boolean' ? memoryCache.hasMore : true);
       setLoading(false);
       // SWR: revalidate silently in background without clearing existing posts
       if (!isOffline()) {
@@ -705,12 +749,15 @@ export const useProfilePosts = (userId) => {
               // Keep offline posts, merge with fresh data
               const currentOffline = offlinePostsCache.get(userId)?.posts || [];
               const merged = dedupeById([...currentOffline, ...data, ...prev]);
-              profilePostsCache.set(userId, {
+              const newCache = {
                 posts: merged,
                 hasMore: merged.length >= prev.length ? (merged.length === batchSize) : true,
                 offset: merged.length,
                 lastUpdated: Date.now()
-              });
+              };
+              profilePostsCache.set(userId, newCache);
+              // Save to persistent storage for next app start
+              saveProfilePostsLocal(userId, newCache);
               setOffset(merged.length);
               setHasMore(merged.length === batchSize || prev.length > batchSize);
               return merged;
@@ -718,8 +765,57 @@ export const useProfilePosts = (userId) => {
           }
         }).catch(() => {});
       }
-      return; // Render cached immediately
+      return; // Exit early - served from memory cache
     }
+    
+    // STEP 2: Check persistent storage cache (still fast)
+    const persistentCache = await getProfilePostsLocal(userId);
+    if (persistentCache && persistentCache.posts && persistentCache.posts.length > 0) {
+      console.log('📦 [ProfilePosts] Serving from persistent cache:', persistentCache.posts.length, 'posts');
+      // Load persistent cache into memory cache
+      profilePostsCache.set(userId, persistentCache);
+      // Merge offline posts with cached posts, offline posts first
+      const mergedPosts = dedupeById([...offlinePosts, ...persistentCache.posts]);
+      setPosts(mergedPosts);
+      setOffset(persistentCache.offset || persistentCache.posts.length);
+      setHasMore(typeof persistentCache.hasMore === 'boolean' ? persistentCache.hasMore : true);
+      setLoading(false);
+      // SWR: revalidate silently in background
+      if (!isOffline()) {
+        trackFeedRequest(
+          'profile',
+          'revalidate',
+          () => getOptimizedUserPosts(userId, batchSize, 0),
+          batchSize,
+          0
+        ).then(({ data }) => {
+          if (!mountedRef.current) return;
+          if (Array.isArray(data) && data.length > 0) {
+            setPosts(prev => {
+              // Keep offline posts, merge with fresh data
+              const currentOffline = offlinePostsCache.get(userId)?.posts || [];
+              const merged = dedupeById([...currentOffline, ...data, ...prev]);
+              const newCache = {
+                posts: merged,
+                hasMore: merged.length >= prev.length ? (merged.length === batchSize) : true,
+                offset: merged.length,
+                lastUpdated: Date.now()
+              };
+              profilePostsCache.set(userId, newCache);
+              // Update persistent storage
+              saveProfilePostsLocal(userId, newCache);
+              setOffset(merged.length);
+              setHasMore(merged.length === batchSize || prev.length > batchSize);
+              return merged;
+            });
+          }
+        }).catch(() => {});
+      }
+      return; // Exit early - served from persistent cache
+    }
+
+    // STEP 3: No cache found - load from database (fallback)
+    console.log('🔄 [ProfilePosts] No cache found, loading from database...');
     
     // If no cache but we have offline posts, show them immediately
     if (offlinePosts.length > 0) {
@@ -762,12 +858,15 @@ export const useProfilePosts = (userId) => {
       setHasMore(newPosts.length === batchSize);
       
       // Update cache
-      profilePostsCache.set(userId, {
+      const newCache = {
         posts: mergedPosts,
         hasMore: newPosts.length === batchSize,
         offset: newPosts.length,
         lastUpdated: Date.now()
-      });
+      };
+      profilePostsCache.set(userId, newCache);
+      // Save to persistent storage for next app start
+      saveProfilePostsLocal(userId, newCache);
       
     } catch (err) {
       console.error('Profile posts loading error:', err);
@@ -804,12 +903,15 @@ export const useProfilePosts = (userId) => {
       setPosts(prev => {
         const merged = dedupeById([...prev, ...newPosts]);
         // Update cache
-        profilePostsCache.set(userId, {
+        const newCache = {
           posts: merged,
           hasMore: newPosts.length === batchSize,
           offset: (offset + newPosts.length),
           lastUpdated: Date.now()
-        });
+        };
+        profilePostsCache.set(userId, newCache);
+        // Save to persistent storage
+        saveProfilePostsLocal(userId, newCache);
         return merged;
       });
       setOffset(prev => prev + newPosts.length);
@@ -858,12 +960,15 @@ export const useProfilePosts = (userId) => {
       setOffset(newPosts.length);
       setHasMore(newPosts.length === batchSize);
       // Update cache
-      profilePostsCache.set(userId, {
+      const newCache = {
         posts: mergedPosts,
         hasMore: newPosts.length === batchSize,
         offset: newPosts.length,
         lastUpdated: Date.now()
-      });
+      };
+      profilePostsCache.set(userId, newCache);
+      // Save to persistent storage
+      saveProfilePostsLocal(userId, newCache);
     } catch (err) {
       console.error('Profile refresh error:', err);
     } finally {

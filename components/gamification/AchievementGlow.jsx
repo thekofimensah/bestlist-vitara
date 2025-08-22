@@ -1,126 +1,81 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { ShineBorder } from '@/registry/magicui/shine-border';
 
-const AchievementGlow = ({ achievement, variant = 'shadow', intensity = 'normal', className = '', children }) => {
-  const isGlowing = !!achievement;
-
-  const rarityStyles = {
-    legendary: {
-      shadowFrom: 'rgba(168, 85, 247, 0.6)',
-      shadowTo: 'rgba(236, 72, 153, 0.6)',
-      borderFrom: '#a855f7',
-      borderTo: '#ec4899',
-    },
-    rare: {
-      shadowFrom: 'rgba(59, 130, 246, 0.5)',
-      shadowTo: 'rgba(6, 182, 212, 0.5)',
-      borderFrom: '#3b82f6',
-      borderTo: '#06b6d4',
-    },
-    default: {
-      shadowFrom: 'rgba(13, 148, 136, 0.5)',
-      shadowTo: 'rgba(16, 185, 129, 0.5)',
-      borderFrom: '#0d9488',
-      borderTo: '#10b981',
-    },
+const AchievementGlow = ({ achievement, intensity = 'normal', className = '', children }) => {
+  const borderWidthMap = { subtle: 2, normal: 4, strong: 6 };
+  const colorsByRarity = {
+    legendary: ['#a855f7', '#ec4899'],
+    rare: ['#3b82f6', '#06b6d4'],
+    default: ['#14b8a6', '#10b981'],
   };
 
-  const styles = rarityStyles[achievement?.rarity] || rarityStyles.default;
-  
-  const shadowIntensity = {
-    subtle: '0 0 8px',
-    normal: '0 0 15px',
-    strong: '0 0 25px',
-  };
+  const contentRef = useRef(null);
+  const [measuredRadius, setMeasuredRadius] = useState(null);
 
-  const borderIntensity = {
-    subtle: '1px',
-    normal: '2px',
-    strong: '3px',
-  };
+  // Measure the child's exact border radius so the glow hugs it perfectly
+  useLayoutEffect(() => {
+    const wrapper = contentRef.current;
+    if (!wrapper) return;
+    // Try to measure the first element child (most common case)
+    const target = wrapper.firstElementChild || wrapper;
+    if (!target) return;
+    const styles = window.getComputedStyle(target);
+    const next = {
+      borderTopLeftRadius: styles.borderTopLeftRadius,
+      borderTopRightRadius: styles.borderTopRightRadius,
+      borderBottomRightRadius: styles.borderBottomRightRadius,
+      borderBottomLeftRadius: styles.borderBottomLeftRadius,
+    };
+    setMeasuredRadius(next);
+  }, [children]);
 
-  if (!isGlowing) {
-    return <div className={className}>{children}</div>;
-  }
-
-  if (variant === 'border') {
+  // Do not render the glow until there is an achievement (prevents early outline)
+  if (!achievement) {
     return (
       <div className={`relative ${className}`}>
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            borderRadius: '48px 48px 0 0', // Match AddItemModal's rounded-t-3xl
-            padding: borderIntensity[intensity],
-            top: `-${borderIntensity[intensity]}`,
-            left: `-${borderIntensity[intensity]}`,
-            right: `-${borderIntensity[intensity]}`,
-            bottom: `-${borderIntensity[intensity]}`,
-            zIndex: -1, // Ensure glow is behind the content
-          }}
-          animate={{
-            backgroundImage: [
-              `linear-gradient(45deg, ${styles.borderFrom}, ${styles.borderTo})`,
-              `linear-gradient(135deg, ${styles.borderFrom}, ${styles.borderTo})`,
-              `linear-gradient(225deg, ${styles.borderFrom}, ${styles.borderTo})`,
-              `linear-gradient(315deg, ${styles.borderFrom}, ${styles.borderTo})`,
-              `linear-gradient(45deg, ${styles.borderFrom}, ${styles.borderTo})`,
-            ],
-          }}
-          transition={{
-            duration: 4,
-            ease: "linear",
-            repeat: Infinity,
-          }}
-        />
-        {children}
+        <div ref={contentRef}>{children}</div>
       </div>
     );
   }
 
-  if (variant === 'background') {
+  const shineColor = colorsByRarity[achievement?.rarity] || colorsByRarity.default;
+  const borderWidth = borderWidthMap[intensity] ?? 4;
+
+  // Render content first while we measure, then swap to the bordered version
+  if (!measuredRadius) {
     return (
-      <motion.div
-        animate={{
-          background: [
-            `linear-gradient(135deg, ${colors.primary}10, ${colors.secondary}10)`,
-            `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
-            `linear-gradient(135deg, ${colors.primary}10, ${colors.secondary}10)`
-          ]
+      <div className={`relative ${className}`}>
+        <div ref={contentRef}>{children}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative ${className}`} style={{ padding: `${borderWidth}px` }}>
+      <ShineBorder
+        className="relative"
+        shineColor={shineColor}
+        borderWidth={borderWidth}
+        duration={8}
+        style={{
+          ...measuredRadius,
+          margin: `-${borderWidth}px`,
         }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: 'easeInOut'
-        }}
-        style={backgroundStyle}
-        className={`relative ${className}`}
       >
-        {children}
-      </motion.div>
-    );
-  }
-
-  if (variant === 'overlay') {
-    return (
-      <div className={`relative ${className}`}>
-        {children}
-        <motion.div
-          animate={{
-            opacity: [intensityVals.glowOpacity * 0.5, intensityVals.glowOpacity, intensityVals.glowOpacity * 0.5]
+        <div 
+          ref={contentRef}
+          style={{
+            ...measuredRadius,
+            position: 'relative',
+            zIndex: 1
           }}
-          transition={{
-            duration: 2.5,
-            repeat: Infinity,
-            ease: 'easeInOut'
-          }}
-          style={overlayStyle}
-          className="absolute inset-0 pointer-events-none"
-        />
-      </div>
-    );
-  }
-
-  return <div className={className}>{children}</div>;
+        >
+          {children}
+        </div>
+      </ShineBorder>
+    </div>
+  );
 };
+
 
 export default AchievementGlow;

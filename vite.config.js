@@ -51,6 +51,11 @@ export default defineConfig({
     generateAssetsJson(),
     tailwindcss()
   ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname)
+    }
+  },
   build: {
     // Generate sourcemaps so runtime errors map back to source during debugging
     sourcemap: true,

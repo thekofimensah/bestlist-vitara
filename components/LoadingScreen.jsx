@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import iconUrl from '../assets/icon.svg';
+import { splashScreenTokens } from '../design-tokens.js';
 
 const LoadingScreen = ({ loadingProgress, appLoading }) => {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   
-  // Loading messages that correspond to the progress states
-  const loadingMessages = [
-    "Loading assets...",
-    "Loading Lists...", 
-    "Loading profile...",
-    "Done"
-  ];
+  // Loading messages from design tokens
+  const loadingMessages = splashScreenTokens.loadingMessages;
 
   // Safely handle loadingProgress if it's undefined
   const safeLoadingProgress = loadingProgress || {};
@@ -49,7 +45,7 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center overflow-hidden" style={{ backgroundColor: '#88b7b5' }}>
+    <div className="min-h-screen flex flex-col justify-center items-center overflow-hidden" style={{ backgroundColor: splashScreenTokens.backgroundColor }}>
       {/* Logo and App Name */}
       <motion.div 
         className="text-center"
@@ -58,8 +54,12 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
         transition={{ duration: 0.8, delay: 0.5 }}
       >
         <motion.div
-          animate={{ y: [0, -10, 0] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          animate={{ y: splashScreenTokens.logoAnimation.y }}
+          transition={{ 
+            duration: splashScreenTokens.logoAnimation.duration, 
+            repeat: Infinity, 
+            ease: splashScreenTokens.logoAnimation.ease 
+          }}
           className="mb-4"
         >
           <img 
@@ -68,11 +68,11 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
             width="320" 
             height="320" 
             className="drop-shadow-lg w-72 h-72 md:w-80 md:h-80"
-            style={{ filter: 'brightness(0) saturate(100%) invert(100%)' }}
+            style={{ filter: splashScreenTokens.iconFilter }}
           />
         </motion.div>
         <h1 className="text-5xl md:text-6xl lg:text-7xl font-katibeh text-white mt-4 text-shadow tracking-widest font-normal">
-          bestlist
+          {splashScreenTokens.appName}
         </h1>
       </motion.div>
       

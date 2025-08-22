@@ -441,7 +441,11 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           </div>
 
           {/* Product Name */}
-          <h1 className="text-base font-semibold text-gray-900 mb-3">{post.items?.name}</h1>
+          <h1 className="text-base font-semibold text-gray-900 mb-3 leading-tight break-words" style={{
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            hyphens: 'auto'
+          }}>{post.items?.name}</h1>
 
           {/* Rating + Location aligned on same row */}
           <div className="flex items-center mb-4">

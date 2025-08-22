@@ -441,10 +441,15 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           </div>
 
           {/* Product Name */}
-          <h1 className="text-base font-semibold text-gray-900 mb-3 leading-tight break-words" style={{
+          <h1 className="text-base font-semibold text-gray-900 mb-3 leading-tight" style={{
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
-            hyphens: 'auto'
+            hyphens: 'auto',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            lineHeight: '1.3'
           }}>{post.items?.name}</h1>
 
           {/* Rating + Location aligned on same row */}

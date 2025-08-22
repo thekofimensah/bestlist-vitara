@@ -373,11 +373,21 @@ const MainScreen = React.forwardRef(({
 
   // Track camera startup to prevent multiple simultaneous requests
   const [isCameraStarting, setIsCameraStarting] = useState(false);
+  
+  // Track camera visibility for battery optimization
+  const [isCameraVisible, setIsCameraVisible] = useState(true);
+  const [isCameraStreamActive, setIsCameraStreamActive] = useState(false);
 
   const startCamera = async (mode = 'environment') => {
     // Prevent multiple simultaneous camera starts
     if (isCameraStarting) {
       console.log('📷 [MainScreen] Camera start already in progress, skipping...');
+      return;
+    }
+
+    // Don't start camera if it's not visible (battery optimization)
+    if (!isCameraVisible) {
+      console.log('📷 [MainScreen] Camera not visible, skipping start for battery optimization');
       return;
     }
 
@@ -458,6 +468,20 @@ const MainScreen = React.forwardRef(({
     } finally {
       setIsCameraStarting(false);
     }
+    
+    // Mark camera stream as active
+    setIsCameraStreamActive(true);
+  };
+
+  // Stop camera stream to save battery
+  const stopCamera = () => {
+    console.log('📷 [MainScreen] Stopping camera for battery optimization');
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setVideoReady(false);
+    setIsCameraStreamActive(false);
   };
 
   // Toggle flash/torch
@@ -478,19 +502,57 @@ const MainScreen = React.forwardRef(({
   };
 
   useEffect(() => {
-    startCamera(facingMode);
+    // Only start camera on mount if it's visible
+    if (isCameraVisible) {
+      startCamera(facingMode);
+    }
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
     // eslint-disable-next-line
-  }, [facingMode, flashEnabled]);
+  }, [facingMode, flashEnabled, isCameraVisible]);
 
   // Get location on component mount
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // Add intersection observer to detect camera visibility for battery optimization
+  useEffect(() => {
+    if (!cameraContainerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        const isVisible = entry.isIntersecting;
+        
+        console.log('📷 [Visibility] Camera visibility changed:', isVisible);
+        setIsCameraVisible(isVisible);
+        
+        if (isVisible && !isCameraStreamActive) {
+          // Camera became visible and stream is not active - restart it
+          console.log('📷 [Visibility] Camera visible, restarting stream');
+          startCamera(facingMode);
+        } else if (!isVisible && isCameraStreamActive) {
+          // Camera is no longer visible and stream is active - stop it to save battery
+          console.log('📷 [Visibility] Camera hidden, stopping stream for battery');
+          stopCamera();
+        }
+      },
+      {
+        threshold: 0.1, // Trigger when at least 10% of camera is visible
+        rootMargin: '50px 0px' // Add some margin to avoid flickering
+      }
+    );
+
+    observer.observe(cameraContainerRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [facingMode, isCameraStreamActive]);
 
   // Handle app visibility changes - restart camera when app becomes visible
   useEffect(() => {
@@ -506,10 +568,12 @@ const MainScreen = React.forwardRef(({
       // 1. App becomes visible
       // 2. No modal is currently open
       // 3. No image is being captured/processed
+      // 4. Camera is visible on screen
       if (document.visibilityState === 'visible' && 
           !showModal && 
           !isCapturing && 
-          !capturedImage) {
+          !capturedImage &&
+          isCameraVisible) {
         console.log('📷 App visible - restarting camera...');
         // Longer delay to avoid conflicts with modal transitions
         visibilityTimeout = setTimeout(() => {
@@ -526,7 +590,7 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
-  }, [facingMode, showModal, isCapturing, capturedImage]);
+  }, [facingMode, showModal, isCapturing, capturedImage, isCameraVisible]);
 
   // Check if user is following anyone when component mounts or tab changes
   useEffect(() => {

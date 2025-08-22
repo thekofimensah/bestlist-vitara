@@ -32,6 +32,7 @@ const useUserStats = (userId) => {
   // Track timeout IDs for proper cleanup
   const activeTimeouts = useRef(new Set());
   const isUnmountedRef = useRef(false);
+  const intentionalCloseRef = useRef(false);
 
   // Helper to create tracked timeouts that can be properly cleaned up
   const createTrackedTimeout = (callback, delay) => {
@@ -211,6 +212,8 @@ const useUserStats = (userId) => {
     const cleanupSubscription = () => {
       if (subscription) {
         console.log('🧹 [useUserStats] Cleaning up subscription');
+        // Mark this close as intentional so we don't trigger retries
+        intentionalCloseRef.current = true;
         supabase.removeChannel(subscription);
         subscription = null;
       }
@@ -296,10 +299,18 @@ const useUserStats = (userId) => {
             console.log('🔔 [useUserStats] Subscription status:', status);
           }
           
+          // Ignore CLOSED events that we intentionally triggered via cleanup
+          if (status === 'CLOSED' && intentionalCloseRef.current) {
+            intentionalCloseRef.current = false;
+            return;
+          }
+
           if (status === 'SUBSCRIBED') {
             // Reset retry count on successful subscription
             setSubscriptionRetryCount(0);
             setError(null);
+            // Cancel any pending scheduled retries from earlier failures
+            clearAllTimeouts();
           } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
             // Only log if we're online to reduce noise when offline
             if (isOnline) {

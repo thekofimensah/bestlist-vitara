@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import iconUrl from '../assets/icon.svg';
 import { splashScreenTokens } from '../design-tokens.js';
 
-const LoadingScreen = ({ loadingProgress, appLoading }) => {
+const LoadingScreen = ({ loadingProgress, appLoading, isResuming = false }) => {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   
   // Loading messages from design tokens
@@ -44,6 +44,62 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
     return null;
   }
 
+  // If resuming (coming back from background), show a more subtle loading experience
+  if (isResuming) {
+    return (
+      <motion.div 
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        style={{ 
+          backgroundColor: splashScreenTokens.resuming.backgroundColor,
+          backdropFilter: splashScreenTokens.resuming.backdropFilter
+        }}
+      >
+        <motion.div 
+          className="text-center"
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+        >
+          <motion.div
+            animate={{ y: [-5, 5, -5] }}
+            transition={{ 
+              duration: 2, 
+              repeat: Infinity, 
+              ease: "easeInOut" 
+            }}
+            className="mb-4"
+          >
+            <img 
+              src={iconUrl} 
+              alt="Bestlist Logo"
+              width={splashScreenTokens.resuming.iconSize.width} 
+              height={splashScreenTokens.resuming.iconSize.height} 
+              className={`drop-shadow-lg ${splashScreenTokens.resuming.iconSize.mobileClass} ${splashScreenTokens.resuming.iconSize.tabletClass}`}
+              style={{ filter: splashScreenTokens.iconFilter }}
+            />
+          </motion.div>
+          <div className="text-lg font-medium" style={{ color: splashScreenTokens.resuming.textColor }}>
+            Refreshing...
+          </div>
+          <div className="mt-2 w-16 h-1 rounded-full overflow-hidden" style={{ backgroundColor: splashScreenTokens.resuming.progressBarColor }}>
+            <motion.div 
+              className="h-full rounded-full"
+              style={{ backgroundColor: splashScreenTokens.resuming.progressBarFillColor }}
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 1.5, ease: "easeInOut" }}
+            />
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // Full loading screen for initial app load
   return (
     <div className="min-h-screen flex flex-col justify-center items-center overflow-hidden" style={{ backgroundColor: splashScreenTokens.backgroundColor }}>
       {/* Logo and App Name */}

@@ -564,7 +564,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   }, [feedType, batchSize, offset, hasMore, loadingMore]);
 
   // Refresh feed (separate from initial load for proper tracking)
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     if (loadingRef.current) return;
     if (isOffline() || !isAppActive()) {
       try { window.dispatchEvent(new CustomEvent('feed:offline-required', { detail: { reason: 'refresh' } })); } catch (_) {}
@@ -573,7 +573,10 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
     }
     try {
       loadingRef.current = true;
-      setLoading(true);
+      // 🚀 OPTIMIZATION: Don't show loading screen for background/silent refreshes
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
       
       // Reset states (keep showing current posts until new arrive)
@@ -643,7 +646,10 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       }
     } finally {
       if (mountedRef.current) {
-        setLoading(false);
+        // Only clear loading state if it was set (for non-silent refreshes)
+        if (!silent) {
+          setLoading(false);
+        }
         loadingRef.current = false;
       }
     }

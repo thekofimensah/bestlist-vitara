@@ -382,56 +382,76 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleBulkDelete = async () => {
     if (!selectionEnabled || selectedItemIds.length === 0) return;
+    
+    const itemsToDelete = [...selectedItemIds]; // Copy the IDs
+    
     try {
+      // 🚀 IMMEDIATE UI UPDATE: Remove items from view instantly for better UX
+      setReorderedLists(prev => prev.map(l => ({
+        ...l,
+        items: (l.items || []).filter(it => !itemsToDelete.includes(it.id)),
+        stayAways: (l.stayAways || []).filter(it => !itemsToDelete.includes(it.id))
+      })));
+      
+      // Reset selection immediately
+      setSelectedItemIds([]);
+      setSelectionEnabled(false);
+      
+      console.log('🚀 [ListsView] Items removed from UI, deleting in background...');
+      
+      // ⚡ Background deletion - don't block UI
       const errors = [];
       const deletedItemIds = [];
       
-      for (const id of selectedItemIds) {
-        const { error } = await deleteItemAndRelated(id);
-        if (error) {
-          errors.push({ id, error });
-        } else {
-          deletedItemIds.push(id);
-          // Remove locally cached image for this item if present
-          try {
-            const item = lists?.flatMap(l => [...(l.items||[]), ...(l.stayAways||[])]).find(it => it.id === id);
-            if (item?.image_url) await removeCachedImage(item.image_url);
-          } catch (_) {}
+      for (const id of itemsToDelete) {
+        try {
+          const { error } = await deleteItemAndRelated(id);
+          if (error) {
+            errors.push({ id, error });
+          } else {
+            deletedItemIds.push(id);
+            // Remove locally cached image for this item if present
+            try {
+              const item = lists?.flatMap(l => [...(l.items||[]), ...(l.stayAways||[])]).find(it => it.id === id);
+              if (item?.image_url) await removeCachedImage(item.image_url);
+            } catch (_) {}
+          }
+        } catch (deleteError) {
+          errors.push({ id, error: deleteError });
         }
       }
       
-      // Optimistic update of data in view
-      setReorderedLists(prev => prev.map(l => ({
-        ...l,
-        items: (l.items || []).filter(it => !selectedItemIds.includes(it.id)),
-        stayAways: (l.stayAways || []).filter(it => !selectedItemIds.includes(it.id))
-      })));
-      
-      // Notify parent that items were deleted (for feed refresh)
-      if (deletedItemIds.length > 0 && onItemDeleted) {
-        console.log('🗑️ [ListsView] Notifying parent of deleted items:', deletedItemIds);
-        onItemDeleted(deletedItemIds);
-      }
+      // Handle successful deletions
+      if (deletedItemIds.length > 0) {
+        // Notify parent for background refresh (won't block UI)
+        if (onItemDeleted) {
+          console.log('🗑️ [ListsView] Notifying parent of deleted items:', deletedItemIds);
+          onItemDeleted(deletedItemIds);
+        }
 
-      // Remove posts from profile cache for current user
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && deletedItemIds.length > 0) {
-          removeProfilePostsByItemIds(user.id, deletedItemIds);
-        }
-      } catch (_) {}
+        // Remove posts from profile cache for current user
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            removeProfilePostsByItemIds(user.id, deletedItemIds);
+          }
+        } catch (_) {}
+      }
       
+      // Handle errors (items were already removed from UI optimistically)
       if (errors.length > 0) {
         console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
         const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';
-        alert(`Failed to delete ${errors.length} item(s). First error: ${firstMsg}`);
+        // Note: Items are already hidden from UI, so we inform user about background failure
+        alert(`${errors.length} item(s) failed to delete from database but were removed from view. They may reappear on refresh.`);
       }
+      
+      console.log('✅ [ListsView] Background deletion completed');
+      
     } catch (error) {
-      console.error('Error deleting selected items:', error);
-      alert('Failed to delete selected items. Please try again.');
-    } finally {
-      setSelectedItemIds([]);
-      setSelectionEnabled(false);
+      console.error('Error during bulk delete:', error);
+      // Since UI was already updated, just log the error
+      alert('Some items were removed from view but may not have been deleted from database.');
     }
   };
 

@@ -126,6 +126,7 @@ const App = () => {
   const [appLoading, setAppLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   
   // TODO: Critical image loading states for each tab (simplified for now)
   // Will be implemented after confirming basic logic works
@@ -965,15 +966,26 @@ const App = () => {
 
   // Handle item deletion from lists - refresh feed to stay in sync
   const handleItemDeleted = async (deletedItemIds) => {
-    console.log('🗑️ [App] Items deleted from lists, refreshing feed:', deletedItemIds);
+    console.log('🗑️ [App] Items deleted from lists, refreshing in background:', deletedItemIds);
     
-    // Refresh the feed to remove deleted items
-    await refreshFeed();
+    // 🚀 OPTIMISTIC: Don't block UI with synchronous refreshes
+    // The UI has already been updated optimistically by the delete components
     
-    // Also refresh lists to ensure consistency
-    await refreshLists();
+    // 🔥 SILENT Background refresh - no loading screens or await
+    refreshFeed(true).then(() => {
+      console.log('✅ [App] Feed refreshed silently in background after deletion');
+    }).catch(err => {
+      console.error('❌ [App] Background feed refresh failed:', err);
+    });
     
-    console.log('✅ [App] Feed and lists refreshed after item deletion');
+    // Background lists refresh - no await to prevent loading screens  
+    refreshLists().then(() => {
+      console.log('✅ [App] Lists refreshed in background after deletion');
+    }).catch(err => {
+      console.error('❌ [App] Background lists refresh failed:', err);
+    });
+    
+    console.log('🚀 [App] Silent background refreshes started, UI remains responsive');
   };
 
   // Feed loading is now handled in the main initialization useEffect
@@ -1025,6 +1037,9 @@ const App = () => {
             // App is coming back from background
             console.log('🔄 App resumed - refreshing data and camera...');
             
+            // Set resuming state to show subtle loading
+            setIsResuming(true);
+            
             // Reset scroll position to top when app becomes active
             resetScrollToTop();
             
@@ -1071,6 +1086,9 @@ const App = () => {
           code: err.code,
           fullError: err
         }, null, 2));
+            } finally {
+              // Clear resuming state after data refresh completes
+              setTimeout(() => setIsResuming(false), 1000);
             }
           }
         });
@@ -1143,7 +1161,20 @@ const App = () => {
       
       console.log('🔧 Calling addItemToList with selectedListIds array:', selectedListIds);
       // Start DB work without keeping the spinner on
+      const dbStartTime = performance.now();
+      console.log('⏱️ [TIMING] Starting addItemToList database operation...');
       const resultPromise = addItemToList(selectedListIds, itemData, isStayAway);
+      
+      // Add timing when promise resolves
+      resultPromise.then((result) => {
+        const dbEndTime = performance.now();
+        console.log('✅ [TIMING] addItemToList completed in', Math.round(dbEndTime - dbStartTime), 'ms');
+        return result;
+      }).catch((error) => {
+        const dbEndTime = performance.now();
+        console.log('❌ [TIMING] addItemToList failed after', Math.round(dbEndTime - dbStartTime), 'ms');
+        throw error;
+      });
       // Stop global image loading immediately for snappy UX
       setImagesLoading(false);
       // Ensure cleanup/refresh after completion without blocking UI
@@ -1673,7 +1704,7 @@ const App = () => {
 
   // Show loading screen until both app initialization AND all component data is ready
   if (appLoading || !allTabsReady) {
-    return <LoadingScreen loadingProgress={loadingProgress} appLoading={appLoading} />;
+    return <LoadingScreen loadingProgress={loadingProgress} appLoading={appLoading} isResuming={isResuming} />;
   }
 
   // Show auth view only when not loading and no user
@@ -1702,6 +1733,30 @@ const App = () => {
       {/* Connection Status Bar */}
       <ConnectionStatus />
       
+      {/* Resuming Indicator */}
+      <AnimatePresence>
+        {isResuming && (
+          <motion.div 
+            className="fixed top-0 left-0 right-0 z-40 bg-teal-500/90 backdrop-blur-sm shadow-lg"
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            <div className="px-4 py-3 text-center">
+              <div className="flex items-center justify-center gap-3 text-white text-sm font-medium">
+                <motion.div 
+                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                />
+                <span>Refreshing app data...</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       {/* Header - Only show on MainScreen (home) */}
       {currentScreen === 'home' && (
         <div 
@@ -1716,15 +1771,15 @@ const App = () => {
         >
           <div className="px-4 mb-3 flex items-baseline justify-between">
             <div className="flex items-baseline gap-3 pl-2">
-              <img 
+              {/* <img 
                 src={iconUrl} 
                 alt="Bestlist Logo"
                 width="30" 
                 height="30" 
                 className="drop-shadow-sm flex-shrink-0"
                 style={{ filter: 'brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%)' }}
-              />
-              <span className="text-3xl md:text-4xl font-katibeh text-gray-700 tracking-widest leading-none pb-4">
+              /> */}
+              <span className="text-5xl md:text-6xl font-lateef text-gray-500 leading-none pb-4">
                 bestlist
               </span>
               
@@ -1807,6 +1862,30 @@ const App = () => {
 
       {/* Main Content */}
       <main className="relative flex-1">
+        {/* Subtle loading overlay when resuming */}
+        <AnimatePresence>
+          {isResuming && (
+            <motion.div 
+              className="absolute inset-0 z-30 bg-white/60 backdrop-blur-sm flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+            >
+              <motion.div 
+                className="text-center"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              >
+                <div className="w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                <div className="text-teal-700 text-sm font-medium">Refreshing...</div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
         <ErrorBoundary name="MainContent">
           {renderScreen() || renderMainTabs()}
         </ErrorBoundary>

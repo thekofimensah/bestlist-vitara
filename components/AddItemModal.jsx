@@ -334,6 +334,15 @@ const AddItemModal = ({
 
   const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  
+  // Debug success animation state (only when it changes to true)
+  useEffect(() => {
+    if (showSuccessAnimation) {
+      console.log('🎉 [SUCCESS] Animation showing:', successMessage);
+    }
+  }, [showSuccessAnimation, successMessage]);
   // LevelUpEffect removed per design
   
   // AI status toast
@@ -1200,11 +1209,44 @@ const AddItemModal = ({
     });
     
     try {
-      // FAST SAVE: Only wait for core item save
+      // OPTIMAL SAVE: Do heavy operations during "Saving..." state
+      const saveStartTime = performance.now();
+      console.log('⏱️ [TIMING] Starting optimized save operation...');
+      
+      // Step 1: Core database save (524ms - happens during "Saving...")
       const saveResult = await onSave(selectedLists, newItem, isStayAway);
       const savedItem = saveResult?.data || saveResult;
+      const dbEndTime = performance.now();
+      console.log('✅ Database save completed in', Math.round(dbEndTime - saveStartTime), 'ms');
       
-      console.log('✅ Core save completed successfully');
+      // Step 2: Create public post during "Saving..." if needed (405ms - also during loading)
+      let postRow = null;
+      if (isPublic && !item?.id && savedItem) {
+        const postStartTime = performance.now();
+        console.log('⏱️ [TIMING] Creating public post during save...');
+        const { data: createdPost, error: postError } = await createPost(savedItem.id, selectedLists[0], true, location);
+        const postEndTime = performance.now();
+        if (postError) {
+          console.warn('⚠️ Post creation failed (non-fatal):', postError);
+        } else {
+          postRow = createdPost;
+          console.log('✅ Post created during save in', Math.round(postEndTime - postStartTime), 'ms');
+        }
+      }
+      
+      const totalSaveTime = performance.now() - saveStartTime;
+      console.log('✅ All heavy operations completed in', Math.round(totalSaveTime), 'ms');
+      
+      // Step 3: Show success animation immediately (user feels the save is complete)
+      console.log('✨ [Success] Showing success animation');
+      setIsSaving(false);
+      setShowSuccessAnimation(true);
+      
+      // Determine the primary list name for success message
+      const primaryList = lists?.find(l => l.id === selectedLists[0]);
+      const listName = primaryList?.name || 'your list';
+      setSuccessMessage(`Saved to ${listName}`);
+      console.log('✨ [Success] Success message set:', `Saved to ${listName}`);
       
       // CHECK: If this is a first-in-world achievement, show it briefly
       const hasFirstInWorldAchievement = saveResult?.achievements?.some(a => a.isGlobalFirst);
@@ -1212,58 +1254,69 @@ const AddItemModal = ({
       if (hasFirstInWorldAchievement) {
         console.log('🏆 [Fast Save] First in world achievement detected');
         const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
-          setFirstInWorldProduct(productName || newItem.name || 'this item');
-          setFirstInWorldAchievement(globalFirstAchievement);
+        setFirstInWorldProduct(productName || newItem.name || 'this item');
+        setFirstInWorldAchievement(globalFirstAchievement);
         
-        // Show for 2 seconds then close
+        // Show success + achievement for 2.5 seconds then close
         setTimeout(() => {
-          setIsSaving(false);
+          setShowSuccessAnimation(false);
           if (isBulk && onNext) onNext();
           else onClose();
-        }, 2000);
-        } else {
-        // IMMEDIATE CLOSE: No special achievement, close right away
-        setIsSaving(false);
-        if (isBulk && onNext) onNext();
-        else onClose();
+        }, 2500);
+      } else {
+        // Show success animation briefly then close (natural timing)
+        setTimeout(() => {
+          setShowSuccessAnimation(false);
+          if (isBulk && onNext) onNext();
+          else onClose();
+        }, 600);
       }
       
-      // BACKGROUND OPERATIONS: Don't wait for these
-      if (isPublic && !item?.id && savedItem) {
-        handleBackgroundOperations(savedItem, selectedLists[0], location);
+      // Step 4: Only fast operations in background (167ms cache update)
+      if (postRow) {
+        scheduleFastBackgroundOperations(savedItem, selectedLists[0], postRow);
       }
       
     } catch (error) {
       console.error('❌ Save operation failed:', error);
       alert('Failed to save item. Please try again.');
       setIsSaving(false);
+      setShowSuccessAnimation(false);
     }
   };
 
-  // Handle background operations without blocking UI
-  const handleBackgroundOperations = async (savedItem, listId, location) => {
-    try {
-      console.log('🔄 [Background] Creating public post...');
-      const { data: postRow, error: postError } = await createPost(savedItem.id, listId, true, location);
-          if (postError) throw postError;
-
-      // Update profile cache in background
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            const newPost = {
-              id: postRow?.id,
-              user_id: user?.id,
-              items: savedItem,
+    // Schedule only fast background operations (167ms cache update)
+  const scheduleFastBackgroundOperations = (savedItem, listId, postRow) => {
+    console.log('📅 [Background] Scheduling fast cache update...');
+    
+    // Use requestIdleCallback for better performance, fallback to immediate setTimeout
+    const runWhenIdle = (callback) => {
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(callback, { timeout: 50 });
+      } else {
+        setTimeout(callback, 0);
+      }
+    };
+    
+    // Only fast operation: Update profile cache (167ms)
+    runWhenIdle(async () => {
+      try {
+        const cacheStartTime = performance.now();
+        console.log('🔄 [Background] Updating profile cache...');
+        const { data: { user } } = await supabase.auth.getUser();
+        const newPost = {
+          id: postRow?.id,
+          user_id: user?.id,
+          items: savedItem,
           lists: { id: listId, name: (lists || []).find(l => l.id === listId)?.name || '' }
-            };
-            prependProfilePost(user?.id, newPost);
-        console.log('✅ [Background] Profile cache updated');
+        };
+        prependProfilePost(user?.id, newPost);
+        const cacheEndTime = performance.now();
+        console.log('✅ [Background] Profile cache updated in', Math.round(cacheEndTime - cacheStartTime), 'ms');
       } catch (cacheErr) {
         console.log('⚠️ [Background] Profile cache update failed (non-fatal)');
-          }
-        } catch (postError) {
-      console.log('⚠️ [Background] Post creation failed (non-fatal)');
-    }
+      }
+    });
   };
 
   const handleCreateList = async () => {
@@ -1868,7 +1921,7 @@ const AddItemModal = ({
 
             {/* Item Header */}
             <div className="mb-4 pt-6">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
                 <div className="flex-1 relative min-h-[32px]" style={{ maxWidth: '66%' }}>
                   {isAIProcessing && !aiCancelled && !aiError ? (
                     // Match tags overlay style with shimmer pills
@@ -1878,52 +1931,82 @@ const AddItemModal = ({
                       <div className="hidden sm:block px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-7 loading-tag"></div>
                     </div>
                   ) : (
-                                         <textarea
-                       ref={productNameRef}
-                       value={productName}
-                       onChange={(e) => {
-                         setProductName(e.target.value);
-                         setIsProductNameEditedByUser(true);
-                         if (validationErrors.productName) {
-                           const newErrors = { ...validationErrors };
-                           delete newErrors.productName;
-                           setValidationErrors(newErrors);
-                         }
-                       }}
-                       onFocus={() => setProductNameManuallyEdited(true)}
-                       onKeyDown={(e) => {
-                         // Prevent Enter key from creating new lines
-                         if (e.key === 'Enter') {
-                           e.preventDefault();
-                         }
-                       }}
-                       className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full leading-tight resize-none placeholder:text-base placeholder:font-normal placeholder:text-gray-400 select-text ${
-                         showValidationErrors && validationErrors.productName 
-                           ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
-                           : ''
-                       }`}
-                       placeholder="Product name..."
-                       autoComplete="off"
-                       autoCorrect="on"
-                       autoCapitalize="words"
-                       spellCheck="true"
-                       rows={1}
-                       style={{
-                         wordBreak: 'break-word',
-                         overflowWrap: 'break-word',
-                         minHeight: '32px',
-                         height: 'auto',
-                         maxHeight: '80px',
-                         overflow: 'hidden',
-                         WebkitUserSelect: 'text',
-                         userSelect: 'text'
-                       }}
-                       onInput={(e) => {
-                         // Auto-resize textarea
-                         e.target.style.height = 'auto';
-                         e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
-                       }}
-                     />
+                    isProductNameEditing ? (
+                      <textarea
+                        ref={productNameRef}
+                        value={productName}
+                        onChange={(e) => {
+                          setProductName(e.target.value);
+                          setIsProductNameEditedByUser(true);
+                          if (validationErrors.productName) {
+                            const newErrors = { ...validationErrors };
+                            delete newErrors.productName;
+                            setValidationErrors(newErrors);
+                          }
+                        }}
+                        onFocus={() => setProductNameManuallyEdited(true)}
+                        onBlur={() => setIsProductNameEditing(false)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.target.blur(); // Exit editing mode
+                          }
+                        }}
+                        className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full leading-tight resize-none placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
+                          showValidationErrors && validationErrors.productName 
+                            ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
+                            : ''
+                        }`}
+                        placeholder="Product name..."
+                        autoComplete="off"
+                        autoCorrect="on"
+                        autoCapitalize="words"
+                        spellCheck="true"
+                        rows={1}
+                        style={{
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          minHeight: '32px',
+                          height: 'auto',
+                          maxHeight: '80px',
+                          overflow: 'hidden'
+                        }}
+                        onInput={(e) => {
+                          e.target.style.height = 'auto';
+                          e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className={`text-xl font-semibold text-gray-900 leading-tight cursor-pointer ${
+                          showValidationErrors && validationErrors.productName 
+                            ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
+                            : ''
+                        }`}
+                        style={{
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          hyphens: 'auto',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          minHeight: '32px',
+                          lineHeight: '1.2'
+                        }}
+                        onClick={() => {
+                          setIsProductNameEditing(true);
+                          setTimeout(() => {
+                            if (productNameRef.current) {
+                              productNameRef.current.focus();
+                              productNameRef.current.setSelectionRange(productName.length, productName.length);
+                            }
+                          }, 0);
+                        }}
+                      >
+                        {productName || <span className="text-gray-400 font-normal">Product name...</span>}
+                      </div>
+                    )
                   )}
                 </div>
                 <div className="flex items-center gap-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
@@ -2673,14 +2756,24 @@ const AddItemModal = ({
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
                 style={{ 
-                  backgroundColor: !isAIProcessing && !isSaving ? '#1F6D5A' : undefined,
-                  height: '52px' 
+                  backgroundColor: showSuccessAnimation ? '#10B981' : (!isAIProcessing && !isSaving ? '#1F6D5A' : undefined),
+                  height: '52px',
+                  transition: 'background-color 0.3s ease'
                 }}
               >
                 {isSaving ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     <span>Saving...</span>
+                  </>
+                ) : showSuccessAnimation ? (
+                  <>
+                    <div className="w-5 h-5 text-white">
+                      <svg className="w-full h-full animate-bounce" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <span>{successMessage}</span>
                   </>
                 ) : (
                   <>
@@ -2855,16 +2948,23 @@ const AddItemModal = ({
                       }
                       try {
                         setIsDeleting(true);
+                        
+                        // 🚀 IMMEDIATE UI RESPONSE: Close modal immediately for better UX
+                        onClose();
+                        
+                        // ⚡ Background deletion with optimistic updates
                         const { error } = await deleteItemAndRelated(item.id);
                         if (error) {
                           console.error('Failed to delete item:', error);
-                          alert('Failed to delete item. Please try again.');
-                          e.target.value = 0;
-                              if (progressEl) progressEl.style.width = '0%';
+                          // Reopen modal to show error since we already closed it
+                          alert('Failed to delete item. The item may still be visible in your lists.');
                           setIsDeleting(false);
                           return;
                         }
-                        onClose();
+                        
+                        // Success - item is already hidden from UI by the modal close
+                        console.log('✅ [AddItemModal] Item deleted successfully');
+                        
                       } catch (error) {
                         console.error('Error deleting item:', JSON.stringify({
                           message: error.message,

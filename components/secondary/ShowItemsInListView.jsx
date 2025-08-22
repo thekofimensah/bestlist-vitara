@@ -224,52 +224,66 @@ const ShowItemsInListView = ({
   };
 
   const handleDeleteSelected = async () => {
+    const itemsToDelete = [...selectedItems]; // Copy the IDs
+    
     try {
-      const errors = [];
-      const deletedItemIds = [];
-      
-      for (const itemId of selectedItems) {
-        const { error } = await deleteItemAndRelated(itemId);
-        if (error) {
-          errors.push({ itemId, error });
-        } else {
-          deletedItemIds.push(itemId);
-          // Remove locally cached image for this item if present
-          try {
-            const item = allItems.find(i => i.id === itemId);
-            if (item?.image_url) await removeCachedImage(item.image_url);
-          } catch (_) {}
-        }
-      }
-      
+      // 🚀 IMMEDIATE UI UPDATE: Clear selection and refresh list for better UX
       setSelectedItems([]);
       
-      // Refresh local list
       if (refreshList) {
         refreshList();
       }
       
-      // Notify parent for feed refresh
-      if (deletedItemIds.length > 0 && onItemDeleted) {
-        console.log('🗑️ [ShowItemsInListView] Notifying parent of deleted items:', deletedItemIds);
-        onItemDeleted(deletedItemIds);
+      console.log('🚀 [ShowItemsInListView] Items removed from UI, deleting in background...');
+      
+      // ⚡ Background deletion - don't block UI
+      const errors = [];
+      const deletedItemIds = [];
+      
+      for (const itemId of itemsToDelete) {
+        try {
+          const { error } = await deleteItemAndRelated(itemId);
+          if (error) {
+            errors.push({ itemId, error });
+          } else {
+            deletedItemIds.push(itemId);
+            // Remove locally cached image for this item if present
+            try {
+              const item = allItems.find(i => i.id === itemId);
+              if (item?.image_url) await removeCachedImage(item.image_url);
+            } catch (_) {}
+          }
+        } catch (deleteError) {
+          errors.push({ itemId, error: deleteError });
+        }
       }
       
-      // Also remove posts from profile cache for current user
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && deletedItemIds.length > 0) {
-          removeProfilePostsByItemIds(user.id, deletedItemIds);
+      // Handle successful deletions
+      if (deletedItemIds.length > 0) {
+        // Notify parent for background refresh (won't block UI)
+        if (onItemDeleted) {
+          console.log('🗑️ [ShowItemsInListView] Notifying parent of deleted items:', deletedItemIds);
+          onItemDeleted(deletedItemIds);
         }
-      } catch (_) {}
-
+        
+        // Remove posts from profile cache for current user
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            removeProfilePostsByItemIds(user.id, deletedItemIds);
+          }
+        } catch (_) {}
+      }
       
-      
+      // Handle errors (items were already removed from UI)
       if (errors.length > 0) {
         console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
         const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';
-        alert(`Failed to delete ${errors.length} item(s). First error: ${firstMsg}`);
+        alert(`${errors.length} item(s) failed to delete from database but were removed from view. They may reappear on refresh.`);
       }
+      
+      console.log('✅ [ShowItemsInListView] Background deletion completed');
+      
     } catch (error) {
       console.error('Error deleting items:', JSON.stringify({
           message: error.message,
@@ -279,7 +293,7 @@ const ShowItemsInListView = ({
           code: error.code,
           fullError: error
         }, null, 2));
-      alert('Failed to delete selected items. Please try again.');
+      alert('Items were removed from view but deletion may have failed.');
     }
   };
 
@@ -294,23 +308,30 @@ const ShowItemsInListView = ({
       const confirmDelete = window.confirm('Remove this item from the list?');
       if (!confirmDelete) return;
       
-      const { error } = await deleteItemAndRelated(item.id);
-      if (error) {
-        console.error('Failed to remove item:', error);
-        alert('Failed to remove item. Please try again.');
-        return;
-      }
-      
-      // Refresh local list
+      // 🚀 IMMEDIATE UI UPDATE: Refresh list immediately for better UX
       if (refreshList) {
         refreshList();
       }
       
-      // Notify parent for feed refresh
+      console.log('🚀 [ShowItemsInListView] Item removed from UI, deleting in background...');
+      
+      // ⚡ Background deletion - don't block UI
+      const { error } = await deleteItemAndRelated(item.id);
+      if (error) {
+        console.error('Failed to remove item:', error);
+        // Item was already removed from UI, inform user about background failure
+        alert('Item was removed from view but may not have been deleted from database. It may reappear on refresh.');
+        return;
+      }
+      
+      // Notify parent for background feed refresh (won't block UI)
       if (onItemDeleted) {
         console.log('🗑️ [ShowItemsInListView] Notifying parent of deleted item:', item.id);
         onItemDeleted([item.id]);
       }
+      
+      console.log('✅ [ShowItemsInListView] Background deletion completed');
+      
     } catch (error) {
       console.error('Error removing item:', JSON.stringify({
           message: error.message,
@@ -320,7 +341,7 @@ const ShowItemsInListView = ({
           code: error.code,
           fullError: error
         }, null, 2));
-      alert('Failed to remove item. Please try again.');
+      alert('Item was removed from view but deletion may have failed.');
     }
   };
 

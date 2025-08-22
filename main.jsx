@@ -12,9 +12,8 @@ defineCustomElements(window);
 checkForUpdate().catch(console.error);
 
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
     <App />
-  </StrictMode>,
+
 );
 
 // Splash screen hiding is now handled in App.jsx after React initializes

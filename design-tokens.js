@@ -13,21 +13,6 @@ export const splashScreenTokens = {
   iconFilter: 'brightness(0) saturate(100%) invert(100%)', // White icon
   textColor: '#FFFFFF',
   
-  // Resuming state colors (more subtle)
-  resuming: {
-    backgroundColor: 'rgba(136, 183, 181, 0.95)', // Semi-transparent teal
-    backdropFilter: 'blur(8px)',
-    iconSize: {
-      width: 120,
-      height: 120,
-      mobileClass: 'w-24 h-24',
-      tabletClass: 'md:w-28 md:h-28'
-    },
-    textColor: 'rgba(255, 255, 255, 0.9)',
-    progressBarColor: 'rgba(255, 255, 255, 0.3)',
-    progressBarFillColor: '#FFFFFF'
-  },
-  
   // Typography
   fontFamily: 'Katibeh',
   appName: 'bestlist',

@@ -682,9 +682,10 @@ const MainScreen = React.forwardRef(({
       setIsCapturing(false);
       
       // Compress image in background and update when ready
+      let compressedFile = null;
       setTimeout(async () => {
         try {
-          const compressed = await imageCompression(file, {
+          compressedFile = await imageCompression(file, {
             maxSizeMB: 0.5,
             maxWidthOrHeight: 1280,
             useWebWorker: true,
@@ -693,8 +694,8 @@ const MainScreen = React.forwardRef(({
           });
           
           // Convert compressed file to base64
-          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
-          console.log('📸 [Camera] Compressed image size:', compressed.size, 'bytes');
+          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressedFile);
+          console.log('📸 [Camera] Compressed image size:', compressedFile.size, 'bytes');
           
           // Update with compressed image
           setCapturedImage(prev => ({ 
@@ -705,12 +706,23 @@ const MainScreen = React.forwardRef(({
         } catch (compressionError) {
           console.error('📸 [Compression] Failed, keeping original:', compressionError);
           // Keep original image if compression fails
+          compressedFile = file; // Fallback to original file
         }
       }, 50); // Small delay to let modal open first
       
       // Upload to Supabase Storage in background
       setTimeout(async () => {
         try {
+          // Wait for compression to complete or use fallback
+          if (!compressedFile) {
+            console.log('📸 [Camera] Waiting for compression to complete...');
+            // Wait a bit more for compression to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (!compressedFile) {
+              compressedFile = file; // Use original file as fallback
+            }
+          }
+          
           // Get current user for storage organization
           const user = (await supabase.auth.getUser()).data.user;
           if (!user) {
@@ -718,7 +730,7 @@ const MainScreen = React.forwardRef(({
           }
           
           // Upload to Supabase Storage
-          const uploadResult = await uploadImageToStorage(compressed, user.id);
+          const uploadResult = await uploadImageToStorage(compressedFile, user.id);
           
           if (uploadResult.error) {
             throw new Error(`Image upload failed: ${uploadResult.error.message}`);
@@ -761,6 +773,16 @@ const MainScreen = React.forwardRef(({
       // Start AI processing in background with compressed image
       setTimeout(async () => {
         try {
+          // Wait for compression to complete or use fallback
+          if (!compressedFile) {
+            console.log('📸 [Camera] AI processing - waiting for compression to complete...');
+            // Wait a bit more for compression to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (!compressedFile) {
+              compressedFile = file; // Use original file as fallback
+            }
+          }
+          
           // Extract EXIF data from original file (before compression)
           console.log('📸 [Camera] Extracting EXIF data from original image...');
           const exifData = await extractEXIFData(file);
@@ -771,9 +793,9 @@ const MainScreen = React.forwardRef(({
             console.log('🌍 [GPS] Device location during capture:', deviceLocation);
           }
 
-          // Start AI processing using the original captured file
+          // Start AI processing using the compressed file
           console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-          const aiResult = await analyzeImage(compressed, deviceLocation);
+          const aiResult = await analyzeImage(compressedFile, deviceLocation);
           
           // 🏆 CHECK FOR FIRST IN WORLD ACHIEVEMENT after AI completes
           // 🏆 Check for achievements after AI analysis completes (for glow effect only, no database save)
@@ -1003,7 +1025,7 @@ const MainScreen = React.forwardRef(({
           console.log('📸 [Gallery] Original file size:', file.size, 'bytes');
           
           // Single compression: compress once and use the same file for preview and upload
-          const compressed = await imageCompression(file, {
+          let compressedFile = await imageCompression(file, {
             maxSizeMB: 0.5,
             maxWidthOrHeight: 1280,
             useWebWorker: true,
@@ -1012,9 +1034,9 @@ const MainScreen = React.forwardRef(({
           });
           
           // Convert compressed file to base64 for immediate display
-          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressed);
+          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressedFile);
           
-          console.log('📸 [Gallery] Compressed image size:', compressed.size, 'bytes');
+          console.log('📸 [Gallery] Compressed image size:', compressedFile.size, 'bytes');
           
           const tempFilename = `upload_${Date.now()}.webp`;
           const uploadImageData = { 
@@ -1036,7 +1058,7 @@ const MainScreen = React.forwardRef(({
               }
               
               // Upload to Supabase Storage
-              const uploadResult = await uploadImageToStorage(compressed, user.id);
+              const uploadResult = await uploadImageToStorage(compressedFile, user.id);
               
               if (uploadResult.error) {
                 throw new Error(`Image upload failed: ${uploadResult.error.message}`);
@@ -1088,7 +1110,7 @@ const MainScreen = React.forwardRef(({
               }
 
               console.log('🤖 [AI] Starting AI analysis with location:', deviceLocation);
-              const aiResult = await analyzeImage(compressed, deviceLocation);
+              const aiResult = await analyzeImage(compressedFile, deviceLocation);
               
               // 🏆 CHECK FOR FIRST IN WORLD ACHIEVEMENT after AI completes
               console.log('🏆 [AI Complete] Gallery - Checking for First in World achievement...');

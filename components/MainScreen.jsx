@@ -8,6 +8,7 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 import OptimizedPostCard from './OptimizedPostCard';
 import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
 import { FeedSkeleton } from './ui/SkeletonLoader';
+import ModalPortal from './ui/ModalPortal';
 
 import { useAI } from '../hooks/useAI';
 import useAchievements from '../hooks/useAchievements';
@@ -195,6 +196,7 @@ const MainScreen = React.forwardRef(({
   const firstImageRef = useRef(null);
   const hasAdjustedRef = useRef(false);
   const streamRef = useRef(null);
+  const isGalleryPickerActiveRef = useRef(false);
   
   // Achievement hooks
   const { checkAchievements, removeAchievement, previewAchievements } = useAchievements();
@@ -379,6 +381,11 @@ const MainScreen = React.forwardRef(({
   const [isCameraStreamActive, setIsCameraStreamActive] = useState(false);
 
   const startCamera = async (mode = 'environment') => {
+    // Skip camera start while gallery picker is active to avoid pause/resume churn
+    if (isGalleryPickerActiveRef.current) {
+      console.log('📷 [MainScreen] startCamera skipped - gallery picker active');
+      return;
+    }
     // Prevent multiple simultaneous camera starts
     if (isCameraStarting) {
       console.log('📷 [MainScreen] Camera start already in progress, skipping...');
@@ -512,7 +519,7 @@ const MainScreen = React.forwardRef(({
       }
     };
     // eslint-disable-next-line
-  }, [facingMode, flashEnabled, isCameraVisible]);
+  }, [facingMode, flashEnabled]);
 
   // Get location on component mount
   useEffect(() => {
@@ -573,7 +580,8 @@ const MainScreen = React.forwardRef(({
           !showModal && 
           !isCapturing && 
           !capturedImage &&
-          isCameraVisible) {
+          isCameraVisible &&
+          !isGalleryPickerActiveRef.current) {
         console.log('📷 App visible - restarting camera...');
         // Longer delay to avoid conflicts with modal transitions
         visibilityTimeout = setTimeout(() => {
@@ -627,9 +635,13 @@ const MainScreen = React.forwardRef(({
     console.log('🔄 MainScreen: Starting feed refresh...');
     // Feed error state is now managed by the parent App component
     
-    // Reload camera to fix any camera errors
-    console.log('📷 MainScreen: Reloading camera...');
-    await startCamera(facingMode);
+    // Reload camera only if no modal/capture is active to avoid picker/resume churn
+    if (showModal || isCapturing || capturedImage) {
+      console.log('📷 MainScreen: Skipping camera reload (modal/capture active)');
+    } else {
+      console.log('📷 MainScreen: Reloading camera...');
+      await startCamera(facingMode);
+    }
     
     // Refresh feed data
     // await loadFeedData(); // This function is no longer needed
@@ -1000,15 +1012,11 @@ const MainScreen = React.forwardRef(({
     // Set both state and ref immediately to prevent cleanup during save process
     setWasSaved(true);
     wasSavedRef.current = true;
-    console.log('💾 [Save] Scheduling non-blocking save (wasSaved=true)');
-    // Fire-and-forget; Do not await to avoid blocking UI
-    const promise = onAddItem(...args);
-    // Optional: background log when finished
-    promise.then(() => console.log('💾 [Save] Background save completed')).catch(() => {});
-    // Close modal immediately; ensure files are kept by passing saved flag
-    handleModalClose('save_scheduled', true);
-    // Return the promise for callers that want to attach handlers, but we don't await here
-    return promise;
+    console.log('💾 [Save] Starting save operation (wasSaved=true)');
+    
+    // Return the promise directly - let AddItemModal handle the timing and UI states
+    // AddItemModal will show "Saving..." state, then success animation, then close itself
+    return onAddItem(...args);
   };
 
   const handleGalleryUpload = () => {
@@ -1017,9 +1025,13 @@ const MainScreen = React.forwardRef(({
     input.type = 'file';
     input.accept = 'image/*';
     input.multiple = false;
+    // Mark picker as active to suppress resume-related camera reloads
+    isGalleryPickerActiveRef.current = true;
     
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
+      // Picker has returned; clear the flag regardless of selection
+      isGalleryPickerActiveRef.current = false;
       if (file) {
         try {
           console.log('📸 [Gallery] Original file size:', file.size, 'bytes');
@@ -1583,29 +1595,41 @@ const MainScreen = React.forwardRef(({
         </div>
       </div>
 
-      {/* AddItemModal with integrated rating overlay */}
-      {showModal && (
-        <AddItemModal
-          image={capturedImage?.url}
-          lists={lists}
-          onClose={handleModalClose}
-          onSave={handleSave}
-          aiMetadata={capturedImage?.aiMetadata}
-          isAIProcessing={capturedImage?.aiProcessing}
-          aiError={capturedImage?.aiError}
-          onCreateList={onCreateList}
-          showRatingFirst={true}
-          photoMetadata={capturedImage?.photoMetadata}
-          aiTriggeredAchievements={capturedImage?.aiTriggeredAchievements}
-          onUpdateAI={(aiData) => {
-            setCapturedImage(prev => ({
-              ...prev,
-              aiProcessing: false,
-              aiMetadata: aiData
-            }));
-          }}
-        />
-      )}
+      {/* AddItemModal with integrated rating overlay - rendered via portal */}
+      <ModalPortal isOpen={showModal}>
+        <AnimatePresence mode="wait">
+          {showModal && (
+            <motion.div
+              key="add-item-modal"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+            >
+              <AddItemModal
+                image={capturedImage?.url}
+                lists={lists}
+                onClose={handleModalClose}
+                onSave={handleSave}
+                aiMetadata={capturedImage?.aiMetadata}
+                isAIProcessing={capturedImage?.aiProcessing}
+                aiError={capturedImage?.aiError}
+                onCreateList={onCreateList}
+                showRatingFirst={true}
+                photoMetadata={capturedImage?.photoMetadata}
+                aiTriggeredAchievements={capturedImage?.aiTriggeredAchievements}
+                onUpdateAI={(aiData) => {
+                  setCapturedImage(prev => ({
+                    ...prev,
+                    aiProcessing: false,
+                    aiMetadata: aiData
+                  }));
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </ModalPortal>
 
       {/* Invalid Image Notification */}
       <AnimatePresence>

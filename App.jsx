@@ -13,6 +13,7 @@ import AuthView from './components/AuthView';
 import AddItemModal from './components/AddItemModal';
 import UserProfile from './components/secondary/PublicUserProfile.jsx';
 import PullToRefresh from './ui/PullToRefresh';
+import ModalPortal from './components/ui/ModalPortal';
 import { enableNativeKeyboardEnhancements } from './lib/enableNativeKeyboard';
 import { supabase, signOut, searchUserContent, getFeedPosts, getPostCommentCount, searchUsers, followUser, unfollowUser, getSessionOptimized } from './lib/supabase';
 import { useOptimizedFeed } from './hooks/useOptimizedFeed';
@@ -31,7 +32,6 @@ import useUserStats from './hooks/useUserStats';
 import { updateFeedPosts, addOfflineProfilePost } from './hooks/useOptimizedFeed';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 import LoadingScreen from './components/LoadingScreen';
-import { FeedSkeleton, ProfileGridSkeleton, ProfileHeaderSkeleton } from './components/ui/SkeletonLoader';
 import iconUrl from './assets/icon.svg';
 
 // Helper function to format post data from database (moved from MainScreen)
@@ -125,6 +125,7 @@ const App = () => {
   // Removed dropdown-driven achievements loading/marking
   const { trackUserSession, isTracking } = useUserTracking();
   const [appLoading, setAppLoading] = useState(true);
+  const [hasShownInitialUI, setHasShownInitialUI] = useState(false);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   
@@ -892,6 +893,7 @@ const App = () => {
       } finally {
         // Only stop app loading when everything is done
         setAppLoading(false);
+        setHasShownInitialUI(true); // Mark that we've shown UI at least once
         console.log('🎉 [App] App initialization complete - showing app!');
         
         // 🏆 Trigger any pending sign-in achievements now that app is fully loaded
@@ -1041,48 +1043,56 @@ const App = () => {
             resetScrollToTop();
             
             try {
-              // Refresh authentication state
-              const { data: { user: currentUser } } = await supabase.auth.getUser();
-              if (currentUser && currentUser.id !== user?.id) {
-                setUser(currentUser);
-              }
-              
-                          // Refresh data if user is logged in
-            if (user) {
-              // Sync offline queue when coming back online
-              if (queueStatus.pendingItems > 0) {
-                console.log('📱 [Sync] App resumed with pending items, starting sync...');
-                try {
-                  await syncOfflineQueue();
-                  console.log('✅ [Sync] Offline queue synced successfully');
-                } catch (syncError) {
-                  console.error('❌ [Sync] Failed to sync offline queue:', syncError);
+              // Refresh authentication state (non-blocking)
+              const authPromise = supabase.auth.getUser().then(({ data: { user: currentUser } }) => {
+                if (currentUser && currentUser.id !== user?.id) {
+                  setUser(currentUser);
                 }
+              });
+              
+              // Refresh data if user is logged in (completely non-blocking)
+              if (user) {
+                // Use setTimeout to defer all refreshes to prevent UI blocking
+                setTimeout(() => {
+                  // Sync offline queue when coming back online
+                  if (queueStatus.pendingItems > 0) {
+                    console.log('📱 [Sync] App resumed with pending items, starting sync...');
+                    syncOfflineQueue().catch(syncError => {
+                      console.error('❌ [Sync] Failed to sync offline queue:', syncError);
+                    });
+                  }
+                  
+                  // Refresh lists with retry
+                  retryNetworkRequest(() => refreshLists(false)).catch(error => {
+                    console.error('❌ [App] Failed to refresh lists on resume:', error);
+                  });
+                  
+                  // Refresh feed using optimized hook
+                  refreshFeed().catch(error => {
+                    console.error('❌ [App] Failed to refresh feed on resume:', error);
+                  });
+                }, 100); // Small delay to ensure app is fully stable
               }
               
-              // Refresh lists with retry
-              await retryNetworkRequest(() => refreshLists(false));
+              // Wait for auth to complete, but don't block UI
+              await authPromise;
               
-              // Refresh feed using optimized hook
-              await refreshFeed();
-            }
-              
-              // Restart camera if on main screen
+              // Restart camera if on main screen (with delay to prevent white screen)
               if (currentScreen === 'home' && mainScreenRef.current) {
                 setTimeout(() => {
                   mainScreenRef.current?.refreshFeedData();
-                }, 500); // Small delay to ensure app is fully active
+                }, 1000); // Increased delay to ensure app is fully stable
               }
               
             } catch (error) {
               console.error('❌ Error refreshing app data on resume:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
+                message: error.message,
+                name: error.name,
+                details: error.details,
+                hint: error.hint,
+                code: error.code,
+                fullError: error
+              }, null, 2));
             }
           }
         });
@@ -1104,6 +1114,9 @@ const App = () => {
     };
 
     handleDeepLink();
+
+    // Mark app as active to allow background-safe operations
+    try { window.__APP_ACTIVE__ = true; } catch (_) {}
   }, []);
 
   const handleAddItem = async (selectedListIds, item, isStayAway = false) => {
@@ -1539,10 +1552,82 @@ const App = () => {
     const isDetailScreen = ['post-detail', 'item-detail', 'list-detail', 'user-profile'].includes(currentScreen);
     if (isDetailScreen) return null;
 
+    // OPTION 1: Subtle Fade Transition
+    const fadeTransition = {
+      transition: 'opacity 200ms ease-in-out',
+      opacity: 1
+    };
+    const fadeHidden = {
+      ...fadeTransition,
+      opacity: 0,
+      pointerEvents: 'none'
+    };
+
+    // OPTION 2: Slide Transition  
+    const slideTransition = {
+      transition: 'transform 250ms ease-out, opacity 200ms ease-in-out',
+      transform: 'translateX(0)',
+      opacity: 1
+    };
+    const slideHidden = {
+      ...slideTransition,
+      transform: 'translateX(-20px)',
+      opacity: 0,
+      pointerEvents: 'none'
+    };
+
+    // OPTION 3: Scale + Fade
+    const scaleTransition = {
+      transition: 'transform 200ms ease-out, opacity 200ms ease-in-out',
+      transform: 'scale(1)',
+      opacity: 1
+    };
+    const scaleHidden = {
+      ...scaleTransition,
+      transform: 'scale(0.98)',
+      opacity: 0,
+      pointerEvents: 'none'
+    };
+
+    // OPTION 4: Blur Transition
+    const blurTransition = {
+      transition: 'filter 150ms ease-in-out, opacity 200ms ease-in-out',
+      filter: 'blur(0px)',
+      opacity: 1
+    };
+    const blurHidden = {
+      ...blurTransition,
+      filter: 'blur(2px)',
+      opacity: 0,
+      pointerEvents: 'none'
+    };
+
+    // OPTION 5: Vertical Slide
+    const verticalTransition = {
+      transition: 'transform 200ms ease-out, opacity 200ms ease-in-out',
+      transform: 'translateY(0)',
+      opacity: 1
+    };
+    const verticalHidden = {
+      ...verticalTransition,
+      transform: 'translateY(10px)',
+      opacity: 0,
+      pointerEvents: 'none'
+    };
+
+    // Choose your preferred transition style here:
+    // Change this to: fadeTransition/fadeHidden, slideTransition/slideHidden, 
+    // scaleTransition/scaleHidden, blurTransition/blurHidden, or verticalTransition/verticalHidden
+    const activeStyle = scaleTransition;
+    const hiddenStyle = scaleHidden;
+
     return (
       <>
         {/* Home Tab - Always mounted, show/hide with CSS */}
-        <div className={currentScreen === 'home' ? 'block' : 'hidden'}>
+        <div 
+          className="absolute inset-0"
+          style={currentScreen === 'home' ? activeStyle : hiddenStyle}
+        >
           <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
             <MainScreen
               ref={mainScreenRef}
@@ -1570,7 +1655,10 @@ const App = () => {
         </div>
 
         {/* Lists Tab - Always mounted, show/hide with CSS */}
-        <div className={currentScreen === 'lists' ? 'block' : 'hidden'}>
+        <div 
+          className="absolute inset-0"
+          style={currentScreen === 'lists' ? activeStyle : hiddenStyle}
+        >
           <PullToRefresh onRefresh={handleListsRefresh} disabled={refreshing || isListsReorderMode}>
             <ListsView
               lists={lists}
@@ -1598,8 +1686,11 @@ const App = () => {
           </PullToRefresh>
         </div>
 
-                {/* Profile Tab - Always mounted, show/hide with CSS */}
-        <div className={currentScreen === 'profile' ? 'block' : 'hidden'}>
+        {/* Profile Tab - Always mounted, show/hide with CSS */}
+        <div 
+          className="absolute inset-0"
+          style={currentScreen === 'profile' ? activeStyle : hiddenStyle}
+        >
           <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
             <ProfileView 
               ref={profileViewRef}
@@ -1696,8 +1787,8 @@ const App = () => {
     }));
   }, [appLoading, allTabsReady, criticalImagesReady, textLoaded, imagesLoaded]);
 
-  // Show loading screen until both app initialization AND all component data is ready
-  if (appLoading || !allTabsReady) {
+  // Show full-screen loading screen only on first app boot before initial UI render
+  if (!hasShownInitialUI && (appLoading || !allTabsReady)) {
     return <LoadingScreen loadingProgress={loadingProgress} appLoading={appLoading} />;
   }
 
@@ -1716,7 +1807,7 @@ const App = () => {
     <AchievementProvider>
       <ErrorBoundary name="AppRoot">
       <div 
-        className="min-h-screen bg-stone-50 relative flex flex-col" 
+        className="min-h-screen bg-stone-50 flex flex-col" 
                  style={{
           backgroundColor: '#F6F6F4',
           // Responsive design for keyboard handling
@@ -1746,12 +1837,7 @@ const App = () => {
                 <span className="text-5xl md:text-6xl font-lateef text-gray-600 leading-none pb-4">
                   bestlist
                 </span>
-                {refreshing && (
-                  <div className="flex items-center gap-2 ml-3">
-                    <div className="w-3 h-3 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-sm text-teal-600 font-medium">Refreshing...</span>
-                  </div>
-                )}
+
               
               {/* Offline Status Indicator */}
               {!queueStatus.isOnline && (
@@ -1892,20 +1978,32 @@ const App = () => {
       </div>
 
       {/* Edit Item Modal */}
-      {editingItem && (
-        <AddItemModal
-          image={editingItem.image_url || editingItem.image}
-                    lists={lists}
-          onClose={() => setEditingItem(null)}
-                      onSave={editingItem.id ? 
-              ((selectedListIds, item, isStayAway) => handleUpdateItem(item)) : 
-              handleAddItem
-            }
-          item={editingItem}
-                    onCreateList={handleCreateList}
-          showRatingFirst={editingItem.showRatingFirst || false}
-                  />
-      )}
+      <ModalPortal isOpen={!!editingItem}>
+        <AnimatePresence mode="wait">
+          {editingItem && (
+            <motion.div
+              key="edit-item-modal"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+            >
+              <AddItemModal
+                image={editingItem.image_url || editingItem.image}
+                lists={lists}
+                onClose={() => setEditingItem(null)}
+                onSave={editingItem.id ? 
+                  ((selectedListIds, item, isStayAway) => handleUpdateItem(item)) : 
+                  handleAddItem
+                }
+                item={editingItem}
+                onCreateList={handleCreateList}
+                showRatingFirst={editingItem.showRatingFirst || false}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </ModalPortal>
 
       {/* Search Modal */}
       {showSearch && (

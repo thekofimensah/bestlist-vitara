@@ -408,7 +408,7 @@ const AddItemModal = ({
   const [newListLocation, setNewListLocation] = useState('');
   const [selectedLists, setSelectedLists] = useState(() => {
     if (initialState && initialState.selectedLists) return initialState.selectedLists;
-    if (item && item.list_id) return [item.list_id];
+    if (item && (item.list_id || item.listId)) return [item.list_id || item.listId];
     
     // Default to the list that was most recently added to
     if (lists && lists.length > 0) {
@@ -1268,7 +1268,6 @@ const AddItemModal = ({
       // Determine the primary list name for success message
       const primaryList = lists?.find(l => l.id === selectedLists[0]);
       const listName = primaryList?.name || 'your list';
-      setSuccessMessage(`Saved`);
       
       // CHECK: If this is a first-in-world achievement, show it briefly
       const hasFirstInWorldAchievement = saveResult?.achievements?.some(a => a.isGlobalFirst);

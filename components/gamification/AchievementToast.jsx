@@ -81,7 +81,7 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -80, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="fixed top-4 left-4 right-4 z-[9999]"
+          className="fixed top-4 left-4 right-4 z-[10001]"
           style={{ paddingTop: 'env(safe-area-inset-top)' }}
         >
           <motion.div

@@ -72,7 +72,7 @@ const ItemTile = ({
           }
           // Then immediately trigger long press with selection
           onLongPress?.(item, e);
-        }, 500);
+        }, 350);
       }}
       onTouchEnd={clearLongPressTimer}
       onTouchCancel={clearLongPressTimer}
@@ -399,6 +399,14 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       
       console.log('🚀 [ListsView] Items removed from UI, deleting in background...');
       
+      // 🔔 Immediately update Profile "Recent photos" cache for current user
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          removeProfilePostsByItemIds(user.id, itemsToDelete);
+        }
+      } catch (_) {}
+      
       // ⚡ Background deletion - don't block UI
       const errors = [];
       const deletedItemIds = [];
@@ -428,14 +436,6 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           console.log('🗑️ [ListsView] Notifying parent of deleted items:', deletedItemIds);
           onItemDeleted(deletedItemIds);
         }
-
-        // Remove posts from profile cache for current user
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            removeProfilePostsByItemIds(user.id, deletedItemIds);
-          }
-        } catch (_) {}
       }
       
       // Handle errors (items were already removed from UI optimistically)
@@ -594,10 +594,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleEnterReorderMode = () => {
     setIsReorderMode(true);
-    // Add haptic feedback if available
-    if (navigator.vibrate) {
-      navigator.vibrate(50);
-    }
+    // Keep this function silent to avoid duplicate vibrations
   };
 
   const handleExitReorderMode = () => {
@@ -1019,6 +1016,9 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
           </div>
         </div>
       )}
+
+      {/* Finite bottom spacer to provide a natural end to scrolling */}
+      <div aria-hidden className="w-full" style={{ height: 'calc(env(safe-area-inset-bottom) + 96px)' }} />
     </div>
   );
 };

@@ -14,7 +14,7 @@ export const splashScreenTokens = {
   textColor: '#FFFFFF',
   
   // Typography
-  fontFamily: 'Katibeh',
+  fontFamily: 'lateef',
   appName: 'bestlist',
   fontSize: {
     mobile: '5xl', // text-5xl in Tailwind
@@ -81,3 +81,73 @@ export const splashScreenCSS = `
 `;
 
 export default splashScreenTokens;
+
+// Font Configuration - Change these values to update fonts across the app
+export const FONTS = {
+  // Main title font - currently set to Lateef
+  title: 'font-lateef',
+  
+  // Alternative title fonts - uncomment and change title above to use these
+  // title: 'font-katibeh',
+  // title: 'font-sen',
+  // title: 'font-jua',
+  // title: 'font-reenie-beanie',
+  
+  // Body text font
+  body: 'font-sans',
+  
+  // Special accent font
+  accent: 'font-katibeh'
+};
+
+// Font weight configurations for titles
+export const TITLE_WEIGHTS = {
+  light: 'font-light',
+  normal: 'font-normal', 
+  medium: 'font-medium',
+  semibold: 'font-semibold',
+  bold: 'font-bold',
+  extrabold: 'font-extrabold'
+};
+
+// Common title combinations
+export const TITLE_STYLES = {
+  // Main page titles
+  h1: `${FONTS.title} ${TITLE_WEIGHTS.bold}`,
+  h2: `${FONTS.title} ${TITLE_WEIGHTS.semibold}`,
+  h3: `${FONTS.title} ${TITLE_WEIGHTS.medium}`,
+  
+  // Section headers
+  section: `${FONTS.title} ${TITLE_WEIGHTS.semibold}`,
+  
+  // Card titles
+  card: `${FONTS.title} ${TITLE_WEIGHTS.medium}`,
+  
+  // Modal titles
+  modal: `${FONTS.title} ${TITLE_WEIGHTS.bold}`,
+  
+  // Navigation titles
+  nav: `${FONTS.title} ${TITLE_WEIGHTS.medium}`,
+  
+  // Achievement titles
+  achievement: `${FONTS.title} ${TITLE_WEIGHTS.bold}`,
+  
+  // List titles
+  list: `${FONTS.title} ${TITLE_WEIGHTS.medium}`,
+  
+  // Profile titles
+  profile: `${FONTS.title} ${TITLE_WEIGHTS.semibold}`
+};
+
+// Quick font switcher - change this to update all titles at once
+export const CURRENT_TITLE_FONT = FONTS.title;
+
+// Export all fonts for individual use
+export const ALL_FONTS = {
+  lateef: 'font-lateef',
+  katibeh: 'font-katibeh', 
+  sen: 'font-sen',
+  jua: 'font-jua',
+  reenieBeanie: 'font-reenie-beanie',
+  sans: 'font-sans'
+};

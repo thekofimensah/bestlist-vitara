@@ -246,6 +246,8 @@ export const removeProfilePostsByItemIds = (userId, itemIds = []) => {
   profilePostsCache.set(userId, newCache);
   // Save to persistent storage
   saveProfilePostsLocal(userId, newCache);
+  // Notify listeners (e.g., useProfilePosts) that cache changed
+  try { window.dispatchEvent(new CustomEvent('profile:posts-updated', { detail: { userId } })); } catch (_) {}
 };
 
 // Connection quality detection (browser-only fallback)

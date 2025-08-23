@@ -9,6 +9,7 @@ import OptimizedPostCard from './OptimizedPostCard';
 import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
 import { FeedSkeleton } from './ui/SkeletonLoader';
 import ModalPortal from './ui/ModalPortal';
+import { TITLE_STYLES } from '../design-tokens';
 
 import { useAI } from '../hooks/useAI';
 import useAchievements from '../hooks/useAchievements';
@@ -375,6 +376,7 @@ const MainScreen = React.forwardRef(({
 
   // Track camera startup to prevent multiple simultaneous requests
   const [isCameraStarting, setIsCameraStarting] = useState(false);
+  const cameraStartTimeoutRef = useRef(null);
   
   // Track camera visibility for battery optimization
   const [isCameraVisible, setIsCameraVisible] = useState(true);
@@ -401,6 +403,26 @@ const MainScreen = React.forwardRef(({
     setIsCameraStarting(true);
     setVideoReady(false);
     
+    // Clear any existing timeout
+    if (cameraStartTimeoutRef.current) {
+      clearTimeout(cameraStartTimeoutRef.current);
+    }
+    
+    // Set timeout to reset camera if stuck for more than 3 seconds
+    cameraStartTimeoutRef.current = setTimeout(() => {
+      console.log('📷 [MainScreen] Camera start timeout - resetting...');
+      setIsCameraStarting(false);
+      setVideoReady(false);
+      setError('Camera failed to start. Tap to retry.');
+      
+      // Stop any existing stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      setIsCameraStreamActive(false);
+    }, 3000);
+    
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -426,6 +448,11 @@ const MainScreen = React.forwardRef(({
           videoRef.current.onloadedmetadata = () => {
             setVideoReady(true);
             videoRef.current?.play();
+            // Clear timeout on successful start
+            if (cameraStartTimeoutRef.current) {
+              clearTimeout(cameraStartTimeoutRef.current);
+              cameraStartTimeoutRef.current = null;
+            }
           };
         }
         setError(null);
@@ -445,6 +472,11 @@ const MainScreen = React.forwardRef(({
           videoRef.current.onloadedmetadata = () => {
             setVideoReady(true);
             videoRef.current?.play();
+            // Clear timeout on successful start
+            if (cameraStartTimeoutRef.current) {
+              clearTimeout(cameraStartTimeoutRef.current);
+              cameraStartTimeoutRef.current = null;
+            }
           };
         }
         setError(null);
@@ -465,6 +497,11 @@ const MainScreen = React.forwardRef(({
           videoRef.current.onloadedmetadata = () => {
             setVideoReady(true);
             videoRef.current?.play();
+            // Clear timeout on successful start
+            if (cameraStartTimeoutRef.current) {
+              clearTimeout(cameraStartTimeoutRef.current);
+              cameraStartTimeoutRef.current = null;
+            }
           };
         }
         setError(null);
@@ -474,6 +511,11 @@ const MainScreen = React.forwardRef(({
       }
     } finally {
       setIsCameraStarting(false);
+      // Clear timeout when camera start process completes (success or failure)
+      if (cameraStartTimeoutRef.current) {
+        clearTimeout(cameraStartTimeoutRef.current);
+        cameraStartTimeoutRef.current = null;
+      }
     }
     
     // Mark camera stream as active
@@ -516,6 +558,11 @@ const MainScreen = React.forwardRef(({
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      // Clear camera timeout on cleanup
+      if (cameraStartTimeoutRef.current) {
+        clearTimeout(cameraStartTimeoutRef.current);
+        cameraStartTimeoutRef.current = null;
       }
     };
     // eslint-disable-next-line
@@ -1647,7 +1694,7 @@ const MainScreen = React.forwardRef(({
                   <X className="w-4 h-4 text-red-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-red-800 font-semibold text-sm">
+                  <h3 className={`text-red-800 text-sm ${TITLE_STYLES.h3}`}>
                     {invalidImageNotification.message}
                   </h3>
                   <p className="text-red-600 text-xs mt-1">

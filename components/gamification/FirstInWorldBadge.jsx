@@ -2,32 +2,25 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import earthIcon from '../../assets/earth-1.svg';
 import { ShineBorder } from '@/registry/magicui/shine-border';
+import { TITLE_STYLES } from '../../design-tokens';
 
-// Earth Icon Component using imported SVG
-const EarthIcon = ({ className, rarity }) => {
-  const getGradientColors = (rarity) => {
-    switch (rarity) {
-      case 'legendary':
-        return { start: '#a855f7', end: '#ec4899' }; // purple to pink
-      case 'rare':
-        return { start: '#3b82f6', end: '#06b6d4' }; // blue to cyan
-      default:
-        return { start: '#14b8a6', end: '#10b981' }; // teal to green
-    }
-  };
-
-  const colors = getGradientColors(rarity);
-
+// Earth Icon Component using imported SVG as mask, filled with outline gradient
+const EarthIcon = ({ className, gradientColors }) => {
+  const [start, end] = gradientColors || ['#14b8a6', '#10b981'];
   return (
-    <img 
-      src={earthIcon} 
-      alt="Earth Icon"
+    <div
       className={className}
-      style={{ 
-        // Apply gradient effect using CSS filters
-        filter: rarity === 'legendary' ? 'hue-rotate(270deg) saturate(200%)' :
-                rarity === 'rare' ? 'hue-rotate(200deg) saturate(150%)' :
-                'hue-rotate(160deg) saturate(120%)'
+      aria-label="Earth Icon"
+      style={{
+        background: `linear-gradient(135deg, ${start}, ${end})`,
+        WebkitMaskImage: `url(${earthIcon})`,
+        maskImage: `url(${earthIcon})`,
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center',
+        maskPosition: 'center',
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain'
       }}
     />
   );
@@ -63,23 +56,23 @@ const FirstInWorldBadge = ({
     switch (size) {
       case 'small':
         return {
-          container: 'w-5 h-5',
-          badgeWrapper: 'w-full h-full p-0.5',
-          icon: 'w-full h-full',
+          container: 'inline-flex',
+          badgeWrapper: 'p-0.5',
+          icon: 'w-5 h-5',
           text: 'text-[8px]'
         };
       case 'large':
         return {
-          container: 'w-10 h-10', // Bigger for the square variant
-          badgeWrapper: 'w-full h-full p-1',
-          icon: 'w-full h-full',
+          container: 'inline-flex', // Let content size drive the outline
+          badgeWrapper: 'p-1',
+          icon: 'w-8 h-8',
           text: 'text-sm'
         };
       default: // medium
         return {
-          container: 'w-6 h-6',
-          badgeWrapper: 'w-full h-full p-0.5',
-          icon: 'w-full h-full',
+          container: 'inline-flex',
+          badgeWrapper: 'p-0.5',
+          icon: 'w-6 h-6',
           text: 'text-[10px]'
         };
     }
@@ -106,18 +99,20 @@ const FirstInWorldBadge = ({
     }
   } : {};
 
-  const getIcon = () => {
-    // Use the achievement's icon if available, otherwise default to earth icon
-    if (achievementIcon && achievementIcon !== '🌍') {
-      return <span className="text-current">{achievementIcon}</span>;
-    }
-    return <EarthIcon className={sizes.icon} rarity={achievementRarity} />;
-  };
-
   const shineColorsByRarity = {
     legendary: ['#a855f7', '#ec4899'],
     rare: ['#3b82f6', '#06b6d4'],
     default: ['#14b8a6', '#10b981'],
+  };
+
+  const gradientForOutline = shineColorsByRarity[achievementRarity] || shineColorsByRarity.default;
+
+  const getIcon = () => {
+    // Use the achievement's icon if available, otherwise default to earth icon mask
+    if (achievementIcon && achievementIcon !== '🌍') {
+      return <span className="text-current">{achievementIcon}</span>;
+    }
+    return <EarthIcon className={sizes.icon} gradientColors={gradientForOutline} />;
   };
 
   const renderBasicBadge = () => (
@@ -128,7 +123,7 @@ const FirstInWorldBadge = ({
         flex items-center justify-center
         relative ${className}
       `}
-      shineColor={shineColorsByRarity[achievementRarity] || shineColorsByRarity.default}
+      shineColor={gradientForOutline}
       borderWidth={2}
       duration={14}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
@@ -147,10 +142,10 @@ const FirstInWorldBadge = ({
     <div className={`flex items-center gap-2 ${className}`}>
       {renderBasicBadge()}
       <div className="flex flex-col">
-        <span className={`${sizes.text} font-bold ${colors.text} drop-shadow-sm`}>
+        <span className={`${sizes.text} ${TITLE_STYLES.achievement} ${colors.text} drop-shadow-sm`}>
           FIRST IN WORLD
         </span>
-        <span className={`${sizes.text} opacity-80 ${colors.text}`}>
+        <span className={`${sizes.text} ${TITLE_STYLES.achievement} opacity-80 ${colors.text}`}>
           {achievementName}
         </span>
       </div>
@@ -164,7 +159,7 @@ const FirstInWorldBadge = ({
           ${sizes.container}
           rounded-full flex items-center justify-center
         `}
-        shineColor={shineColorsByRarity[achievementRarity] || shineColorsByRarity.default}
+        shineColor={gradientForOutline}
         borderWidth={2}
         duration={14}
       >

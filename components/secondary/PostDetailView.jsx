@@ -375,14 +375,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
           
-          {isOwner && (
-            <button
-              onClick={() => onEdit(post.items)}
-              className="w-10 h-10 bg-black/30 backdrop-blur-sm rounded-full flex items-center justify-center"
-            >
-              <Edit3 className="w-4 h-4 text-white" />
-            </button>
-          )}
+          {/* Removed edit button from header; moved next to product name inside card */}
         </div>
       </div>
 
@@ -440,17 +433,28 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
             )}
           </div>
 
-          {/* Product Name */}
-          <h1 className="text-base font-semibold text-gray-900 mb-3 leading-tight" style={{
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
-            hyphens: 'auto',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            lineHeight: '1.3'
-          }}>{post.items?.name}</h1>
+          {/* Product Name + Edit (for owner) */}
+          <div className="mb-3 flex items-start gap-2">
+            <h1 className="flex-1 min-w-0 text-base font-semibold text-gray-900 leading-tight" style={{
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+              hyphens: 'auto',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              lineHeight: '1.3'
+            }}>{post.items?.name}</h1>
+            {isOwner && (
+              <button
+                onClick={() => onEdit(post.items)}
+                className="flex-shrink-0 w-9 h-9 bg-stone-50 rounded-full flex items-center justify-center hover:bg-stone-100 border border-gray-200"
+                title="Edit item"
+              >
+                <Edit3 className="w-4 h-4 text-gray-700" />
+              </button>
+            )}
+          </div>
 
           {/* Rating + Location aligned on same row */}
           <div className="flex items-center mb-4">

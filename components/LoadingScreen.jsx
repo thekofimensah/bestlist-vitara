@@ -72,7 +72,7 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
             style={{ filter: splashScreenTokens.iconFilter }}
           />
         </motion.div>
-        <h1 className="text-5xl md:text-6xl lg:text-7xl font-katibeh text-white mt-4 text-shadow tracking-widest font-normal">
+        <h1 className="text-5xl md:text-6xl lg:text-7xl font-lateef text-white mt-4 text-shadow tracking-widest font-normal">
           {splashScreenTokens.appName}
         </h1>
       </motion.div>

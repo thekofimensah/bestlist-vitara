@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 const PullToRefresh = ({ 
   children, 
   onRefresh, 
-  threshold = 90,
+  threshold = 70, // Reduced from 90 to make it easier to trigger
   disabled = false,
   className = '',
 }) => {
@@ -77,8 +77,8 @@ const PullToRefresh = ({
         scrollTop = scrollContainer.scrollTop;
       }
       
-      // Only allow pull-to-refresh when exactly at the top
-      const isAtTop = scrollTop <= 0;
+      // Allow pull-to-refresh when at or very close to the top (more forgiving)
+      const isAtTop = scrollTop <= 5; // Allow 5px tolerance
       if (!isAtTop || isRefreshing || disabled) return;
 
       startY.current = e.touches[0].clientY;
@@ -113,8 +113,8 @@ const PullToRefresh = ({
       const deltaX = Math.abs(currentX - startX.current);
       const scrollDelta = currentScrollTop - lastScrollTop.current;
 
-      // If scrolling up (negative delta) or away from top, cancel immediately
-      if (scrollDelta < 0 || currentScrollTop > 0) {
+      // If scrolling up (negative delta) or away from top, cancel immediately (more forgiving)
+      if (scrollDelta < 0 || currentScrollTop > 10) { // Allow 10px tolerance
         pullStarted.current = false;
         setPullDistance(0);
         setIsPulling(false);
@@ -132,20 +132,21 @@ const PullToRefresh = ({
 
       // Only respond to downward pulls
       if (deltaY > 0) {
-        // Smooth resistance curve - starts easy, gets progressively harder
-        const resistance = 1 + (deltaY / 100) * 0.5;
-        const maxDistance = threshold * 2.5;
+        // Improved resistance curve - more responsive at start, smoother overall
+        const resistance = 1 + (deltaY / 80) * 0.4; // Reduced resistance for easier pulling
+        const maxDistance = threshold * 2.2;
         const distance = Math.min(deltaY / resistance, maxDistance);
         
-        // Smooth interpolation between last and current distance
-        const smoothDistance = lastPullDistance.current + (distance - lastPullDistance.current) * 0.3;
+        // More responsive smoothing for better performance
+        const smoothingFactor = 0.6; // Increased from 0.3 for more responsiveness
+        const smoothDistance = lastPullDistance.current + (distance - lastPullDistance.current) * smoothingFactor;
         lastPullDistance.current = smoothDistance;
         
         setPullDistance(smoothDistance);
         setIsPulling(smoothDistance > threshold);
 
-        // Prevent scroll when pulling significantly
-        if (smoothDistance > 5 && deltaX < Math.abs(deltaY)) {
+        // Prevent scroll when pulling (more aggressive prevention for better grab)
+        if (smoothDistance > 2 && deltaX < Math.abs(deltaY)) { // Reduced threshold from 5 to 2
           e.preventDefault();
         }
       }
@@ -197,10 +198,10 @@ const PullToRefresh = ({
     };
   }, [threshold, onRefresh, isRefreshing, disabled]);
 
-  // Calculate spinner properties with smooth easing
+  // Calculate spinner properties with smooth easing - optimized for performance
   const spinnerHeight = isRefreshing ? 60 : Math.max(pullDistance, 0);
-  const spinnerOpacity = isRefreshing ? 1 : Math.min(pullDistance / 40, 1);
-  const spinnerRotation = isRefreshing ? 360 : pullDistance * 2.5;
+  const spinnerOpacity = isRefreshing ? 1 : Math.min(pullDistance / 30, 1); // Faster opacity transition
+  const spinnerRotation = isRefreshing ? 360 : pullDistance * 2; // Reduced rotation multiplier for smoother animation
 
   return (
     <div 
@@ -210,40 +211,39 @@ const PullToRefresh = ({
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      {/* Smooth spinner that comes down */}
+      {/* Optimized spinner that comes down */}
       {pullDistance > 0 && (
         <motion.div 
           className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center"
           style={{ 
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            willChange: 'transform, opacity' // Optimize for animations
           }}
           animate={{
-            y: Math.min(pullDistance - 20, 80),
+            y: Math.min(pullDistance - 15, 70), // Slightly reduced travel distance
             opacity: spinnerOpacity,
-            scale: 0.8 + (spinnerOpacity * 0.2)
+            scale: 0.85 + (spinnerOpacity * 0.15) // Reduced scale range for smoother animation
           }}
           transition={{
-            type: "spring",
-            stiffness: 300,
-            damping: 30,
-            mass: 0.8
+            type: "tween", // Use tween instead of spring for better performance
+            duration: 0.1, // Very fast transition
+            ease: "easeOut"
           }}
         >
-          {/* Clean spinner with smooth rotation */}
+          {/* Optimized spinner with smooth rotation */}
           <motion.div
-            className="w-12 h-12 border-4 border-gray-300 rounded-full bg-white shadow-sm"
+            className="w-10 h-10 border-4 border-gray-300 rounded-full bg-white shadow-sm" // Slightly smaller for better performance
             style={{
               borderTopColor: '#1F6D5A',
+              willChange: 'transform' // Optimize for rotation
             }}
             animate={{
               rotate: isRefreshing ? 360 : spinnerRotation
             }}
             transition={{
-              type: isRefreshing ? "tween" : "spring",
-              duration: isRefreshing ? 1 : undefined,
-              ease: isRefreshing ? "linear" : undefined,
-              stiffness: isRefreshing ? undefined : 200,
-              damping: isRefreshing ? undefined : 25,
+              type: isRefreshing ? "tween" : "tween", // Always use tween for consistency
+              duration: isRefreshing ? 1 : 0.1, // Fast transition for pull, smooth for refresh
+              ease: isRefreshing ? "linear" : "easeOut",
               repeat: isRefreshing ? Infinity : 0
             }}
           />

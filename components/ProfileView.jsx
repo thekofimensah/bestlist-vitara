@@ -794,6 +794,8 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
           </div>
           </div>
         )}
+      {/* Finite bottom spacer for natural scroll end */}
+      <div aria-hidden className="w-full" style={{ height: 'calc(env(safe-area-inset-bottom) + 96px)' }} />
     </div>
   );
 });

@@ -9,7 +9,6 @@ import OptimizedPostCard from './OptimizedPostCard';
 import InfiniteScrollTrigger from './ui/InfiniteScrollTrigger';
 import { FeedSkeleton } from './ui/SkeletonLoader';
 import ModalPortal from './ui/ModalPortal';
-import { TITLE_STYLES } from '../design-tokens';
 
 import { useAI } from '../hooks/useAI';
 import useAchievements from '../hooks/useAchievements';
@@ -188,7 +187,8 @@ const MainScreen = React.forwardRef(({
   updateImageLoadState,
   textLoaded,
   imagesLoaded,
-  onUpdateFeedPosts
+  onUpdateFeedPosts,
+  isActive = true // New prop to control heavy operations
 }, ref) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -403,26 +403,6 @@ const MainScreen = React.forwardRef(({
     setIsCameraStarting(true);
     setVideoReady(false);
     
-    // Clear any existing timeout
-    if (cameraStartTimeoutRef.current) {
-      clearTimeout(cameraStartTimeoutRef.current);
-    }
-    
-    // Set timeout to reset camera if stuck for more than 3 seconds
-    cameraStartTimeoutRef.current = setTimeout(() => {
-      console.log('📷 [MainScreen] Camera start timeout - resetting...');
-      setIsCameraStarting(false);
-      setVideoReady(false);
-      setError('Camera failed to start. Tap to retry.');
-      
-      // Stop any existing stream
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-      setIsCameraStreamActive(false);
-    }, 3000);
-    
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -448,11 +428,6 @@ const MainScreen = React.forwardRef(({
           videoRef.current.onloadedmetadata = () => {
             setVideoReady(true);
             videoRef.current?.play();
-            // Clear timeout on successful start
-            if (cameraStartTimeoutRef.current) {
-              clearTimeout(cameraStartTimeoutRef.current);
-              cameraStartTimeoutRef.current = null;
-            }
           };
         }
         setError(null);
@@ -472,11 +447,6 @@ const MainScreen = React.forwardRef(({
           videoRef.current.onloadedmetadata = () => {
             setVideoReady(true);
             videoRef.current?.play();
-            // Clear timeout on successful start
-            if (cameraStartTimeoutRef.current) {
-              clearTimeout(cameraStartTimeoutRef.current);
-              cameraStartTimeoutRef.current = null;
-            }
           };
         }
         setError(null);
@@ -497,11 +467,6 @@ const MainScreen = React.forwardRef(({
           videoRef.current.onloadedmetadata = () => {
             setVideoReady(true);
             videoRef.current?.play();
-            // Clear timeout on successful start
-            if (cameraStartTimeoutRef.current) {
-              clearTimeout(cameraStartTimeoutRef.current);
-              cameraStartTimeoutRef.current = null;
-            }
           };
         }
         setError(null);
@@ -511,11 +476,6 @@ const MainScreen = React.forwardRef(({
       }
     } finally {
       setIsCameraStarting(false);
-      // Clear timeout when camera start process completes (success or failure)
-      if (cameraStartTimeoutRef.current) {
-        clearTimeout(cameraStartTimeoutRef.current);
-        cameraStartTimeoutRef.current = null;
-      }
     }
     
     // Mark camera stream as active
@@ -551,22 +511,24 @@ const MainScreen = React.forwardRef(({
   };
 
   useEffect(() => {
-    // Only start camera on mount if it's visible
-    if (isCameraVisible) {
+    // OPTIMIZED: Only start camera if tab is active and visible
+    if (isActive && isCameraVisible) {
+      console.log('📷 [MainScreen] Starting camera - tab active and visible');
       startCamera(facingMode);
+    } else {
+      // Stop camera when tab becomes inactive or invisible
+      if (streamRef.current) {
+        console.log('📷 [MainScreen] Stopping camera - tab inactive or invisible');
+        stopCamera();
+      }
     }
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      // Clear camera timeout on cleanup
-      if (cameraStartTimeoutRef.current) {
-        clearTimeout(cameraStartTimeoutRef.current);
-        cameraStartTimeoutRef.current = null;
-      }
     };
     // eslint-disable-next-line
-  }, [facingMode, flashEnabled]);
+  }, [facingMode, flashEnabled, isActive, isCameraVisible]);
 
   // Get location on component mount
   useEffect(() => {
@@ -574,30 +536,40 @@ const MainScreen = React.forwardRef(({
   }, []);
 
   // Add intersection observer to detect camera visibility for battery optimization
+  // OPTIMIZED: Debounce camera operations to prevent rapid start/stop cycles
   useEffect(() => {
     if (!cameraContainerRef.current) return;
 
+    let visibilityTimeout;
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
         const isVisible = entry.isIntersecting;
         
-        console.log('📷 [Visibility] Camera visibility changed:', isVisible);
-        setIsCameraVisible(isVisible);
-        
-        if (isVisible && !isCameraStreamActive) {
-          // Camera became visible and stream is not active - restart it
-          console.log('📷 [Visibility] Camera visible, restarting stream');
-          startCamera(facingMode);
-        } else if (!isVisible && isCameraStreamActive) {
-          // Camera is no longer visible and stream is active - stop it to save battery
-          console.log('📷 [Visibility] Camera hidden, stopping stream for battery');
-          stopCamera();
+        // Clear any pending visibility changes
+        if (visibilityTimeout) {
+          clearTimeout(visibilityTimeout);
         }
+        
+        // Debounce visibility changes to prevent rapid camera start/stop
+        visibilityTimeout = setTimeout(() => {
+          console.log('📷 [Visibility] Camera visibility changed:', isVisible, 'isActive:', isActive);
+          setIsCameraVisible(isVisible);
+          
+          if (isVisible && !isCameraStreamActive && isActive) {
+            // Camera became visible, stream is not active, AND tab is active - restart it
+            console.log('📷 [Visibility] Camera visible and tab active, restarting stream');
+            startCamera(facingMode);
+          } else if ((!isVisible || !isActive) && isCameraStreamActive) {
+            // Camera is no longer visible OR tab is inactive and stream is active - stop it
+            console.log('📷 [Visibility] Camera hidden or tab inactive, stopping stream');
+            stopCamera();
+          }
+        }, 300); // 300ms debounce to prevent rapid toggling
       },
       {
         threshold: 0.1, // Trigger when at least 10% of camera is visible
-        rootMargin: '50px 0px' // Add some margin to avoid flickering
+        rootMargin: '100px 0px' // Increased margin to reduce sensitivity
       }
     );
 
@@ -605,10 +577,14 @@ const MainScreen = React.forwardRef(({
 
     return () => {
       observer.disconnect();
+      if (visibilityTimeout) {
+        clearTimeout(visibilityTimeout);
+      }
     };
-  }, [facingMode, isCameraStreamActive]);
+  }, [facingMode, isCameraStreamActive, isActive]);
 
   // Handle app visibility changes - restart camera when app becomes visible
+  // OPTIMIZED: Reduce dependency array and add performance checks
   useEffect(() => {
     let visibilityTimeout;
     
@@ -618,22 +594,23 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
       
-      // Only restart camera if:
-      // 1. App becomes visible
-      // 2. No modal is currently open
-      // 3. No image is being captured/processed
-      // 4. Camera is visible on screen
-      if (document.visibilityState === 'visible' && 
-          !showModal && 
-          !isCapturing && 
-          !capturedImage &&
-          isCameraVisible &&
-          !isGalleryPickerActiveRef.current) {
-        console.log('📷 App visible - restarting camera...');
-        // Longer delay to avoid conflicts with modal transitions
-        visibilityTimeout = setTimeout(() => {
-          startCamera(facingMode);
-        }, 500);
+      // Only restart camera if app becomes visible and basic conditions are met
+      if (document.visibilityState === 'visible') {
+        console.log('📷 App visible - checking camera restart conditions...');
+        
+        // Check conditions without causing re-renders
+        const shouldRestart = !showModal && 
+                             !isCapturing && 
+                             !capturedImage &&
+                             isCameraVisible &&
+                             !isGalleryPickerActiveRef.current;
+        
+        if (shouldRestart) {
+          // Longer delay to avoid conflicts with modal transitions
+          visibilityTimeout = setTimeout(() => {
+            startCamera(facingMode);
+          }, 800); // Increased delay for better stability
+        }
       }
     };
 
@@ -645,7 +622,7 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
-  }, [facingMode, showModal, isCapturing, capturedImage, isCameraVisible]);
+  }, [facingMode]); // Reduced dependencies to prevent excessive re-runs
 
   // Check if user is following anyone when component mounts or tab changes
   useEffect(() => {
@@ -1694,7 +1671,7 @@ const MainScreen = React.forwardRef(({
                   <X className="w-4 h-4 text-red-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className={`text-red-800 text-sm ${TITLE_STYLES.h3}`}>
+                  <h3 className="text-red-800 font-semibold text-sm">
                     {invalidImageNotification.message}
                   </h3>
                   <p className="text-red-600 text-xs mt-1">

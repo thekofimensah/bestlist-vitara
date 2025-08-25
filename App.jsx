@@ -217,20 +217,25 @@ const App = () => {
 
   // We no longer need to track scroll positions since we always reset to top
 
-  // Reset scroll to top for a view
-  const resetScrollToTop = () => {
+  // OPTIMIZED: Efficient scroll reset with reduced DOM queries
+  const resetScrollToTop = React.useCallback(() => {
     if (typeof window !== 'undefined') {
-      // Force immediate scroll with multiple methods for maximum compatibility
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-      // Also try to scroll any scrollable containers
-      const scrollContainers = document.querySelectorAll('.overflow-auto, .overflow-y-auto');
-      scrollContainers.forEach(container => {
-        container.scrollTop = 0;
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        
+        // Cache scrollable containers to avoid repeated queries
+        if (!resetScrollToTop.cachedContainers) {
+          resetScrollToTop.cachedContainers = document.querySelectorAll('.overflow-auto, .overflow-y-auto');
+        }
+        resetScrollToTop.cachedContainers.forEach(container => {
+          container.scrollTop = 0;
+        });
       });
     }
-  };
+  }, []);
 
 
 
@@ -466,24 +471,31 @@ const App = () => {
     setSearchResults([]);
   };
 
-  const navigateToScreen = (screen) => {
+  // OPTIMIZED: Memoized navigation with reduced operations
+  const navigateToScreen = React.useCallback((screen) => {
+    // Skip navigation if already on the target screen
+    if (currentScreen === screen) return;
+    
     setPreviousScreen(currentScreen);
     setCurrentScreen(screen);
     setSelectedList(null);
     setSelectedItem(null);
     
-    // Always reset scroll to top for the new view
-    resetScrollToTop();
+    // Defer scroll reset to avoid blocking UI
+    requestAnimationFrame(() => {
+      resetScrollToTop();
+    });
     
     try {
       if (typeof window !== 'undefined' && window.history && window.history.pushState) {
         window.history.pushState({ screen }, '');
       }
     } catch (_) {}
+    
     if (screen === 'user-profile') {
       setUserProfileKey((k) => k + 1);
     }
-  };
+  }, [currentScreen]);
 
   const handleNavigateToUser = (username) => {
     setSelectedUsername(username);
@@ -1546,118 +1558,66 @@ const App = () => {
     return null;
   };
 
+  // OPTIMIZED: Memoized tab transitions and conditional rendering
+  const tabTransitions = React.useMemo(() => ({
+    active: {
+      transition: 'opacity 150ms ease-out', // Faster, simpler transition
+      opacity: 1,
+      pointerEvents: 'auto'
+    },
+    hidden: {
+      transition: 'opacity 150ms ease-out',
+      opacity: 0,
+      pointerEvents: 'none'
+    }
+  }), []);
+
   // Persistent rendering for main tabs - prevents image reloading
-  const renderMainTabs = () => {
+  const renderMainTabs = React.useCallback(() => {
     // Only render main tabs if we're not on a detail screen
     const isDetailScreen = ['post-detail', 'item-detail', 'list-detail', 'user-profile'].includes(currentScreen);
     if (isDetailScreen) return null;
 
-    // OPTION 1: Subtle Fade Transition
-    const fadeTransition = {
-      transition: 'opacity 200ms ease-in-out',
-      opacity: 1
-    };
-    const fadeHidden = {
-      ...fadeTransition,
-      opacity: 0,
-      pointerEvents: 'none'
-    };
-
-    // OPTION 2: Slide Transition  
-    const slideTransition = {
-      transition: 'transform 250ms ease-out, opacity 200ms ease-in-out',
-      transform: 'translateX(0)',
-      opacity: 1
-    };
-    const slideHidden = {
-      ...slideTransition,
-      transform: 'translateX(-20px)',
-      opacity: 0,
-      pointerEvents: 'none'
-    };
-
-    // OPTION 3: Scale + Fade
-    const scaleTransition = {
-      transition: 'transform 200ms ease-out, opacity 200ms ease-in-out',
-      transform: 'scale(1)',
-      opacity: 1
-    };
-    const scaleHidden = {
-      ...scaleTransition,
-      transform: 'scale(0.98)',
-      opacity: 0,
-      pointerEvents: 'none'
-    };
-
-    // OPTION 4: Blur Transition
-    const blurTransition = {
-      transition: 'filter 150ms ease-in-out, opacity 200ms ease-in-out',
-      filter: 'blur(0px)',
-      opacity: 1
-    };
-    const blurHidden = {
-      ...blurTransition,
-      filter: 'blur(2px)',
-      opacity: 0,
-      pointerEvents: 'none'
-    };
-
-    // OPTION 5: Vertical Slide
-    const verticalTransition = {
-      transition: 'transform 200ms ease-out, opacity 200ms ease-in-out',
-      transform: 'translateY(0)',
-      opacity: 1
-    };
-    const verticalHidden = {
-      ...verticalTransition,
-      transform: 'translateY(10px)',
-      opacity: 0,
-      pointerEvents: 'none'
-    };
-
-    // Choose your preferred transition style here:
-    // Change this to: fadeTransition/fadeHidden, slideTransition/slideHidden, 
-    // scaleTransition/scaleHidden, blurTransition/blurHidden, or verticalTransition/verticalHidden
-    const activeStyle = scaleTransition;
-    const hiddenStyle = scaleHidden;
-
     return (
       <>
-        {/* Home Tab - Always mounted, show/hide with CSS */}
+        {/* Home Tab - Conditionally render heavy components */}
         <div 
           className="absolute inset-0"
-          style={currentScreen === 'home' ? activeStyle : hiddenStyle}
+          style={currentScreen === 'home' ? tabTransitions.active : tabTransitions.hidden}
         >
-          <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
-            <MainScreen
-              ref={mainScreenRef}
-              lists={lists}
-              loading={imagesLoading || listsLoading || refreshing}
-              onAddItem={handleAddItem}
-              onSelectList={handleSelectList}
-              onCreateList={handleCreateList}
-              onNavigateToUser={handleNavigateToUser}
-              onRefreshFeed={handleFeedRefresh}
-              onTabChange={handleTabChange}
-              onImageTap={handleImageTap}
-              feedPosts={feedPosts}
-              isLoadingFeed={isLoadingFeed}
-              isLoadingMore={isLoadingMore}
-              feedError={feedError}
-              onLoadMore={loadMore}
-              hasMore={hasMore}
-              updateImageLoadState={updateImageLoadState}
-              textLoaded={textLoaded}
-              imagesLoaded={imagesLoaded}
-              onUpdateFeedPosts={handleUpdateFeedPosts}
-            />
-          </PullToRefresh>
+          {currentScreen === 'home' && ( // Only render when actually on home tab
+            <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
+              <MainScreen
+                ref={mainScreenRef}
+                lists={lists}
+                loading={imagesLoading || listsLoading || refreshing}
+                onAddItem={handleAddItem}
+                onSelectList={handleSelectList}
+                onCreateList={handleCreateList}
+                onNavigateToUser={handleNavigateToUser}
+                onRefreshFeed={handleFeedRefresh}
+                onTabChange={handleTabChange}
+                onImageTap={handleImageTap}
+                feedPosts={feedPosts}
+                isLoadingFeed={isLoadingFeed}
+                isLoadingMore={isLoadingMore}
+                feedError={feedError}
+                onLoadMore={loadMore}
+                hasMore={hasMore}
+                updateImageLoadState={updateImageLoadState}
+                textLoaded={textLoaded}
+                imagesLoaded={imagesLoaded}
+                onUpdateFeedPosts={handleUpdateFeedPosts}
+                isActive={currentScreen === 'home'} // Pass active state
+              />
+            </PullToRefresh>
+          )}
         </div>
 
-        {/* Lists Tab - Always mounted, show/hide with CSS */}
+        {/* Lists Tab - Always mounted for fast switching */}
         <div 
           className="absolute inset-0"
-          style={currentScreen === 'lists' ? activeStyle : hiddenStyle}
+          style={currentScreen === 'lists' ? tabTransitions.active : tabTransitions.hidden}
         >
           <PullToRefresh onRefresh={handleListsRefresh} disabled={refreshing || isListsReorderMode}>
             <ListsView
@@ -1681,33 +1641,34 @@ const App = () => {
               onMarkAllRead={markAllAsRead}
               onNavigateToPost={handleNavigateToPost}
               onReorderModeChange={handleReorderModeChange}
-
+              isActive={currentScreen === 'lists'} // Pass active state
             />
           </PullToRefresh>
         </div>
 
-        {/* Profile Tab - Always mounted, show/hide with CSS */}
+        {/* Profile Tab - Lazy load on first access */}
         <div 
           className="absolute inset-0"
-          style={currentScreen === 'profile' ? activeStyle : hiddenStyle}
+          style={currentScreen === 'profile' ? tabTransitions.active : tabTransitions.hidden}
         >
-          <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
-            <ProfileView 
-              ref={profileViewRef}
-              onBack={() => navigateToScreen('home')}
-              isRefreshing={refreshing}
-              onEditItem={handleEditItem}
-              onNavigateToUser={handleNavigateToUser}
-              onImageTap={handleImageTap}
-              hadNewAchievementsOnEnter={hadNewAchievementsOnEnter}
-
-            />
-          </PullToRefresh>
+          {(currentScreen === 'profile' || previousScreen === 'profile') && (
+            <PullToRefresh onRefresh={handleProfileRefresh} disabled={refreshing}>
+              <ProfileView 
+                ref={profileViewRef}
+                onBack={() => navigateToScreen('home')}
+                isRefreshing={refreshing}
+                onEditItem={handleEditItem}
+                onNavigateToUser={handleNavigateToUser}
+                onImageTap={handleImageTap}
+                hadNewAchievementsOnEnter={hadNewAchievementsOnEnter}
+                isActive={currentScreen === 'profile'} // Pass active state
+              />
+            </PullToRefresh>
+          )}
         </div>
       </>
     );
-    
-  };
+  }, [currentScreen, previousScreen, lists, imagesLoading, listsLoading, refreshing, feedPosts, isLoadingFeed, isLoadingMore, feedError, hasMore, textLoaded, imagesLoaded, unreadCount, notifications, isOpen, isListsReorderMode, hadNewAchievementsOnEnter]); // Memoize with necessary dependencies
 
 
   // Connection Status Component
@@ -1774,18 +1735,19 @@ const App = () => {
   
   const allTabsReady = (!listsLoading || hasListsData) && !isLoadingFeed && !statsLoading && !achievementsLoading;
   
-  // Debug loading progress (moved to useEffect to avoid infinite re-renders)
+  // OPTIMIZED: Reduce debug logging frequency
+  const debugLogCountRef = useRef(0);
   useEffect(() => {
-    console.log('📊 [App] Loading state changed:', JSON.stringify({
-      appLoading,
-      allTabsReady,
-      criticalImagesReady,
-      textLoaded,
-      imagesLoaded,
-      willShowLoadingScreen: appLoading || !allTabsReady,
-      timestamp: new Date().toISOString()
-    }));
-  }, [appLoading, allTabsReady, criticalImagesReady, textLoaded, imagesLoaded]);
+    debugLogCountRef.current++;
+    // Only log every 5th state change to reduce noise
+    if (debugLogCountRef.current % 5 === 0) {
+      console.log('📊 [App] Loading state (sample):', {
+        appLoading,
+        allTabsReady,
+        willShowLoadingScreen: appLoading || !allTabsReady
+      });
+    }
+  }, [appLoading, allTabsReady]);
 
   // Show full-screen loading screen only on first app boot before initial UI render
   if (!hasShownInitialUI && (appLoading || !allTabsReady)) {

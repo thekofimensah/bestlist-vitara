@@ -2,7 +2,6 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import earthIcon from '../../assets/earth-1.svg';
 import { ShineBorder } from '@/registry/magicui/shine-border';
-import { TITLE_STYLES } from '../../design-tokens';
 
 // Earth Icon Component using imported SVG as mask, filled with outline gradient
 const EarthIcon = ({ className, gradientColors }) => {
@@ -142,10 +141,10 @@ const FirstInWorldBadge = ({
     <div className={`flex items-center gap-2 ${className}`}>
       {renderBasicBadge()}
       <div className="flex flex-col">
-        <span className={`${sizes.text} ${TITLE_STYLES.achievement} ${colors.text} drop-shadow-sm`}>
+        <span className={`${sizes.text} font-bold ${colors.text} drop-shadow-sm`}>
           FIRST IN WORLD
         </span>
-        <span className={`${sizes.text} ${TITLE_STYLES.achievement} opacity-80 ${colors.text}`}>
+        <span className={`${sizes.text} opacity-80 ${colors.text}`}>
           {achievementName}
         </span>
       </div>

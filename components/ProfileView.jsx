@@ -556,7 +556,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         }}
       >
         <div className="px-6 mb-3 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold text-gray-900">Profile</h2>
+          <h2 className="text-2xl font-semibold text-gray-900 font-lateef">Profile</h2>
           <button 
             onClick={() => setShowSettings(true)}
             className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-700 hover:text-gray-900 transition-colors"
@@ -626,7 +626,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         <div>
           <div className="mb-2">
             <div className="relative inline-flex items-center">
-              <h3 className="text-sm font-semibold text-gray-900">Achievements</h3>
+              <h3 className="text-sm font-semibold text-gray-900 font-lateef">Achievements</h3>
               {hadNewOnEnter && (
                 <span className="ml-2 w-2 h-2 bg-red-500 rounded-full"></span>
               )}
@@ -667,7 +667,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         {/* Recent Activity feed (mimic screenshot "cards") */}
                   <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-gray-900">Recent photos</h3>
+            <h3 className="text-sm font-semibold text-gray-900 font-lateef">Recent photos</h3>
           </div>
 
           {postsLoading ? (

@@ -1,2609 +1,522 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation, Trash2 } from 'lucide-react';
-import { buildItem } from '../hooks/itemUtils';
-import { RatingOverlay } from './Elements';
-import SmartImage from './secondary/SmartImage';
-import Cropper from 'react-easy-crop';
-import 'react-easy-crop/react-easy-crop.css';
-import { Geolocation } from '@capacitor/geolocation';
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
 import { 
-  allCurrencies, 
-  getCurrencyInfo, 
-  getCurrencyFromLocale,
-  getSmartCurrencyGuess,
-  formatPriceInput,
-  getRecentCurrencies,
-  saveRecentCurrency,
-  getCurrencyDisplay,
-  getCurrencyFromCountryName
-} from '../lib/currencyUtils';
-import { createPost, deleteItemAndRelated } from '../lib/supabase';
-import { getInstagramClassicFilter } from '../lib/imageUtils';
+  X, 
+  Camera, 
+  Image as ImageIcon, 
+  Star, 
+  MapPin, 
+  DollarSign,
+  ChevronDown,
+  Loader,
+  Check,
+  Edit3,
+  Sparkles
+} from 'lucide-react';
+import { RatingOverlay } from './Elements';
+import Cropper from 'react-easy-crop';
 import FirstInWorldBanner from './gamification/FirstInWorldBanner';
 
-const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
-  const [justClicked, setJustClicked] = useState(null);
-  
-  const getStarColor = (index) => {
-    if (index <= rating) {
-      if (rating >= 4) return '#1F6D5A'; // Deep green for keeps (4-5)
-      if (rating === 3) return '#B58121'; // Amber for neutral (3)
-      return '#B0443C'; // Red for not keeps (1-2)
-    }
-    return '#B3B6B3'; // Inactive gray
-  };
-
-  const getStarFill = (index) => {
-    return index <= rating ? 'currentColor' : 'none';
-  };
-
-  const handleStarClick = (index) => {
-    if (editable && onChange) {
-      setJustClicked(index);
-      onChange(index); // Use 1-5 scale
-      
-      // Haptic feedback
-      if (navigator.vibrate) {
-        navigator.vibrate(30);
-      }
-      
-      // Reset animation after delay
-      setTimeout(() => setJustClicked(null), 600);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((index) => (
-        <motion.div
-          key={index}
-          className="relative"
-          animate={justClicked === index ? {
-            scale: [1, 1.5, 1.2, 1],
-            rotate: [0, -10, 10, 0]
-          } : {}}
-          transition={{
-            type: "spring",
-            stiffness: 500,
-            damping: 15,
-            duration: 0.6
-          }}
-        >
-          <Star
-            className={`w-6 h-6 ${editable ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${
-              justClicked === index ? 'drop-shadow-lg' : ''
-            }`}
-            style={{ color: getStarColor(index) }}
-            onClick={editable ? () => handleStarClick(index) : undefined}
-            fill={getStarFill(index)}
-          />
-          
-          {/* Fun particle burst effect */}
-          <AnimatePresence>
-            {justClicked === index && (
-              <>
-                {[...Array(8)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    className="absolute w-1 h-1 rounded-full"
-                    style={{
-                      backgroundColor: getStarColor(index),
-                      left: '50%',
-                      top: '50%'
-                    }}
-                    initial={{ 
-                      opacity: 1, 
-                      scale: 1,
-                      x: 0,
-                      y: 0
-                    }}
-                    animate={{ 
-                      opacity: 0,
-                      scale: 0,
-                      x: (Math.cos((i * 45) * Math.PI / 180) * 20),
-                      y: (Math.sin((i * 45) * Math.PI / 180) * 20)
-                    }}
-                    exit={{ opacity: 0 }}
-                    transition={{ 
-                      duration: 0.5,
-                      ease: "easeOut"
-                    }}
-                  />
-                ))}
-                
-                {/* Glow ring effect */}
-                <motion.div
-                  className="absolute inset-0 rounded-full border-2 opacity-60"
-                  style={{
-                    borderColor: getStarColor(index),
-                    left: '-4px',
-                    top: '-4px',
-                    right: '-4px',
-                    bottom: '-4px'
-                  }}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ 
-                    scale: [0.8, 2, 3], 
-                    opacity: [0.6, 0.3, 0] 
-                  }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.6 }}
-                />
-              </>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      ))}
-      {showNumber && (
-        <span className="ml-2 text-sm font-medium text-gray-700">
-          {rating}
-        </span>
-      )}
-    </div>
-  );
-};
-
-const RatingDots = ({ rating, max = 5, editable = true, onChange }) => {
-  return (
-    <div className="flex gap-1">
-      {[...Array(max)].map((_, i) => (
-        <button
-          key={i}
-          className={`w-3 h-3 rounded-full transition-all ${
-            i < rating ? 'bg-teal-700' : 'bg-gray-300'
-          } ${editable ? 'cursor-pointer hover:scale-110 active:scale-95' : ''}`}
-          onClick={editable ? () => onChange?.(i + 1) : undefined}
-          disabled={!editable}
-        />
-      ))}
-    </div>
-  );
-};
-
-
+// Mock currency data
+const mockCurrencies = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' }
+];
 
 const AddItemModal = ({ 
-  image, 
-  lists, 
+  lists = [], 
+  editingItem = null, 
+  selectedList = null,
   onClose, 
-  onSave, 
-  item, 
-  isBulk, 
-  currentIndex, 
-  totalPhotos, 
-  onNext, 
-  onPrev, 
-  onSkip, 
-  initialState, 
-  onStateChange, 
-  aiMetadata, 
-  isAIProcessing, 
-  onCreateList,
-  showRatingFirst = false,
-  onUpdateAI,
-  photoMetadata,
-  aiError,
-  onRetryAI
+  onSave 
 }) => {
-  
-  const [currentImage, setCurrentImage] = useState(image); // image shown & saved
-  const [isCropping, setIsCropping] = useState(false);
+  const [step, setStep] = useState('capture');
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [showRatingOverlay, setShowRatingOverlay] = useState(false);
+  const [showCropper, setShowCropper] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [showFirstInWorld, setShowFirstInWorld] = useState(false);
   
-  // Rating overlay state
-  const [showRatingOverlay, setShowRatingOverlay] = useState(showRatingFirst);
-  const [selectedRating, setSelectedRating] = useState(null);
-  
-  // AI retry state
-  const [aiRetryCount, setAiRetryCount] = useState(0);
-  const [aiCancelled, setAiCancelled] = useState(false);
-  
-  // Full screen photo view state
-  const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
-  
-  // AI Summary section state
-  const [showAISummary, setShowAISummary] = useState(false);
-  const [createListError, setCreateListError] = useState(null);
-  
-  // First in World banner state
-  const [showFirstInWorldBanner, setShowFirstInWorldBanner] = useState(false);
-  const [firstInWorldProduct, setFirstInWorldProduct] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  
-  // AI status toast
-  const [showAIToast, setShowAIToast] = useState(false);
-  const [aiToastMessage, setAiToastMessage] = useState('');
-
-  const onCropComplete = useCallback((_ignored, croppedAreaPixels) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  }, []);
-
-  const getCroppedImg = async () => {
-    return new Promise((resolve, reject) => {
-      const imageObj = new Image();
-      imageObj.src = currentImage;
-      imageObj.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = croppedAreaPixels.width;
-        canvas.height = croppedAreaPixels.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(
-          imageObj,
-          croppedAreaPixels.x,
-          croppedAreaPixels.y,
-          croppedAreaPixels.width,
-          croppedAreaPixels.height,
-          0,
-          0,
-          croppedAreaPixels.width,
-          croppedAreaPixels.height
-        );
-        resolve(canvas.toDataURL('image/jpeg'));
-      };
-      imageObj.onerror = (e) => reject(e);
-    });
-  };
-
-  const [showCreateListDialog, setShowCreateListDialog] = useState(false);
-  const [newListName, setNewListName] = useState('');
-  const [selectedLists, setSelectedLists] = useState(() => {
-    if (initialState && initialState.selectedLists) return initialState.selectedLists;
-    if (item && item.list_id) return [item.list_id];
-    
-    // Default to the list that was most recently added to
-    if (lists && lists.length > 0) {
-      // Find the most recent item across all lists
-      let mostRecentItem = null;
-      let mostRecentListId = null;
-      
-      lists.forEach(list => {
-        const allItems = [...(list.items || []), ...(list.stayAways || [])];
-        allItems.forEach(item => {
-          if (!mostRecentItem || new Date(item.created_at) > new Date(mostRecentItem.created_at)) {
-            mostRecentItem = item;
-            mostRecentListId = list.id;
-          }
-        });
-      });
-      
-      // If we found a recent item, use that list; otherwise use the first list
-      if (mostRecentListId) {
-        return [mostRecentListId];
-      } else if (lists.length > 0) {
-        return [lists[0].id];
-      }
-    }
-    
-    // Fallback to empty array
-    return [];
-  });
-  const [rating, setRating] = useState(initialState?.rating ?? item?.rating ?? 3);
-  const [notes, setNotes] = useState(initialState?.notes ?? item?.notes ?? '');
-  const [productName, setProductName] = useState(() => {
-    if (aiMetadata?.productName) return aiMetadata.productName;
-    return initialState?.productName ?? item?.name ?? '';
-  });
-  const [productNameManuallyEdited, setProductNameManuallyEdited] = useState(false);
-  const [category, setCategory] = useState(() => {
-    if (aiMetadata?.category) return aiMetadata.category;
-    return initialState?.category ?? item?.category ?? '';
-  });
-  const [tags, setTags] = useState(() => {
-    if (aiMetadata?.tags) return aiMetadata.tags;
-    return initialState?.tags ?? item?.tags ?? [];
-  });
-  const [certainty, setCertainty] = useState(() => {
-    if (aiMetadata?.certainty) return aiMetadata.certainty;
-    return initialState?.certainty ?? item?.certainty ?? 0;
-  });
-  const [location, setLocation] = useState(initialState?.location ?? item?.location ?? 'Current Location');
-  const [locationSearch, setLocationSearch] = useState('');
-  const [locationResults, setLocationResults] = useState([]);
-  const [showLocationSearch, setShowLocationSearch] = useState(false);
-  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-  const [recentLocations, setRecentLocations] = useState(() => {
-    try {
-      const saved = localStorage.getItem('recentLocations');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  
-  // Debounced location search
-  useEffect(() => {
-    if (locationSearch.length < 2) {
-      setLocationResults([]);
-      return;
-    }
-
-    const searchTimeout = setTimeout(async () => {
-      setIsSearchingLocation(true);
-      try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5&addressdetails=1&extratags=1`
-        );
-        const results = await response.json();
-        // Sort by: prefix match > population (desc) > importance (desc)
-        const query = locationSearch.trim().toLowerCase();
-        const sorted = [...results].sort((a, b) => {
-          const aName = (a.name || a.display_name || '').toLowerCase();
-          const bName = (b.name || b.display_name || '').toLowerCase();
-          const aPrefix = aName.startsWith(query) ? 1 : 0;
-          const bPrefix = bName.startsWith(query) ? 1 : 0;
-          if (aPrefix !== bPrefix) return bPrefix - aPrefix;
-          // Prefer city/town/village
-          const rankClass = (r) => {
-            const t = r.type || r.addresstype || '';
-            if (['city', 'town'].includes(t)) return 2;
-            if (t === 'village') return 1;
-            return 0;
-          };
-          const aRank = rankClass(a);
-          const bRank = rankClass(b);
-          if (aRank !== bRank) return bRank - aRank;
-          // Earlier substring match index is better
-          const aIdx = aName.indexOf(query);
-          const bIdx = bName.indexOf(query);
-          if (aIdx !== bIdx) return (aIdx === -1 ? 9999 : aIdx) - (bIdx === -1 ? 9999 : bIdx);
-          const aPop = Number(a.extratags?.population) || 0;
-          const bPop = Number(b.extratags?.population) || 0;
-          if (aPop !== bPop) return bPop - aPop;
-          const aImp = Number(a.importance) || 0;
-          const bImp = Number(b.importance) || 0;
-          return bImp - aImp;
-        });
-        setLocationResults(sorted.map(r => {
-          // Extract city from various possible fields
-          const city = r.address?.city || r.address?.town || r.address?.village || r.name || r.display_name.split(',')[0];
-          
-          // Extract country from address or fallback to parsing display_name
-          let country = r.address?.country;
-          if (!country && r.display_name) {
-            // Try to extract country from the end of display_name
-            const parts = r.display_name.split(',').map(p => p.trim());
-            country = parts[parts.length - 1]; // Last part is usually the country
-          }
-          
-          return {
-            display: r.display_name,
-            name: r.name || r.display_name.split(',')[0],
-            city: city,
-            country: country || '',
-            lat: r.lat,
-            lon: r.lon
-          };
-        }));
-      } catch (error) {
-        console.error('Location search error:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-        setLocationResults([]);
-      } finally {
-        setIsSearchingLocation(false);
-      }
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(searchTimeout);
-  }, [locationSearch]);
-  const [place, setPlace] = useState('');
-  const placeInputRef = useRef(null);
-  const googleAutocompleteRef = useRef(null);
-  const googleScriptLoadingRef = useRef(false);
-  const [selectedPlaceCoords, setSelectedPlaceCoords] = useState(null);
-  const [isEditingLocation, setIsEditingLocation] = useState(false);
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-  const [rarity, setRarity] = useState(1); // 1=Common, 2=Uncommon, 3=Rare
-  const [showListDropdown, setShowListDropdown] = useState(false);
-  const listDropdownRef = useRef(null);
-
-  // Scroll to list dropdown when it opens
-  useEffect(() => {
-    if (showListDropdown) {
-      // Wait for dropdown to render first
-      setTimeout(() => {
-        listDropdownRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center', // Center the dropdown in viewport
-          inline: 'nearest'
-        });
-      }, 100);
-    }
-  }, [showListDropdown]);
-
-  const [activeTags, setActiveTags] = useState([]);
-  const [customTag, setCustomTag] = useState('');
-  const [flavorNotes, setFlavorNotes] = useState([]);
-  const [newFlavorNote, setNewFlavorNote] = useState('');
-  const [showDetailedAttributes, setShowDetailedAttributes] = useState(false);
-  const [showAdditionalTags, setShowAdditionalTags] = useState(false);
-  const [isEditingPrice, setIsEditingPrice] = useState(false);
-  const [editPrice, setEditPrice] = useState(item?.price || '');
+  // Form state
+  const [selectedLists, setSelectedLists] = useState(selectedList ? [selectedList.id] : []);
+  const [rating, setRating] = useState(editingItem?.rating || 0);
+  const [notes, setNotes] = useState(editingItem?.notes || '');
+  const [location, setLocation] = useState(editingItem?.location || '');
+  const [price, setPrice] = useState(editingItem?.price || '');
   const [currency, setCurrency] = useState('USD');
-  const [showCurrencySelector, setShowCurrencySelector] = useState(false);
-  const [recentCurrencies, setRecentCurrencies] = useState(() => {
-    try {
-      const saved = localStorage.getItem('recentCurrencies');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [qualityOverview, setQualityOverview] = useState('');
-  
-  // Public/Private toggle state
   const [isPublic, setIsPublic] = useState(true);
+  
+  // AI state
+  const [aiData, setAiData] = useState({
+    productName: editingItem?.name || '',
+    species: editingItem?.species || '',
+    certainty: editingItem?.certainty || 0,
+    tags: editingItem?.tags || [],
+    productType: editingItem?.category || ''
+  });
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [showAISection, setShowAISection] = useState(false);
 
-  // Replace the static attributes state with a dynamic system
-  const [newAttributeName, setNewAttributeName] = useState('');
-  const [showAddAttribute, setShowAddAttribute] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // Get default attributes for a list (remember user preferences)
-  const getListAttributes = useCallback((listId) => {
-    try {
-      const saved = localStorage.getItem(`listAttributes_${listId}`);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (error) {
-      console.error('Error loading list attributes:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
+  // Initialize editing mode
+  React.useEffect(() => {
+    if (editingItem) {
+      setStep('details');
+      setCapturedImage(editingItem.image_url || editingItem.image);
+      setShowAISection(true);
     }
-    
-    // Default attributes (removed "balance")
-    return ['aroma', 'texture', 'freshness', 'value'];
-  }, []);
+  }, [editingItem]);
 
-  // Save list attributes to localStorage
-  const saveListAttributes = useCallback((listId, attributes) => {
-    try {
-      localStorage.setItem(`listAttributes_${listId}`, JSON.stringify(attributes));
-    } catch (error) {
-      console.error('Error saving list attributes:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-    }
-  }, []);
-
-  // Dynamic attributes state
-  const [attributes, setAttributes] = useState({});
-  const [attributeNames, setAttributeNames] = useState([]);
-
-  // Update attributes when selected lists change
-  useEffect(() => {
-    if (selectedLists.length > 0) {
-      const primaryListId = selectedLists[0]; // Use first selected list for attributes
-      const listAttributeNames = getListAttributes(primaryListId);
-      setAttributeNames(listAttributeNames);
-      
-      // Initialize attribute values from existing item or default to rating
-      const initialAttributes = {};
-      listAttributeNames.forEach(name => {
-        initialAttributes[name] = item?.detailed_breakdown?.[name] || rating || 3;
-      });
-      setAttributes(initialAttributes);
-    }
-  }, [selectedLists, getListAttributes, item?.detailed_breakdown, rating]);
-
-  // Sync attributes with overall rating when user changes rating
-  useEffect(() => {
-    if (rating > 0 && attributeNames.length > 0) {
-      const updatedAttributes = {};
-      attributeNames.forEach(name => {
-        updatedAttributes[name] = rating;
-      });
-      setAttributes(updatedAttributes);
-    }
-  }, [rating, attributeNames]);
-
-  // Handle attribute value change
-  const handleAttributeChange = (attribute, value) => {
-    setAttributes(prev => ({
-      ...prev,
-      [attribute]: value
-    }));
+  const handleTakePhoto = () => {
+    // Mock camera capture
+    const mockImage = 'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg?auto=compress&cs=tinysrgb&w=800';
+    setCapturedImage(mockImage);
+    setShowRatingOverlay(true);
   };
 
-  // Add new custom attribute
-  const addCustomAttribute = () => {
-    if (newAttributeName.trim() && !attributeNames.includes(newAttributeName.trim().toLowerCase())) {
-      const newName = newAttributeName.trim().toLowerCase();
-      const updatedNames = [...attributeNames, newName];
-      setAttributeNames(updatedNames);
-      setAttributes(prev => ({
-        ...prev,
-        [newName]: rating || 3
-      }));
-      
-      // Save to localStorage for the primary list
-      if (selectedLists.length > 0) {
-        saveListAttributes(selectedLists[0], updatedNames);
-      }
-      
-      setNewAttributeName('');
-      setShowAddAttribute(false);
+  const handleSelectFromGallery = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCapturedImage(e.target.result);
+        setShowRatingOverlay(true);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  // Remove attribute
-  const removeAttribute = (attributeName) => {
-    const updatedNames = attributeNames.filter(name => name !== attributeName);
-    setAttributeNames(updatedNames);
-    
-    const updatedAttributes = { ...attributes };
-    delete updatedAttributes[attributeName];
-    setAttributes(updatedAttributes);
-    
-    // Save to localStorage for the primary list
-    if (selectedLists.length > 0) {
-      saveListAttributes(selectedLists[0], updatedNames);
-    }
-  };
-
-  // Initialize active tags from AI metadata or existing tags
-  useEffect(() => {
-    if (tags && tags.length > 0) {
-      setActiveTags(tags);
-    }
-  }, [tags]);
-
-  // Update selectedLists when lists change and none are selected
-  useEffect(() => {
-    if (selectedLists.length === 0 && lists && lists.length > 0) {
-      // Find the most recent item across all lists
-      let mostRecentItem = null;
-      let mostRecentListId = null;
-      
-      lists.forEach(list => {
-        const allItems = [...(list.items || []), ...(list.stayAways || [])];
-        allItems.forEach(item => {
-          if (!mostRecentItem || new Date(item.created_at) > new Date(mostRecentItem.created_at)) {
-            mostRecentItem = item;
-            mostRecentListId = list.id;
-          }
-        });
-      });
-      
-      // If we found a recent item, use that list; otherwise use the first list
-      if (mostRecentListId) {
-        setSelectedLists([mostRecentListId]);
-      } else if (lists.length > 0) {
-        setSelectedLists([lists[0].id]);
-      }
-    }
-  }, [lists, selectedLists.length]);
-
-  // Handle rating selection from overlay
-  const handleRatingSelect = (rating) => {
-    console.log('Rating selected from overlay:', rating);
-    setSelectedRating(rating);
-    setRating(rating);
+  const handleRatingSelect = (selectedRating) => {
+    setRating(selectedRating);
     setShowRatingOverlay(false);
+    
+    // Mock AI processing
+    setIsProcessingAI(true);
+    setTimeout(() => {
+      setAiData({
+        productName: 'Artisan Sourdough Bread',
+        species: 'Fresh baked bread with crispy crust',
+        certainty: 85,
+        tags: ['bakery', 'sourdough', 'artisan'],
+        productType: 'Baked Goods'
+      });
+      setIsProcessingAI(false);
+      setShowAISection(true);
+      
+      // Mock "First in World" achievement
+      if (Math.random() > 0.7) {
+        setShowFirstInWorld(true);
+      }
+    }, 2000);
+    
+    setStep('details');
   };
 
-  // State for allergens
-  const [allergens, setAllergens] = useState([]);
+  const handleCropComplete = (croppedArea, croppedAreaPixels) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  };
 
-  // Update state when AI metadata becomes available
-  useEffect(() => {
-    if (aiMetadata) {
-      if (!productNameManuallyEdited && aiMetadata.productName) {
-        setProductName((prev) => prev || aiMetadata.productName);
-      }
-      setCategory(aiMetadata.category);
-      setTags(aiMetadata.tags);
-      setCertainty(aiMetadata.certainty);
-      setActiveTags(aiMetadata.tags || []);
-      // Auto-fill the quality overview/description from AI
-      setQualityOverview(aiMetadata.species || '');
-      // Set allergens from AI data
-      setAllergens(aiMetadata.allergens || []);
-      // Attributes will be synced by the rating useEffect
-      
-      // Notify parent component of AI update
-      if (onUpdateAI) {
-        onUpdateAI(aiMetadata);
-      }
-    }
-  }, [aiMetadata, productNameManuallyEdited]);
+  const handleCropConfirm = () => {
+    // Mock crop processing
+    console.log('Mock: Crop confirmed', croppedAreaPixels);
+    setShowCropper(false);
+    setShowRatingOverlay(true);
+  };
 
-  // Show toast when AI fails
-  useEffect(() => {
-    if (aiError && !isAIProcessing) {
-      setAiToastMessage('Analysis failed');
-      setShowAIToast(true);
-      setTimeout(() => setShowAIToast(false), 4000);
-    }
-  }, [aiError, isAIProcessing]);
-
-  // Sync attributes with overall rating when user changes rating
-  useEffect(() => {
-    if (rating > 0) {
-      setAttributes({
-        aroma: rating,
-        texture: rating,
-        freshness: rating,
-        balance: rating,
-        value: rating
-      });
-    }
-  }, [rating]);
-
-  useEffect(() => {
-    if (onStateChange) {
-      onStateChange({
-        selectedLists,
-        rating,
-        notes,
-        productName,
-        category,
-        tags: activeTags,
-        certainty,
-        location,
-      });
-    }
-    // eslint-disable-next-line
-  }, [selectedLists, rating, notes, productName, category, activeTags, certainty, location]);
-
-  const handleSave = async () => {
-    console.log('🔍 Save button clicked');
-    
-    // Prevent multiple saves
-    if (isSaving) {
-      console.log('🔍 Save already in progress, ignoring click');
-      return;
-    }
-    
-    // Validate required fields
-    const errors = {};
-    
-    if (!productName.trim()) {
-      errors.productName = 'Required';
-    }
-    
-    if (selectedLists.length === 0) {
-      errors.selectedLists = 'Please select at least one list';
-    }
-    
-    // If there are validation errors, show them and scroll to first error
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      setShowValidationErrors(true);
-      
-      // Scroll to the first error field
-      setTimeout(() => {
-        if (errors.productName && productNameRef.current) {
-          productNameRef.current.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center' 
-          });
-          productNameRef.current.focus();
-        } else if (errors.selectedLists && listsRef.current) {
-          listsRef.current.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center' 
-          });
-        }
-      }, 100);
-      
-      // Add haptic feedback if available
-      if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 100]);
-      }
-      
-      // Clear validation errors after 5 seconds
-      setTimeout(() => {
-        setShowValidationErrors(false);
-        setValidationErrors({});
-      }, 5000);
-      
-      return;
-    }
-    
-    // Clear any existing validation errors
-    setValidationErrors({});
-    setShowValidationErrors(false);
-    
-    // Start saving
-    setIsSaving(true);
-    console.log('🔍 Starting save operation...');
-    
-    console.log('🔍 Validation passed, proceeding with save');
-    console.log('🔍 selectedLists:', selectedLists);
-    console.log('🔍 selectedLists type:', typeof selectedLists);
-    console.log('🔍 selectedLists isArray:', Array.isArray(selectedLists));
-    console.log('🔍 selectedLists JSON:', JSON.stringify(selectedLists));
-    console.log('🔍 rating:', rating);
-    console.log('🔍 selectedLists.length:', selectedLists.length);
-    
-    const isStayAway = rating <= 2;
-    const newItem = buildItem({
-      // Preserve item ID if editing
-      id: item?.id,
-      
-      // AI Metadata from aiMetadata
-      ai_product_name: aiMetadata?.productName,
-      ai_brand: aiMetadata?.brand,
-      ai_category: aiMetadata?.category,
-      ai_confidence: aiMetadata?.certainty,
-      ai_description: aiMetadata?.description,
-      ai_tags: aiMetadata?.tags,
-      ai_allergens: aiMetadata?.allergens,
-      ai_lookup_status: aiError ? 'error' : 'success',
-      
-      // User overrides
-      user_product_name: productName,
-      user_description: qualityOverview,
-      user_tags: activeTags,
-      
-      // Core fields
-      productName,
-      category,
-      certainty,
-      tags: activeTags,
-      image: currentImage,
-      rating,
-      notes,
-      qualityOverview,
-      place,
-      location,
-      price: editPrice || null,
-      currency_code: currency || 'USD',
-      detailed_breakdown: attributes,
-      rarity,
-      
-      // Privacy setting
+  const handleSave = () => {
+    const item = {
+      id: editingItem?.id,
+      name: aiData.productName,
+      image_url: capturedImage,
+      rating: rating,
+      notes: notes,
+      location: location,
+      price: price ? parseFloat(price) : null,
+      currency_code: currency,
       is_public: isPublic,
-      
-      // Photo/location metadata
-      photo_date_time: photoMetadata?.dateTime,
-      photo_location_source: getPhotoLocationSource(),
-      latitude: selectedPlaceCoords?.lat ?? photoMetadata?.latitude,
-      longitude: selectedPlaceCoords?.lng ?? photoMetadata?.longitude
-    });
-    console.log('🔍 Built item:', newItem);
-    console.log('🔍 Built item JSON:', JSON.stringify(newItem, null, 2));
-    console.log('🔍 Calling onSave with:', selectedLists, newItem, isStayAway);
-    console.log('🔍 onSave parameters JSON:', JSON.stringify({
-      selectedLists,
-      newItem,
-      isStayAway
-    }, null, 2));
-    
-    try {
-      // Save the item first
-      const saveResult = await onSave(selectedLists, newItem, isStayAway);
-      const savedItem = saveResult?.data || saveResult; // Handle both old and new return formats
-      
-      // 🏆 Check for "First in World" achievements (non-blocking)
-      if (saveResult?.achievements) {
-        const globalFirstAchievement = saveResult.achievements.find(a => a.isGlobalFirst);
-        if (globalFirstAchievement) {
-          // Use setTimeout to avoid blocking the UI
-          setTimeout(() => {
-            setFirstInWorldProduct(productName || newItem.name || 'this item');
-            setShowFirstInWorldBanner(true);
-          }, 100);
-        }
-      }
-      
-      // Create public post if item is public and not editing existing item
-      if (isPublic && !item?.id && savedItem) {
-        try {
-          console.log('🔍 Creating public post for item:', savedItem.id);
-          await createPost(savedItem.id, selectedLists[0], true, location);
-          console.log('✅ Public post created successfully');
-        } catch (error) {
-          console.error('❌ Failed to create public post:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-          // Don't block the flow if post creation fails
-        }
-      }
-      
-      console.log('✅ Save operation completed successfully');
-      
-      if (isBulk && onNext) onNext();
-      else onClose();
-      
-    } catch (error) {
-      console.error('❌ Save operation failed:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-      // Show error to user (you might want to add a toast notification here)
-      alert('Failed to save item. Please try again.');
-    } finally {
-      // Always reset saving state
-      setIsSaving(false);
-    }
-  };
-
-  const handleCreateList = async () => {
-    if (newListName.trim() && onCreateList) {
-      setCreateListError(null);
-      try {
-        console.log('🔧 AddItemModal: Creating list with name:', newListName.trim());
-        const newList = await onCreateList(newListName.trim(), '#1F6D5A'); // Default teal color
-        console.log('🔧 AddItemModal: Got result from onCreateList:', newList);
-        
-        if (newList && newList.id) {
-          console.log('✅ AddItemModal: List created successfully, selecting it');
-          setSelectedLists([newList.id]);
-          setNewListName('');
-          setShowCreateListDialog(false);
-        } else {
-          console.error('❌ AddItemModal: List creation failed - no ID returned');
-          setCreateListError('Could not create list. Please try again.');
-        }
-      } catch (error) {
-        console.error('❌ AddItemModal: Error creating list:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-        setCreateListError(error.message || 'An unexpected error occurred.');
-      }
-    }
-  };
-
-  const removeTag = (tagToRemove) => {
-    setActiveTags(activeTags.filter(tag => tag !== tagToRemove));
-  };
-
-  const addTag = (tagToAdd) => {
-    if (!activeTags.includes(tagToAdd)) {
-      setActiveTags([tagToAdd, ...activeTags]);
-    }
-  };
-
-  const addFlavorNote = () => {
-    if (newFlavorNote.trim()) {
-      setFlavorNotes([...flavorNotes, newFlavorNote.trim()]);
-      setNewFlavorNote('');
-    }
-  };
-
-  const removeFlavorNote = (index) => {
-    setFlavorNotes(flavorNotes.filter((_, i) => i !== index));
-  };
-
-  const addCustomTag = () => {
-    if (customTag.trim() && !activeTags.includes(customTag.trim())) {
-      setActiveTags([customTag.trim(), ...activeTags]);
-      setCustomTag('');
-      setShowAdditionalTags(false);
-    }
-  };
-
-  const getSelectedListName = () => {
-    if (selectedLists.length === 0) return 'Select lists';
-    if (selectedLists.length === 1) {
-      const list = lists.find(l => l.id === selectedLists[0]);
-      return list?.name || 'Unknown list';
-    }
-    return `${selectedLists.length} lists selected`;
-  };
-
-
-
-  const handleRarityChange = (delta) => {
-    setRarity(prev => {
-      const newVal = ((prev - 1 + delta + 3) % 3) + 1;
-      return newVal;
-    });
-  };
-
-  const getRarityLabel = (rarity) => {
-    const labels = ['Common', 'Uncommon', 'Rare'];
-    return labels[rarity - 1] || 'Common';
-  };
-
-  const getRatingLabel = (rating) => {
-    const labels = {
-      1: 'Hate',
-      2: 'Avoid', 
-      3: 'Meh',
-      4: 'Like',
-      5: 'Love'
-    };
-    return labels[rating] || '';
-  };
-
-  // Determine photo location source based on available data
-  const getPhotoLocationSource = () => {
-    // If we have EXIF GPS data, it came from the photo
-    if (photoMetadata?.hasEXIF && (photoMetadata?.latitude || photoMetadata?.longitude)) {
-      console.log('📍 [Location] Source: EXIF (GPS data from photo)');
-      return 'exif';
-    }
-    
-    // If user manually entered a location (not just device location)
-    if (locationManuallySet || (location && location !== 'Current Location' && location !== photoMetadata?.location)) {
-      console.log('📍 [Location] Source: Manual (user entered)');
-      return 'manual';
-    }
-    
-    // If we used device location during capture
-    if (photoMetadata?.location || location === 'Current Location') {
-      console.log('📍 [Location] Source: Device (current GPS)');
-      return 'device';
-    }
-    
-    // Default to manual if no specific source can be determined
-    console.log('📍 [Location] Source: Manual (default)');
-    return 'manual';
-  };
-
-  const handlePriceEdit = () => {
-    setIsEditingPrice(true);
-  };
-
-  const handlePriceSave = () => {
-    setIsEditingPrice(false);
-  };
-
-  // Auto-detect currency on mount using smart detection
-  useEffect(() => {
-    const detectCurrency = async () => {
-      console.log('🌍 Starting smart currency detection...');
-      
-      try {
-        let detectedCurrency;
-        
-        // First check if editing existing item with currency
-        if (item?.currency_code) {
-          detectedCurrency = item.currency_code;
-          console.log('🌍 Using existing item currency:', detectedCurrency);
-        } else {
-          // Use locale-based currency detection (no location permission needed)
-          detectedCurrency = getCurrencyFromLocale();
-          console.log('🌍 Auto-detected currency:', detectedCurrency);
-        }
-        
-        setCurrency(detectedCurrency);
-      } catch (error) {
-        console.error('🌍 Currency detection failed:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-        setCurrency('USD'); // Fallback
-      }
-    };
-    
-    detectCurrency();
-    
-    // Load recent currencies
-    setRecentCurrencies(getRecentCurrencies());
-  }, [item?.currency_code, location]);
-
-  // When location changes, try to infer currency from country
-  useEffect(() => {
-    if (
-      location &&
-      location !== 'Current Location' &&
-      !currencyManuallySet
-    ) {
-      // Try to extract country from location string (assume last part after comma)
-      const country = location.split(',').pop().trim();
-      const inferred = getCurrencyFromCountryName(country);
-      if (inferred && inferred !== currency) {
-        setCurrency(inferred);
-      }
-    }
-    // eslint-disable-next-line
-  }, [location]);
-
-  // When user picks a currency manually
-  const handleCurrencySelect = (currencyCode) => {
-    setCurrency(currencyCode);
-    setShowCurrencySelector(false);
-    setCurrencyManuallySet(true);
-    // Save to recent currencies using utility function
-    saveRecentCurrency(currencyCode);
-    setRecentCurrencies(getRecentCurrencies()); // Refresh from storage
-  };
-
-  // Format price input with currency-specific rules
-  const formatPriceInputLocal = (value) => {
-    return formatPriceInput(value, currency);
-  };
-
-  // Always use numeric keyboard for better UX
-  const getPriceInputMode = () => {
-    return "numeric"; // Always use numeric keyboard
-  };
-
-
-
-  // Get device location with improved error handling
-  const getCurrentLocation = async () => {
-    setIsLoadingLocation(true);
-    
-    try {
-      let position;
-      
-      if (Capacitor.isNativePlatform()) {
-        // Try native geolocation first
-        try {
-          position = await Geolocation.getCurrentPosition({
-            enableHighAccuracy: false, // Use less battery
-            timeout: 10000, // 10 second timeout
-            maximumAge: 300000 // Accept 5-minute old position
-          });
-        } catch (nativeError) {
-          console.log('Native geolocation failed, trying web fallback:', nativeJSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-          // Fall back to web geolocation even on native
-          if (navigator.geolocation) {
-            position = await new Promise((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(resolve, reject, {
-                enableHighAccuracy: false,
-                timeout: 10000,
-                maximumAge: 300000
-              });
-            });
-          } else {
-            throw new Error('No geolocation available');
-          }
-        }
-      } else {
-        // Web platform - use browser geolocation
-        if (navigator.geolocation) {
-          position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: false,
-              timeout: 10000,
-              maximumAge: 300000
-            });
-          });
-        } else {
-          throw new Error('Geolocation not supported');
-        }
-      }
-
-      // If we got a position, process it
-      if (position?.coords) {
-        const coordsText = `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
-        
-        try {
-          // Try reverse geocoding
-          const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
-          const geo = await resp.json();
-          
-          if (geo.address) {
-            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.hamlet || '';
-            const country = geo.address.country || '';
-            const place = [city, country].filter(Boolean).join(', ');
-            setLocation(place || coordsText);
-          } else {
-            setLocation(coordsText);
-          }
-        } catch (geocodeError) {
-          console.log('Reverse geocoding failed, using coordinates:', geocodeJSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-          setLocation(coordsText);
-        }
-      } else {
-        throw new Error('No position data received');
-      }
-      
-    } catch (error) {
-      console.log('All location methods failed:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-      // Don't change location if it's already set from EXIF or other source
-      if (location === 'Current Location') {
-        setLocation('Location not available');
-      }
-    } finally {
-      setIsLoadingLocation(false);
-    }
-  };
-
-  // Track if location was manually set to prevent overriding
-  const [locationManuallySet, setLocationManuallySet] = useState(false);
-  const [currencyManuallySet, setCurrencyManuallySet] = useState(false);
-
-
-
-  // Auto-fetch location on mount (only if no location available and not manually set)
-  useEffect(() => {
-    // Don't fetch current location if we already have location from other sources or it was manually set
-    if (!photoMetadata?.location && !initialState?.location && !item?.location && !locationManuallySet && location === 'Current Location') {
-      console.log('🌍 Triggering location fetch...');
-      getCurrentLocation();
-    }
-  }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet]);
-
-  // Google Places Autocomplete for Place field
-  useEffect(() => {
-    const apiKey = import.meta.env?.VITE_GOOGLE_PLACES_API_KEY;
-    if (!apiKey || !placeInputRef.current) return;
-
-    const ensureScript = () => new Promise((resolve, reject) => {
-      if (window.google?.maps?.places) return resolve();
-      if (googleScriptLoadingRef.current) {
-        const check = () => {
-          if (window.google?.maps?.places) resolve();
-          else setTimeout(check, 100);
-        };
-        check();
-        return;
-      }
-      googleScriptLoadingRef.current = true;
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => resolve();
-      script.onerror = (e) => reject(e);
-      document.head.appendChild(script);
-    });
-
-    let listener = null;
-    ensureScript()
-      .then(() => {
-        if (!placeInputRef.current || !window.google?.maps?.places) return;
-        const autocomplete = new window.google.maps.places.Autocomplete(placeInputRef.current, {
-          types: ['establishment', 'geocode'],
-          fields: ['name', 'formatted_address', 'address_components', 'geometry']
-        });
-        googleAutocompleteRef.current = autocomplete;
-        listener = autocomplete.addListener('place_changed', () => {
-          const selected = autocomplete.getPlace();
-          const newPlace = selected?.name || selected?.formatted_address || '';
-          if (newPlace) setPlace(newPlace);
-          // Save coords if available
-          if (selected?.geometry?.location) {
-            const lat = selected.geometry.location.lat();
-            const lng = selected.geometry.location.lng();
-            setSelectedPlaceCoords({ lat, lng });
-          }
-          // Attempt to update location (City, Country) from address components
-          if (selected?.address_components) {
-            const comps = selected.address_components;
-            const get = (type) => comps.find(c => c.types.includes(type))?.long_name;
-            const city = get('locality') || get('postal_town') || get('administrative_area_level_2') || get('administrative_area_level_1') || '';
-            const country = get('country') || '';
-            const newLocation = [city, country].filter(Boolean).join(', ');
-            if (newLocation) {
-              setLocation(newLocation);
-              setLocationManuallySet(true);
-            }
-          }
-        });
-      })
-      .catch(() => {
-        // Silent fail; manual input still works
-      });
-
-    return () => {
-      try {
-        if (listener) listener.remove();
-      } catch {}
-      googleAutocompleteRef.current = null;
-    };
-  }, []);
-
-  // Handle Android back button/gesture
-  useEffect(() => {
-    let backButtonListener;
-    
-    const setupBackButton = async () => {
-      if (Capacitor.isNativePlatform()) {
-        backButtonListener = await App.addListener('backButton', () => {
-          // Handle back button press in modal
-          if (showFullScreenPhoto) {
-            setShowFullScreenPhoto(false);
-          } else if (isCropping) {
-            setIsCropping(false);
-          } else if (showCreateListDialog) {
-            setShowCreateListDialog(false);
-          } else if (showLocationSearch) {
-            setShowLocationSearch(false);
-          } else {
-            // Close the modal
-            onClose();
-          }
-        });
-      }
+      species: aiData.species,
+      certainty: aiData.certainty,
+      tags: aiData.tags,
+      category: aiData.productType,
+      created_at: editingItem?.created_at || new Date().toISOString()
     };
 
-    setupBackButton();
-
-    // Cleanup
-    return () => {
-      if (backButtonListener) {
-        backButtonListener.remove();
-      }
-    };
-  }, [showFullScreenPhoto, isCropping, showCreateListDialog, showLocationSearch, onClose]);
-
-  // Handle photo click to show full screen
-  const handlePhotoClick = () => {
-    if (!isAIProcessing) {
-      setShowFullScreenPhoto(true);
-    }
+    onSave(selectedLists, item);
   };
 
-  // Add a function to reset to default attributes
-  const resetToDefaultAttributes = () => {
-    const defaultAttributes = ['aroma', 'texture', 'freshness', 'value'];
-    setAttributeNames(defaultAttributes);
-    
-    const resetAttributes = {};
-    defaultAttributes.forEach(name => {
-      resetAttributes[name] = rating || 3;
-    });
-    setAttributes(resetAttributes);
-    
-    // Save to localStorage for the primary list
-    if (selectedLists.length > 0) {
-      saveListAttributes(selectedLists[0], defaultAttributes);
-    }
-  };
-
-  // Add validation state
-  const [validationErrors, setValidationErrors] = useState({});
-  const [showValidationErrors, setShowValidationErrors] = useState(false);
-
-  // Refs for scrolling to validation errors
-  const productNameRef = useRef(null);
-  const listsRef = useRef(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const isEditingExisting = Boolean(item?.id);
-
-  return (
-    <div 
-      className="fixed inset-0 bg-stone-50 z-50 overflow-y-auto modal-overlay" 
-      style={{ 
-        backgroundColor: '#F6F6F4',
-        // Allow native gestures on the edges
-        paddingLeft: 'env(safe-area-inset-left)',
-        paddingRight: 'env(safe-area-inset-right)',
-        // Don't intercept touch events on edges
-        touchAction: 'pan-y'
-      }}
-    >
-      {/* Hero Image Section */}
-      <div 
-        className={`relative overflow-hidden ${showRatingOverlay ? 'hidden' : ''}`}
-        style={{ height: '350px' }}
-      >
-        {/* Seamless AI Loading Effects */}
-        {(isAIProcessing && !aiCancelled && !aiError) && (
-          <>
-            {/* Enhanced shimmer overlay on photo */}
-            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 5 }}>
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-shimmer" 
-                   style={{ animationDuration: '1.5s' }} />
-              <div className="absolute inset-0 bg-gradient-to-br from-transparent via-blue-400/10 to-transparent animate-pulse" />
-            </div>
-            
-            {/* Progress line at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 z-10">
-              <div className="h-1 bg-gradient-to-r from-teal-500 to-blue-500 animate-pulse" />
-            </div>
-            
-            {/* Cancel button - top right only */}
-            <button
-              onClick={() => {
-                setAiCancelled(true);
-                if (onUpdateAI) onUpdateAI(null);
-                // Show toast
-                setAiToastMessage('Continuing without AI');
-                setShowAIToast(true);
-                setTimeout(() => setShowAIToast(false), 3000);
-              }}
-              className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg border border-gray-200 hover:bg-white transition-colors"
-            >
-              <span className="text-xs font-medium text-gray-700">Cancel</span>
-            </button>
-            
-            {/* Status overlay - positioned just above card */}
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
-              <div className="bg-white/95 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200 flex items-center gap-2">
-                <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse" />
-                <span className="text-sm font-medium text-gray-800">Analyzing…</span>
-              </div>
-            </div>
-          </>
-        )}
-
-        <SmartImage
-          src={currentImage}
-          alt="Food item"
-          className={`w-full h-full object-cover transition-all duration-500 cursor-pointer ${
-            isAIProcessing ? 'saturate-150 contrast-110' : 'saturate-100 contrast-100'
-          }`}
-          style={{ filter: getInstagramClassicFilter() }}
-          onClick={handlePhotoClick}
-          useThumbnail={false}
-          size="large"
-          lazyLoad={false}
-        />
-
-
-        {/* Back Button */}
-        <button 
-          onClick={() => {
-            if (aiError) {
-              // Show a brief message before going back
-              if (navigator.vibrate) navigator.vibrate(50);
-              // Trigger parent to show error message
-              onClose('ai_error');
-            } else {
-              onClose();
-            }
-          }}
-          className="absolute top-6 left-4 w-10 h-10 bg-white bg-opacity-90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg z-20 active:scale-95 transition-transform"
+  const renderCaptureStep = () => (
+    <div className="flex flex-col items-center justify-center h-full p-6">
+      <div className="w-24 h-24 bg-teal-100 rounded-full flex items-center justify-center mb-6">
+        <Camera className="w-12 h-12 text-teal-600" />
+      </div>
+      <h2 className="text-2xl font-semibold text-gray-900 mb-2">Capture Your Find</h2>
+      <p className="text-gray-600 text-center mb-8">
+        Take a photo or select from your gallery to get started
+      </p>
+      
+      <div className="space-y-4 w-full max-w-sm">
+        <button
+          onClick={handleTakePhoto}
+          className="w-full py-4 bg-teal-700 text-white rounded-2xl font-medium flex items-center justify-center gap-3"
+          style={{ backgroundColor: '#1F6D5A' }}
         >
-          <ArrowLeft className="w-5 h-5 text-gray-700" />
+          <Camera className="w-5 h-5" />
+          Take Photo
         </button>
-
-        {/* Bulk navigation buttons */}
-      {isBulk && (
-          <div className="absolute top-6 right-4 flex gap-2 z-20">
-            <button
-              onClick={onPrev}
-              disabled={currentIndex === 1}
-              className="w-10 h-10 bg-white bg-opacity-90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg disabled:opacity-50 active:scale-95 transition-transform"
-            >
-              <ArrowLeft className="w-4 h-4 text-gray-700" />
-            </button>
-            <button
-              onClick={onNext}
-              disabled={currentIndex === totalPhotos}
-              className="w-10 h-10 bg-white bg-opacity-90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg disabled:opacity-50 active:scale-95 transition-transform"
-            >
-              <ArrowRight className="w-4 h-4 text-gray-700" />
-            </button>
-            <button
-              onClick={onSkip}
-              className="w-10 h-10 bg-white bg-opacity-90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-            >
-              <SkipForward className="w-4 h-4 text-gray-700" />
-            </button>
-          </div>
-        )}
-
-        {/* Bulk indicator */}
-        {isBulk && (
-          <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 backdrop-blur-sm rounded-full px-3 py-1 shadow-lg z-20">
-            <span className="text-xs font-medium text-gray-700">{currentIndex} of {totalPhotos}</span>
-          </div>
-        )}
+        
+        <button
+          onClick={handleSelectFromGallery}
+          className="w-full py-4 bg-gray-100 text-gray-700 rounded-2xl font-medium flex items-center justify-center gap-3"
+        >
+          <ImageIcon className="w-5 h-5" />
+          Choose from Gallery
+        </button>
       </div>
+      
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+    </div>
+  );
 
-      {/* Overlapping Data Card */}
-      <div 
-        className={`rounded-t-3xl shadow-xl relative z-10 mx-4 ${showRatingOverlay ? 'hidden' : ''}`}
-        style={{
-          backgroundColor: 'white',
-          borderTopLeftRadius: '48px',
-          borderTopRightRadius: '48px',
-          boxShadow: '0 8px 24px -4px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05)',
-          marginTop: '-24px',
-          minHeight: 'calc(100vh - 326px)' // Ensure it fills remaining space
-        }}
-      >
-        {/* Scrollable content */}
-        <div className="h-full overflow-y-auto">
-          <div className="p-6 pb-20 min-h-full">
-            {/* Category Pills */}
-            <div className="flex gap-2 mb-4 overflow-x-auto items-center">
-              {!isAIProcessing && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setShowAdditionalTags(!showAdditionalTags)}
-                    className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap"
-                  >
-                    <div className="flex items-center gap-1">
-                      <Plus className="w-3 h-3" />
-                    </div>
-                  </button>
-
-                  {showAdditionalTags && (
-                    <div className="flex gap-1 items-center">
-                      <input
-                        type="text"
-                        value={customTag}
-                        onChange={(e) => setCustomTag(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') addCustomTag();
-                          else if (e.key === 'Escape') {
-                            setShowAdditionalTags(false);
-                            setCustomTag('');
-                          }
-                        }}
-                        placeholder="Add tag..."
-                        className="px-2 py-1 text-xs border border-gray-200 rounded-full focus:outline-none focus:border-teal-700 w-28"
-                        autoFocus
-                      />
-                      <button
-                        onClick={addCustomTag}
-                        className="px-3 py-1.5 bg-teal-700 text-white rounded-full text-xs hover:bg-teal-800 transition-colors min-w-[32px] flex items-center justify-center"
-                        style={{ backgroundColor: '#1F6D5A' }}
-                      >
-                        ✓
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Loading placeholders for tags when AI is processing */}
-              {isAIProcessing && (
-                <>
-                  <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-6 loading-tag"></div>
-                  <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-6 loading-tag"></div>
-                  <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-14 h-6 loading-tag"></div>
-                </>
-              )}
-              
-              {!isAIProcessing && activeTags.map((tag, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap"
-                  style={{ backgroundColor: '#F1F1EF' }}
-                >
-                  <span>{tag}</span>
-                  {!isAIProcessing && (
-                    <button
-                      onClick={() => removeTag(tag)}
-                      className="w-3 h-3 flex items-center justify-center hover:bg-gray-300 rounded-full"
-                    >
-                      <X className="w-2 h-2" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Item Header */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex-1 relative min-h-[32px]">
-                  {isAIProcessing && !aiCancelled && !aiError ? (
-                    // Match tags overlay style with shimmer pills
-                    <div className="flex items-center gap-2">
-                      <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-28 h-7 loading-tag"></div>
-                      <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-7 loading-tag"></div>
-                      <div className="hidden sm:block px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-7 loading-tag"></div>
-                    </div>
-                  ) : (
-                    <input
-                      ref={productNameRef}
-                      type="text"
-                      value={productName}
-                      onChange={(e) => {
-                        setProductName(e.target.value);
-                        setProductNameManuallyEdited(true);
-                        if (showValidationErrors && validationErrors.productName) {
-                          setValidationErrors(prev => ({ ...prev, productName: null }));
-                        }
-                      }}
-                      onFocus={() => setProductNameManuallyEdited(true)}
-                      className={`text-xl font-semibold text-gray-900 bg-transparent border-none outline-none w-full placeholder:text-base placeholder:font-normal placeholder:text-gray-400 ${
-                        showValidationErrors && validationErrors.productName 
-                          ? 'ring-2 ring-rose-300 ring-opacity-60 rounded-lg px-2 py-1 bg-rose-50' 
-                          : ''
-                      }`}
-                      placeholder="Product name..."
-                      autoComplete="off"
-                      autoCorrect="on"
-                      autoCapitalize="words"
-                      spellCheck="true"
-                    />
-                  )}
-                </div>
-                {!isAIProcessing && aiMetadata && (
-                  <div className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-0.5" style={{ backgroundColor: '#FAFAF9' }}>
-                    <Sparkles className="w-2.5 h-2.5 text-gray-400" />
-                    <span className="text-xs text-gray-400">AI</span>
-                    <span className="text-xs text-gray-400 whitespace-nowrap">{certainty > 0 ? `${Math.round(certainty)}%` : 'N/A'}</span>
-                  </div>
-                )}
-              </div>
-              
-              {/* Product name validation error */}
-              {showValidationErrors && validationErrors.productName && (
-                <div className="mt-1 text-rose-600 text-sm font-medium">
-                  {validationErrors.productName}
-                </div>
-              )}
-              
-              {/* Overall Rating Section - moved here */}
-              <div className="mb-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <StarRating rating={rating} onChange={setRating} editable={true} showNumber={false} />
-                  <span className="text-sm font-medium text-gray-600">{getRatingLabel(rating)}</span>
-                  {!isAIProcessing && (
-                    <button
-                      onClick={() => setShowDetailedAttributes(!showDetailedAttributes)}
-                      className="flex items-center justify-center w-6 h-6 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      {showDetailedAttributes ? (
-                        <ChevronUp className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
-                    </button>
-                  )}
-                </div>
-                
-                {showDetailedAttributes && !isAIProcessing && (
-                  <div className="mt-4 space-y-4 bg-stone-50 rounded-xl p-4" style={{ backgroundColor: '#F1F1EF' }}>
-                    {/* Existing attributes */}
-                    {attributeNames.map((attributeName) => (
-                      <div key={attributeName} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-600 capitalize">{attributeName}</span>
-                          {/* Remove button - only show if more than 1 attribute */}
-                          {attributeNames.length > 1 && (
-                            <button
-                              onClick={() => removeAttribute(attributeName)}
-                              className="ml-1 w-4 h-4 flex items-center justify-center hover:bg-red-100 rounded-full text-gray-300 hover:text-red-500 transition-colors"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <RatingDots 
-                            rating={attributes[attributeName] || 3} 
-                            onChange={(newValue) => handleAttributeChange(attributeName, newValue)}
-                          />
-                          <span className="text-sm text-gray-500 w-3 font-medium">{attributes[attributeName] || 3}</span>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {/* Add new attribute and reset to default */}
-                    <div className="pt-2 border-t border-gray-200">
-                      {showAddAttribute ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={newAttributeName}
-                            onChange={(e) => setNewAttributeName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') addCustomAttribute();
-                              else if (e.key === 'Escape') {
-                                setShowAddAttribute(false);
-                                setNewAttributeName('');
-                              }
-                            }}
-                            placeholder="Attribute name..."
-                            className="flex-1 px-2 py-1 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
-                            autoFocus
-                          />
-                          <button
-                            onClick={addCustomAttribute}
-                            className="px-3 py-1 bg-teal-700 text-white rounded-lg text-sm hover:bg-teal-800 transition-colors"
-                            style={{ backgroundColor: '#1F6D5A' }}
-                          >
-                            Add
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowAddAttribute(false);
-                              setNewAttributeName('');
-                            }}
-                            className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          {/* + button matching the style from tags section */}
-                          <button
-                            onClick={() => setShowAddAttribute(true)}
-                            className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap hover:bg-teal-200 transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                          
-                          {/* Reset to default button */}
-                          <button
-                            onClick={resetToDefaultAttributes}
-                            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap hover:bg-gray-200 transition-colors"
-                            title="Reset to default attributes"
-                          >
-                            <div className="flex items-center gap-1">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              <span>Reset</span>
-                            </div>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-              </div>
-            </div>
-
-            {/* Personal Notes */}
-            <div className="mb-2 mt-2">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Your Notes</h3>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add your personal thoughts, memories, or additional notes..."
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
-                rows={3}
-                autoComplete="off"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                spellCheck="true"
-              />
-            </div>
-
-            <div className="flex items-center gap-3 mt-4 mb-4">
-                  <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-                    <span>Rarity:</span>
-                    <div className="flex items-center bg-gray-100 rounded-lg px-1 py-0.5">
-                      <button
-                        onClick={() => handleRarityChange(-1)}
-                        className="p-1 active:scale-95"
-                      >
-                        <ArrowLeft className="w-3 h-3 text-gray-600" />
-                      </button>
-                      <span className="text-xs font-medium text-gray-700 px-1 min-w-[60px] text-center">
-                        {getRarityLabel(rarity)}
-                      </span>
-                      <button
-                        onClick={() => handleRarityChange(1)}
-                        className="p-1 active:scale-95"
-                      >
-                        <ArrowRight className="w-3 h-3 text-gray-600" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-            {/* AI Summary & Details Section */}
-            <div className="mb-6 mt-2">
-              <button
-                onClick={() => setShowAISummary(!showAISummary)}
-                className="flex items-center justify-between w-full p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-              >
-                          <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-teal-600" />
-                  <span className="text-sm font-medium text-gray-900">AI Summary & Details</span>
-                </div>
-                {showAISummary ? (
-                  <ChevronUp className="w-4 h-4 text-gray-500" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                )}
-              </button>
-              
-              {showAISummary && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mt-3 space-y-4"
-                >
-                  {/* AI Description */}
-                  <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">Description</h4>
-                    <textarea
-                      value={qualityOverview}
-                      onChange={(e) => setQualityOverview(e.target.value)}
-                      placeholder={
-                        isAIProcessing 
-                          ? "AI is analyzing the image..." 
-                          : "Describe this item..."
-                      }
-                      className="w-full text-sm text-gray-700 leading-relaxed bg-white border border-gray-200 rounded-lg p-3 outline-none focus:border-teal-700 resize-none"
-                      rows={3}
-                      autoComplete="off"
-                      autoCorrect="on"
-                      autoCapitalize="sentences"
-                      spellCheck="true"
-                    />
-                  </div>
-                  
-                  {/* Allergens */}
-                  <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">Allergens</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {allergens.length > 0 ? (
-                        allergens.map((allergen) => (
-                          <span
-                            key={allergen}
-                            className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium"
-                          >
-                            {allergen}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-gray-500">No allergens detected</span>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            {/* Flavor Notes section removed per latest design */}
-
-            {/* Location */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium text-gray-900">Location</h3>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                {/* Place name (left) */}
-                <div className="flex-1">
-                  <input
-                    ref={placeInputRef}
-                    type="text"
-                    value={place}
-                    onChange={(e) => setPlace(e.target.value)}
-                    placeholder="Place name.."
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
-                    autoComplete="off"
-                    autoCorrect="on"
-                    autoCapitalize="words"
-                    spellCheck="true"
-                  />
-                </div>
-                
-                {/* Location with search (right) */}
-                <div className="relative min-w-[200px]">
-                  {showLocationSearch ? (
-                    <div className="absolute right-0 top-0 w-full z-10">
-                      <div className="bg-white rounded-lg shadow-xl border border-gray-200">
-                        {/* Search input */}
-                        <div className="p-2 border-b border-gray-100">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={locationSearch}
-                              onChange={(e) => setLocationSearch(e.target.value)}
-                              placeholder="Search location..."
-                              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
-                              autoFocus
-                              autoComplete="on"
-                              autoCorrect="on"
-                              autoCapitalize="words"
-                              spellCheck="true"
-                            />
-                            <MapPin className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
-                            {isSearchingLocation && (
-                              <div className="absolute right-2 top-2.5">
-                                <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        
-                                                  {/* Results */}
-                          <div className="max-h-48 overflow-y-auto">
-                            {/* Recently selected */}
-                            {recentLocations.length > 0 && locationSearch.length < 2 && (
-                              <>
-                                <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                                  Recently selected
-                                </div>
-                                {recentLocations.map((recentLocation, index) => (
-                                  <button
-                                    key={`recent-${index}`}
-                                    onClick={() => {
-                                      setLocation(recentLocation);
-                                      setLocationManuallySet(true);
-                                      setShowLocationSearch(false);
-                                      setLocationSearch('');
-                                    }}
-                                    className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
-                                  >
-                                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                      <div className="text-sm font-medium text-gray-900">
-                                        {recentLocation}
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                                {locationResults.length > 0 && (
-                                  <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                                    Search results
-                                  </div>
-                                )}
-                              </>
-                            )}
-                            
-                            {locationResults.length > 0 ? (
-                              locationResults.map((result, index) => (
-                              <button
-                                key={index}
-                                                                  onClick={() => {
-                                    // Format as city + country
-                                    const city = result.city;
-                                    const country = result.country;
-                                    const newLocation = [city, country].filter(Boolean).join(', ');
-                                    
-
-                                    setLocation(newLocation);
-                                    setLocationManuallySet(true); // Prevent auto-location from overriding
-                                    
-                                    // Save to recent locations
-                                    const updatedRecent = [
-                                      newLocation,
-                                      ...recentLocations.filter(loc => loc !== newLocation)
-                                    ].slice(0, 5); // Keep only 5 recent
-                                    setRecentLocations(updatedRecent);
-                                    localStorage.setItem('recentLocations', JSON.stringify(updatedRecent));
-                                    
-                                    setShowLocationSearch(false);
-                                    setLocationSearch('');
-                                  }}
-                                className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
-                              >
-                                <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {[result.city, result.country].filter(Boolean).join(', ')}
-                                  </div>
-                                  <div className="text-xs text-gray-500 truncate">
-                                    {result.display}
-                                  </div>
-                                </div>
-                              </button>
-                            ))
-                          ) : locationSearch.length >= 2 ? (
-                            <div className="p-3 text-center text-sm text-gray-500">
-                              No locations found
-                            </div>
-                          ) : (
-                            <div className="p-3 text-center text-sm text-gray-500">
-                              Type to search locations
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Close button */}
-                        <div className="p-2 border-t border-gray-100">
-                          <button
-                            onClick={() => {
-                              setShowLocationSearch(false);
-                              setLocationSearch('');
-                            }}
-                            className="w-full px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowLocationSearch(true)}
-                      className="w-full flex items-center justify-end gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors text-right"
-                    >
-                      <span className="truncate">{location}</span>
-                      <MapPin className="w-4 h-4 flex-shrink-0" />
-                    </button>
-                                      )}
-                  </div>
-              </div>
-            </div>
-
-            {/* List Selection */}
-            <div className="mb-16" ref={listDropdownRef}>
-              <div className="flex items-center justify-between mb-3" ref={listsRef}>
-                <h3 className={`text-sm font-medium ${
-                  showValidationErrors && validationErrors.selectedLists 
-                    ? 'text-red-600' 
-                    : 'text-gray-900'
-                }`}>
-                  Select lists {showValidationErrors && validationErrors.selectedLists && '*'}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowListDropdown(!showListDropdown);
-                    // Clear validation error when user interacts
-                    if (showValidationErrors && validationErrors.selectedLists) {
-                      setValidationErrors(prev => ({ ...prev, selectedLists: null }));
-                    }
-                  }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm relative transition-colors ${
-                    showValidationErrors && validationErrors.selectedLists
-                      ? 'bg-rose-50 text-rose-700 border-2 border-rose-300'
-                      : 'bg-gray-100'
-                  }`}
-                >
-                  {showListDropdown && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowListDropdown(false);
-                      }}
-                      className="absolute -left-12 px-2 py-1 bg-teal-700 text-white text-xs rounded-lg font-medium"
-                      style={{ backgroundColor: '#1F6D5A' }}
-                    >
-                      Done
-                    </button>
-                  )}
-                  <span>{getSelectedListName()}</span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${showListDropdown ? 'rotate-180' : ''}`} />
-                </button>
-              </div>
-
-              {/* List selection validation error */}
-              {showValidationErrors && validationErrors.selectedLists && (
-                <div className="mb-3 text-rose-600 text-sm font-medium">
-                  {validationErrors.selectedLists}
-                </div>
-              )}
-
-              {/* Dropdown */}
-              {showListDropdown && (
-                <>
-                  {/* Click away overlay */}
-                  <div 
-                    className="fixed inset-0 bg-transparent z-10"
-                    onClick={() => setShowListDropdown(false)}
-                  />
-                  <div className="relative">
-                    <div className="absolute top-0 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-200 z-20 max-h-80 overflow-y-auto mb-4" style={{ maxHeight: 'min(80vh, 320px)', marginBottom: '100px' }}>
-                      
-                      {/* List options */}
-                      <div className="py-2">
-                        {lists.length === 0 ? (
-                          <div className="p-3 text-center">
-                            <button
-                              onClick={() => setShowCreateListDialog(true)}
-                              className="text-teal-700 text-sm font-medium"
-                              style={{ color: '#1F6D5A' }}
-                            >
-                              Create your first list
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            {lists.map((list) => (
-                              <label key={list.id} className="flex items-center p-3 hover:bg-gray-50 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedLists.includes(list.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedLists([...selectedLists, list.id]);
-                                    } else {
-                                      setSelectedLists(selectedLists.filter(id => id !== list.id));
-                                    }
-                                  }}
-                                  className="mr-3"
-                                />
-                                <span className="text-sm text-gray-900 flex-1">{list.name}</span>
-                              </label>
-                            ))}
-                            <div className="border-t border-gray-100">
-                              <button
-                                onClick={() => setShowCreateListDialog(true)}
-                                className="w-full p-3 text-left text-teal-700 text-sm font-medium hover:bg-gray-50"
-                                style={{ color: '#1F6D5A' }}
-                              >
-                                + Create new list
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Public/Private Toggle */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-1">Share with community</h3>
-                  <p className="text-xs text-gray-500">
-                    {isPublic ? 'Others can see this in their feed' : 'Only you can see this item'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsPublic(!isPublic)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
-                    isPublic ? 'bg-teal-600' : 'bg-gray-200'
-                  }`}
-                  style={{ backgroundColor: isPublic ? '#1F6D5A' : undefined }}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
-                      isPublic ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-
-            {/* Action Bar */}
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handleSave}
-                disabled={isAIProcessing || isSaving}
-                className={`flex-1 h-13 rounded-full font-semibold text-base flex items-center justify-center gap-2 mr-4 transition-all duration-200 ${
-                  !isAIProcessing && !isSaving
-                    ? 'bg-teal-700 text-white hover:bg-teal-800 active:scale-95'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-                style={{ 
-                  backgroundColor: !isAIProcessing && !isSaving ? '#1F6D5A' : undefined,
-                  height: '52px' 
-                }}
-              >
-                {isSaving ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-5 h-5" />
-                    <span>Add to Lists</span>
-                  </>
-                )}
-              </button>
-
-              <div className="text-right relative">
-                {isEditingPrice ? (
-                  <div className="flex items-center justify-end gap-2">
-                    {/* Currency selector */}
-                    <button
-                      onClick={() => setShowCurrencySelector(true)}
-                      className="text-sm text-teal-700 hover:bg-gray-50 px-2 py-1 rounded border border-teal-200 transition-colors flex-shrink-0"
-                      style={{ color: '#1F6D5A', borderColor: '#1F6D5A' }}
-                    >
-                      {getCurrencyDisplay(currency)}
-                    </button>
-                    {/* Price input */}
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(formatPriceInputLocal(e.target.value))}
-                      onBlur={handlePriceSave}
-                      onKeyDown={(e) => e.key === 'Enter' && handlePriceSave()}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoFocus
-                      placeholder="0"
-                      className="text-lg font-semibold text-gray-900 bg-transparent border-b border-gray-300 focus:border-teal-700 outline-none text-right w-20"
-                    />
-                  </div>
-                ) : (
-                  <div 
-                    onClick={handlePriceEdit}
-                    className="cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors text-right"
-                  >
-                    <div className={`text-lg ${editPrice ? 'font-semibold text-gray-900' : 'font-medium text-gray-400'}`}>
-                      {editPrice ? `${editPrice} ${getCurrencyDisplay(currency)}` : 'Add price'}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Currency Selector Modal */}
-                {showCurrencySelector && (
-                  <>
-                    <div 
-                      className="fixed inset-0 bg-transparent z-10"
-                      onClick={() => setShowCurrencySelector(false)}
-                    />
-                    <div className="fixed inset-x-4 top-20 bottom-20 bg-white rounded-xl shadow-lg border border-gray-200 z-20 overflow-hidden flex flex-col">
-                      {/* Recent currencies */}
-                      {recentCurrencies.length > 0 && (
-                        <>
-                          <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                            Recent
-                          </div>
-                          {recentCurrencies.map((currencyCode) => {
-                            const currencyInfo = getCurrencyInfo(currencyCode);
-                            return (
-                              <button
-                                key={`recent-${currencyCode}`}
-                                onClick={() => handleCurrencySelect(currencyCode)}
-                                className="w-full p-3 text-left hover:bg-gray-50 flex items-center justify-between"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <span className="text-lg font-medium">{currencyInfo.symbol}</span>
-                                  <div>
-                                    <div className="text-sm font-medium text-gray-900">{currencyInfo.code}</div>
-                                    <div className="text-xs text-gray-500">{currencyInfo.name}</div>
-                                  </div>
-                                </div>
-                                {currency === currencyCode && (
-                                  <div className="w-2 h-2 bg-teal-600 rounded-full"></div>
-                                )}
-                              </button>
-                            );
-                          })}
-                          <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                            All currencies
-                          </div>
-                        </>
-                      )}
-                      
-                      {/* Popular currencies first */}
-                      <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                        Popular currencies
-                      </div>
-                      {allCurrencies.filter(c => c.popular).map((currencyInfo) => (
-                        <button
-                          key={currencyInfo.code}
-                          onClick={() => handleCurrencySelect(currencyInfo.code)}
-                          className="w-full p-3 text-left hover:bg-gray-50 flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg font-medium">{currencyInfo.symbol}</span>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{currencyInfo.code}</div>
-                              <div className="text-xs text-gray-500">{currencyInfo.name}</div>
-                            </div>
-                          </div>
-                          {currency === currencyInfo.code && (
-                            <div className="w-2 h-2 bg-teal-600 rounded-full"></div>
-                          )}
-                        </button>
-                      ))}
-                      
-                      {/* All other currencies */}
-                      <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                        All currencies ({allCurrencies.filter(c => !c.popular).length})
-                      </div>
-                      {allCurrencies.filter(c => !c.popular).map((currencyInfo) => (
-                        <button
-                          key={currencyInfo.code}
-                          onClick={() => handleCurrencySelect(currencyInfo.code)}
-                          className="w-full p-3 text-left hover:bg-gray-50 flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg font-medium">{currencyInfo.symbol}</span>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{currencyInfo.code}</div>
-                              <div className="text-xs text-gray-500">{currencyInfo.name}</div>
-                            </div>
-                          </div>
-                          {currency === currencyInfo.code && (
-                            <div className="w-2 h-2 bg-teal-600 rounded-full"></div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Slide-to-delete below actions */}
-            {isEditingExisting && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-500">Swipe to delete</span>
-                  <span className="text-xs text-gray-400">This cannot be undone</span>
-                </div>
-                <div className="w-full bg-stone-100 rounded-2xl p-1 select-none" style={{ backgroundColor: '#F1F1EF' }}>
-                  <div className="relative w-full h-12 bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                    {/* Red progress overlay for swipe feedback */}
-                    <div id="swipeProgress" className="absolute inset-y-0 left-0 bg-red-100" style={{ width: '0%' }} />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <span className="text-sm font-medium text-red-600">Swipe to delete</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      defaultValue="0"
-                      onChange={async (e) => {
-                    const val = Number(e.target.value);
-                        // Update progress overlay width as the user swipes
-                        const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
-                        if (progressEl) progressEl.style.width = `${val}%`;
-                    if (val >= 100 && !isDeleting) {
-                      const ok = window.confirm('Delete this item?');
-                      if (!ok) {
-                        e.target.value = 0;
-                            if (progressEl) progressEl.style.width = '0%';
-                        return;
-                      }
-                      try {
-                        setIsDeleting(true);
-                        const { error } = await deleteItemAndRelated(item.id);
-                        if (error) {
-                          console.error('Failed to delete item:', error);
-                          alert('Failed to delete item. Please try again.');
-                          e.target.value = 0;
-                              if (progressEl) progressEl.style.width = '0%';
-                          setIsDeleting(false);
-                          return;
-                        }
-                        onClose();
-                      } catch (error) {
-                        console.error('Error deleting item:', JSON.stringify({
-                          message: error.message,
-                          name: error.name,
-                          details: error.details,
-                          hint: error.hint,
-                          code: error.code,
-                          fullError: error
-                        }, null, 2));
-                        alert('Failed to delete item. Please try again.');
-                      } finally {
-                        setIsDeleting(false);
-                        e.target.value = 0;
-                            if (progressEl) progressEl.style.width = '0%';
-                      }
-                    }
-                      }}
-                       onMouseUp={(e) => {
-                         if (isDeleting) return;
-                         const val = Number(e.currentTarget.value);
-                         if (val < 100) {
-                           e.currentTarget.value = 0;
-                           const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
-                           if (progressEl) progressEl.style.width = '0%';
-                         }
-                       }}
-                       onTouchEnd={(e) => {
-                         if (isDeleting) return;
-                         const val = Number(e.currentTarget.value);
-                         if (val < 100) {
-                           e.currentTarget.value = 0;
-                           const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
-                           if (progressEl) progressEl.style.width = '0%';
-                         }
-                       }}
-                      className="w-full h-12 opacity-0"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Simple Create List Dialog */}
-      {showCreateListDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New List</h3>
-            <input
-              type="text"
-              value={newListName}
-              onChange={(e) => setNewListName(e.target.value)}
-              placeholder="e.g., Single Origin Chocolates"
-              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 mb-4"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateList()}
-              autoComplete="off"
-              autoCorrect="on"
-              autoCapitalize="words"
-              spellCheck="true"
-            />
-            {createListError && (
-              <p className="text-red-500 text-sm mb-4">{createListError}</p>
-            )}
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowCreateListDialog(false);
-                  setNewListName('');
-                  setCreateListError(null);
-                }}
-                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateList}
-                disabled={!newListName.trim()}
-                className="flex-1 px-4 py-3 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50"
-                style={{ backgroundColor: '#1F6D5A' }}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Full Screen Photo View */}
-      <AnimatePresence>
-        {showFullScreenPhoto && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black z-50 flex flex-col"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-sm">
-              <button
-                onClick={() => setShowFullScreenPhoto(false)}
-                className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center"
-              >
-                <X className="w-5 h-5 text-white" />
-              </button>
-              
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setShowFullScreenPhoto(false);
-                    setIsCropping(true);
-                  }}
-                  className="px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full flex items-center gap-2 text-white font-medium"
-                >
-                  <span>Crop</span>
-                </button>
-                
-                {/* Retry Analysis button */}
-                {(aiError || aiCancelled) && onRetryAI && (
-                  <button
-                    onClick={() => {
-                      setShowFullScreenPhoto(false);
-                      setAiCancelled(false);
-                      onRetryAI();
-                    }}
-                    className="px-4 py-2 bg-teal-600/80 backdrop-blur-sm rounded-full flex items-center gap-2 text-white font-medium hover:bg-teal-600"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Retry Analysis</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Full screen image */}
-            <div 
-              className="flex-1 flex items-center justify-center p-4"
-              onClick={(e) => {
-                // Click outside image to close
-                if (e.target === e.currentTarget) {
-                  setShowFullScreenPhoto(false);
-                }
-              }}
-            >
-              <SmartImage
-                src={currentImage}
-                alt="Food item"
-                className="max-w-full max-h-full object-contain"
-                style={{ 
-                  maxHeight: 'calc(100vh - 120px)',
-                  filter: getInstagramClassicFilter()
-                }}
-                useThumbnail={false}
-                size="original"
-                lazyLoad={false}
-              />
-            </div>
-
-            {/* Tap to close hint */}
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-black/60 rounded-lg px-4 py-2">
-              <p className="text-white text-sm text-center">
-                Tap outside image to close
-              </p>
-          </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modern Crop Interface */}
-      <AnimatePresence>
-        {isCropping && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black z-50 flex flex-col"
-          >
-            {/* Crop Header */}
-            <div className="flex items-center justify-between p-4 bg-black">
-              <button
-                onClick={() => {
-                  setZoom(1);
-                  setCrop({ x: 0, y: 0 });
-                  setIsCropping(false);
-                }}
-                className="px-4 py-2 text-white font-medium"
-              >
-                Cancel
-              </button>
-              
-              <h2 className="text-white font-semibold">Crop Photo</h2>
-              
-              <div className="flex items-center gap-3">
-                {/* Retry Analysis button */}
-                {(aiError || aiCancelled) && onRetryAI && aiRetryCount < 3 && (
-                  <button
-                    onClick={() => {
-                      setIsCropping(false);
-                      setAiCancelled(false);
-                      onRetryAI();
-                    }}
-                    className="px-4 py-2 bg-teal-600/80 text-white rounded-lg font-medium hover:bg-teal-600 flex items-center gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Retry Analysis</span>
-                  </button>
-                )}
-                
-                <button
-                  onClick={async () => {
-                    try {
-                      const cropped = await getCroppedImg();
-                      setCurrentImage(cropped);
-                      setZoom(1);
-                      setCrop({ x: 0, y: 0 });
-                      setIsCropping(false);
-                    } catch (error) {
-                      console.error('Crop error:', JSON.stringify({
-            message: error.message,
-            name: error.name,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-            fullError: error
-          }, null, 2));
-                    }
-                  }}
-                  className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-
-            {/* Simple Cropper */}
-            <div className="flex-1 relative">
-              <Cropper
-                image={currentImage}
-                crop={crop}
-                zoom={zoom}
-                aspect={1}
-                onCropChange={setCrop}
-                onCropComplete={onCropComplete}
-                onZoomChange={setZoom}
-                showGrid={true}
-                cropShape="rect"
-                style={{
-                  containerStyle: {
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: '#000'
-                  },
-                  cropAreaStyle: {
-                    border: '2px solid #fff'
-                  }
-                }}
-              />
-            </div>
-
-            {/* Simple Instructions */}
-            <div className="bg-black p-4">
-              <div className="text-center">
-                <p className="text-gray-400 text-sm">
-                  Pinch to zoom • Drag to move
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Rating Overlay (Sparkle Screen) */}
-      <AnimatePresence>
-        {showRatingOverlay && (
-          <RatingOverlay
-            image={currentImage}
-            onRatingSelect={handleRatingSelect}
-            isVisible={true}
+  const renderDetailsStep = () => (
+    <div className="h-full flex flex-col">
+      {/* Image Preview */}
+      <div className="relative h-64 bg-gray-100 flex-shrink-0">
+        {capturedImage && (
+          <img
+            src={capturedImage}
+            alt="Captured item"
+            className="w-full h-full object-cover"
           />
         )}
-      </AnimatePresence>
+        <button
+          onClick={() => setShowCropper(true)}
+          className="absolute top-4 right-4 w-10 h-10 bg-black bg-opacity-50 rounded-full flex items-center justify-center"
+        >
+          <Edit3 className="w-5 h-5 text-white" />
+        </button>
+      </div>
 
-      {/* First in World Banner */}
-      <FirstInWorldBanner
-        isVisible={showFirstInWorldBanner}
-        productName={firstInWorldProduct}
-        onComplete={() => setShowFirstInWorldBanner(false)}
-      />
+      {/* Form Content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* AI Section */}
+        {showAISection && (
+          <div className="bg-gray-50 rounded-2xl p-4">
+            <button
+              onClick={() => setShowAISection(!showAISection)}
+              className="w-full flex items-center justify-between mb-3"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                <span className="font-medium text-gray-900">AI Detection</span>
+                {aiData.certainty > 0 && (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                    {aiData.certainty}% confident
+                  </span>
+                )}
+              </div>
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${showAISection ? 'rotate-180' : ''}`} />
+            </button>
 
-      {/* AI Status Toast */}
-      <AnimatePresence>
-        {showAIToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.2 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
-            style={{ width: 'auto', maxWidth: '80%' }}
-          >
-            <div className="bg-gray-900 text-white rounded-full px-3 py-2 shadow-lg flex items-center gap-2 justify-center">
-              <span className="text-xs font-medium">{aiToastMessage}</span>
-              {aiError && (
-                <button
-                  onClick={onRetryAI}
-                  className="px-4 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 hover:bg-white/20"
+            <AnimatePresence>
+              {showAISection && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="space-y-3"
                 >
-                  Retry
-                </button>
+                  {isProcessingAI ? (
+                    <div className="flex items-center gap-3 py-4">
+                      <Loader className="w-5 h-5 animate-spin text-purple-600" />
+                      <span className="text-gray-600">Analyzing image...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Product Name</label>
+                        <input
+                          type="text"
+                          value={aiData.productName}
+                          onChange={(e) => setAiData(prev => ({ ...prev, productName: e.target.value }))}
+                          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-teal-700"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Description</label>
+                        <textarea
+                          value={aiData.species}
+                          onChange={(e) => setAiData(prev => ({ ...prev, species: e.target.value }))}
+                          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-teal-700 resize-none"
+                          rows={2}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Tags</label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {aiData.tags.map((tag, index) => (
+                            <span
+                              key={index}
+                              className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </motion.div>
               )}
-            </div>
-          </motion.div>
+            </AnimatePresence>
+          </div>
         )}
-      </AnimatePresence>
+
+        {/* Rating */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">Rating</label>
+          <div className="flex items-center gap-2">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                onClick={() => setRating(star)}
+                className="transition-colors"
+              >
+                <Star
+                  className={`w-8 h-8 ${
+                    star <= rating
+                      ? 'text-yellow-400 fill-yellow-400'
+                      : 'text-gray-300'
+                  }`}
+                />
+              </button>
+            ))}
+            <span className="ml-2 text-gray-600">{rating}/5</span>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="What did you think? Any details to remember..."
+            className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 resize-none"
+            rows={3}
+          />
+        </div>
+
+        {/* Location */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+          <div className="relative">
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Where did you find this?"
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700"
+            />
+            <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          </div>
+        </div>
+
+        {/* Price */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Price (Optional)</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700"
+                step="0.01"
+              />
+              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            </div>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 bg-white"
+            >
+              {mockCurrencies.map((curr) => (
+                <option key={curr.code} value={curr.code}>
+                  {curr.code}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Privacy Toggle */}
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+          <div>
+            <div className="font-medium text-gray-900">Make Public</div>
+            <div className="text-sm text-gray-600">Share with the community</div>
+          </div>
+          <button
+            onClick={() => setIsPublic(!isPublic)}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              isPublic ? 'bg-teal-600' : 'bg-gray-300'
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                isPublic ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* List Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">Add to Lists</label>
+          <div className="space-y-2">
+            {lists.map((list) => (
+              <button
+                key={list.id}
+                onClick={() => {
+                  setSelectedLists(prev => 
+                    prev.includes(list.id) 
+                      ? prev.filter(id => id !== list.id)
+                      : [...prev, list.id]
+                  );
+                }}
+                className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
+                  selectedLists.includes(list.id)
+                    ? 'border-teal-600 bg-teal-50'
+                    : 'border-gray-200 bg-white hover:bg-gray-50'
+                }`}
+              >
+                <div
+                  className="w-4 h-4 rounded-full"
+                  style={{ backgroundColor: list.color }}
+                />
+                <span className="flex-1 text-left font-medium text-gray-900">
+                  {list.name}
+                </span>
+                {selectedLists.includes(list.id) && (
+                  <Check className="w-4 h-4 text-teal-600" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div className="p-6 border-t border-gray-100">
+        <button
+          onClick={handleSave}
+          disabled={!aiData.productName || selectedLists.length === 0}
+          className="w-full py-4 bg-teal-700 text-white rounded-2xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: '#1F6D5A' }}
+        >
+          {editingItem ? 'Update Item' : 'Save Item'}
+        </button>
+      </div>
     </div>
+  );
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end"
+      >
+        <motion.div
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className="w-full bg-white rounded-t-3xl max-h-[90vh] flex flex-col relative"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-100">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {editingItem ? 'Edit Item' : 'Add New Item'}
+            </h2>
+            <button
+              onClick={onClose}
+              className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+
+          {/* Content */}
+          {step === 'capture' ? renderCaptureStep() : renderDetailsStep()}
+
+          {/* Rating Overlay */}
+          {showRatingOverlay && (
+            <RatingOverlay
+              image={capturedImage}
+              onRatingSelect={handleRatingSelect}
+              isVisible={showRatingOverlay}
+            />
+          )}
+
+          {/* Cropper Modal */}
+          {showCropper && (
+            <div className="absolute inset-0 bg-black z-50">
+              <div className="relative h-full">
+                <Cropper
+                  image={capturedImage}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={handleCropComplete}
+                />
+                <div className="absolute bottom-6 left-6 right-6 flex gap-3">
+                  <button
+                    onClick={() => setShowCropper(false)}
+                    className="flex-1 py-3 bg-gray-600 text-white rounded-2xl font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCropConfirm}
+                    className="flex-1 py-3 bg-teal-600 text-white rounded-2xl font-medium"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* First in World Banner */}
+          <FirstInWorldBanner
+            isVisible={showFirstInWorld}
+            productName={aiData.productName}
+            onComplete={() => setShowFirstInWorld(false)}
+          />
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 

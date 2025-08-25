@@ -10,7 +10,7 @@ export const useGlobalAchievements = () => {
     return {
       notifications: [],
       currentModal: null,
-      showAchievement: () => {}, // No-op function
+      showAchievement: (data) => console.log('Mock: Show achievement', data), // Mock function
       removeNotification: () => {},
       closeModal: () => {},
       clearAll: () => {}
@@ -26,7 +26,7 @@ export const AchievementProvider = ({ children }) => {
 
   // Add achievement notification to queue
   const showAchievement = (achievementData) => {
-    console.log('🏆 [Achievement] showAchievement called with:', achievementData);
+    console.log('Mock: Show achievement', achievementData);
     
     const { achievement, isGlobalFirst = false } = achievementData;
     
@@ -40,7 +40,7 @@ export const AchievementProvider = ({ children }) => {
     if (now - lastNotificationTime < cooldownPeriod && !shouldShowModal) {
       // Queue for later or batch with existing
       setNotifications(prev => [...prev, { ...achievementData, id: Date.now(), createdAt: now }]);
-      console.log('🏆 [Achievement] Queued notification due to cooldown');
+      console.log('Mock: Queued notification due to cooldown');
       return;
     }
 
@@ -49,11 +49,11 @@ export const AchievementProvider = ({ children }) => {
     if (shouldShowModal) {
       // Show full-screen modal for legendary/global first achievements
       setCurrentModal({ ...achievementData, id: Date.now(), createdAt: now });
-      console.log('🏆 [Achievement] Showing modal for:', achievement.name);
+      console.log('Mock: Showing modal for:', achievement.name);
     } else {
       // Show toast notification for common achievements
       setNotifications(prev => [...prev, { ...achievementData, id: Date.now(), createdAt: now }]);
-      console.log('🏆 [Achievement] Showing toast for:', achievement.name);
+      console.log('Mock: Showing toast for:', achievement.name);
     }
   };
 

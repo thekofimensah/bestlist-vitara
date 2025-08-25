@@ -10,14 +10,6 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import {
-  signInWithEmail,
-  signUpWithEmail,
-  signInWithGoogle,
-  signInWithFacebook,
-  supabase,
-  checkUsernameAvailability,
-} from '../lib/supabase';
 
 /** ----------   TOKEN MAP   ---------- **/
 const palette = {
@@ -47,7 +39,7 @@ const AuthView = () => {
   /* username availability state */
   const [usernameStatus, setUsernameStatus] = useState({ 
     checking: false, 
-    available: null, 
+    available: true, 
     error: null 
   });
 
@@ -62,36 +54,12 @@ const AuthView = () => {
 
   /* debounced username check */
   useEffect(() => {
-    if (!signUp || !username || username.length < 3) {
-      setUsernameStatus({ checking: false, available: null, error: null });
-      return;
-    }
-
-    if (!validUsername(username)) {
+    // Mock username validation
+    if (signUp && username && username.length >= 3 && validUsername(username)) {
+      setUsernameStatus({ checking: false, available: true, error: null });
+    } else if (signUp && username && username.length >= 3) {
       setUsernameStatus({ checking: false, available: false, error: 'Invalid format' });
-      return;
     }
-
-    setUsernameStatus({ checking: true, available: null, error: null });
-
-    const timeoutId = setTimeout(async () => {
-      try {
-        const { available, error } = await checkUsernameAvailability(username);
-        setUsernameStatus({ 
-          checking: false, 
-          available, 
-          error: error || null 
-        });
-      } catch (error) {
-        setUsernameStatus({ 
-          checking: false, 
-          available: false, 
-          error: 'Failed to check username' 
-        });
-      }
-    }, 500); // 500ms debounce
-
-    return () => clearTimeout(timeoutId);
   }, [username, signUp]);
 
   /* submit */
@@ -106,34 +74,24 @@ const AuthView = () => {
       return setMsg({ type: 'error', text: 'Enter full name' });
     if (signUp && !validUsername(username))
       return setMsg({ type: 'error', text: 'Username: 3-20 chars, letters/numbers/_' });
-    if (signUp && usernameStatus.checking)
-      return setMsg({ type: 'error', text: 'Checking username availability...' });
-    if (signUp && !usernameStatus.available)
-      return setMsg({ type: 'error', text: usernameStatus.error || 'Username not available' });
 
     setBusy(true);
 
-    /* api */
-    const email = mail.trim().toLowerCase();
-    const fn = signUp ? signUpWithEmail : signInWithEmail;
-    const { data, error } = signUp 
-      ? await fn(email, pwd, name.trim(), username.trim())
-      : await fn(email, pwd);
-
-    if (error) setMsg({ type: 'error', text: error.message });
-    else if (signUp && !data.session)
-      setMsg({ type: 'success', text: 'Check email to confirm account' });
-    else setMsg({ type: 'success', text: 'Signed in!' });
-
-    setBusy(false);
+    // Mock authentication
+    setTimeout(() => {
+      setMsg({ type: 'success', text: signUp ? 'Account created!' : 'Signed in!' });
+      setBusy(false);
+    }, 1500);
   };
 
   /* socials */
   const oauth = async (fn) => {
     setBusy(true);
-    const { error } = await fn();
-    if (error) setMsg({ type: 'error', text: error.message });
-    setBusy(false);
+    // Mock OAuth
+    setTimeout(() => {
+      setMsg({ type: 'success', text: 'Signed in!' });
+      setBusy(false);
+    }, 1000);
   };
 
   /* field styles */
@@ -192,7 +150,7 @@ const AuthView = () => {
           <motion.button
             whileTap={{ scale: 0.97 }}
             disabled={busy}
-            onClick={() => oauth(signInWithGoogle)}
+            onClick={() => oauth(() => {})}
             className="w-full flex items-center justify-center border border-gray-200 rounded-2xl py-3 hover:bg-gray-50"
           >
             <span className="text-gray-700 text-sm font-medium">
@@ -203,7 +161,7 @@ const AuthView = () => {
           <motion.button
             whileTap={{ scale: 0.97 }}
             disabled={busy}
-            onClick={() => oauth(signInWithFacebook)}
+            onClick={() => oauth(() => {})}
             className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white rounded-2xl py-3"
           >
             <span className="text-sm font-medium">Continue with Facebook</span>

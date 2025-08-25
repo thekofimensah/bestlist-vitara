@@ -4,14 +4,91 @@ import {
   ArrowLeft, Camera, LogOut, Shield, FileText, Settings,
   Star, User, List as ListIcon, Heart
 } from 'lucide-react';
-import { supabase, signOut, getUserPosts, getUserFollowers, getUserFollowing } from '../lib/supabase';
-import { useAuth } from '../hooks/useAuth';
-import useUserStats from '../hooks/useUserStats';
 import PrivacyPolicy from './secondary/PrivacyPolicy.jsx';
 import TermsOfService from './secondary/TermsOfService';
-import useAchievements from '../hooks/useAchievements';
-import SmartImage from './secondary/SmartImage';
-import { uploadImageToStorage } from '../lib/imageStorage';
+
+// Mock data
+const mockUser = {
+  id: 'mock-user-id',
+  email: 'user@example.com'
+};
+
+const mockUserProfile = {
+  id: 'mock-user-id',
+  username: 'foodlover',
+  display_name: 'Food Lover',
+  avatar_url: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
+  bio: 'Exploring the world one bite at a time'
+};
+
+const mockStats = {
+  photosTaken: 42,
+  listsCreated: 8,
+  uniqueIngredients: 156,
+  likesReceived: 89,
+  totalItems: 234,
+  avgRating: 4.2
+};
+
+const mockAchievements = [
+  {
+    id: 'ach1',
+    achievements: {
+      name: 'First Bite',
+      description: 'Saved your first item',
+      icon: '🍽️',
+      rarity: 'common'
+    },
+    earned_at: '2024-01-15T10:00:00Z',
+    count: 1
+  },
+  {
+    id: 'ach2',
+    achievements: {
+      name: 'Explorer',
+      description: 'Discovered 10 items',
+      icon: '🗺️',
+      rarity: 'rare'
+    },
+    earned_at: '2024-01-14T15:30:00Z',
+    count: 1
+  }
+];
+
+const mockPosts = [
+  {
+    id: 'post1',
+    items: {
+      name: 'Artisan Sourdough',
+      image_url: 'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg?auto=compress&cs=tinysrgb&w=400',
+      rating: 5
+    },
+    lists: { name: 'Bakery Finds' },
+    created_at: '2024-01-15T10:00:00Z'
+  },
+  {
+    id: 'post2',
+    items: {
+      name: 'Ethiopian Coffee',
+      image_url: 'https://images.pexels.com/photos/324028/pexels-photo-324028.jpeg?auto=compress&cs=tinysrgb&w=400',
+      rating: 4
+    },
+    lists: { name: 'Coffee Collection' },
+    created_at: '2024-01-14T15:30:00Z'
+  }
+];
+
+// Mock image component
+const MockImage = ({ src, alt, className, style, onClick, ...props }) => (
+  <img
+    src={src || 'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg?auto=compress&cs=tinysrgb&w=400'}
+    alt={alt}
+    className={className}
+    style={style}
+    onClick={onClick}
+    {...props}
+  />
+);
 
 /* Smaller, quieter stat pill used in "Additional Info" */
 const StatCard = ({ icon, value, label }) => (
@@ -27,27 +104,22 @@ const StatCard = ({ icon, value, label }) => (
   );
   
 const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUser }) => {
-  const { user, userProfile } = useAuth();
-
   const [loading, setLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
 
-  const { stats, loading: statsLoading, error: statsError } = useUserStats(user?.id);
-  const { getUserAchievements } = useAchievements();
-
   const [achievementsOpen, setAchievementsOpen] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [userAchievements, setUserAchievements] = useState([]);
+  const [userAchievements, setUserAchievements] = useState(mockAchievements);
   const [achievementsLoading, setAchievementsLoading] = useState(true);
 
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState(mockPosts);
   const [postsLoading, setPostsLoading] = useState(true);
-  const [postsCount, setPostsCount] = useState(0);
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
+  const [postsCount, setPostsCount] = useState(12);
+  const [followersCount, setFollowersCount] = useState(156);
+  const [followingCount, setFollowingCount] = useState(89);
 
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -57,8 +129,13 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
   // Followers/Following list views
   const [showFollowers, setShowFollowers] = useState(false);
   const [showFollowing, setShowFollowing] = useState(false);
-  const [followers, setFollowers] = useState([]);
-  const [following, setFollowing] = useState([]);
+  const [followers, setFollowers] = useState([
+    { id: '1', username: 'sarah_chen', display_name: 'Sarah Chen', avatar_url: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' },
+    { id: '2', username: 'mike_rodriguez', display_name: 'Mike Rodriguez', avatar_url: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }
+  ]);
+  const [following, setFollowing] = useState([
+    { id: '3', username: 'coffee_expert', display_name: 'Coffee Expert', avatar_url: 'https://images.pexels.com/photos/1181690/pexels-photo-1181690.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }
+  ]);
   const [peopleLoading, setPeopleLoading] = useState(false);
 
   // Achievement modal
@@ -69,10 +146,10 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
   // Initialize local avatar URL from profile; don't override if we've set a new one locally
   useEffect(() => {
     if (avatarUrl == null) {
-      setAvatarUrl(userProfile?.avatar_url || null);
+      setAvatarUrl(mockUserProfile?.avatar_url || null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile?.avatar_url]);
+  }, [mockUserProfile?.avatar_url]);
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
@@ -80,136 +157,51 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
 
   const handleAvatarFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file || !user?.id) return;
-    try {
-      const upload = await uploadImageToStorage(file, user.id);
-      if (upload?.error || !upload?.url) return;
-      await supabase.from('profiles').update({ avatar_url: upload.url }).eq('id', user.id);
-      // Optimistically reflect change without full reload
-      setAvatarUrl(upload.url);
-      // reset input so selecting the same file again triggers change
-      if (e.target) e.target.value = '';
-    } catch (err) {
-      console.error('Avatar upload error', err);
+    if (!file) return;
+    
+    // Mock avatar upload
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setAvatarUrl(e.target.result);
+      console.log('Mock: Avatar uploaded');
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset input
+    if (e.target) e.target.value = '';
     }
   };
 
   const handleSignOut = async () => {
-    try {
-      const { error } = await signOut();
-      if (error) console.error('❌ Sign out error:', error);
-    } catch (error) {
-      console.error('❌ Sign out exception:', error);
-    }
+    console.log('Mock: Sign out');
   };
 
-  // Real stats with fallbacks (totalItems is the "big number")
-  const userStats = {
-    photosTaken: stats?.photosTaken || 0,
-    listsCreated: stats?.listsCreated || 0,
-    uniqueIngredients: stats?.uniqueIngredients || 0,
-    likesReceived: stats?.likesReceived || 0,
-    totalItems: stats?.totalItems || 0,
-    avgRating: stats?.avgRating || 0,
-  };
+  // Use mock stats
+  const userStats = mockStats;
 
   /* Load achievements, counts and initial posts */
   useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        setAchievementsLoading(true);
-        const ach = await getUserAchievements(user?.id);
-        if (alive) setUserAchievements(ach || []);
-      } finally {
-        if (alive) setAchievementsLoading(false);
-      }
-
-      try {
-        setPostsLoading(true);
-        if (user?.id) {
-          const [followersRes, followingRes, postsCountRes] = await Promise.all([
-            getUserFollowers(user.id),
-            getUserFollowing(user.id),
-            supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_public', true),
-          ]);
-
-          if (alive) {
-            setFollowersCount(followersRes.data?.length || 0);
-            setFollowingCount(followingRes.data?.length || 0);
-            setPostsCount(postsCountRes?.count || 0);
-          }
-
-          const pageSize = 8;
-          const { data } = await getUserPosts(user.id, pageSize, 0);
-          if (alive) {
-            setPosts(data || []);
-            setOffset((data?.length || 0));
-            setHasMore((data?.length || 0) === pageSize);
-          }
-        }
-      } catch (e) {
-        if (alive) {
-          setPosts([]);
-          setHasMore(false);
-        }
-      } finally {
-        if (alive) setPostsLoading(false);
-      }
-    };
-    load();
-    return () => { alive = false; };
-  }, [user?.id, getUserAchievements]);
+    // Mock loading
+    setTimeout(() => {
+      setAchievementsLoading(false);
+      setPostsLoading(false);
+    }, 1000);
+  }, []);
 
   /* Infinite scroll */
   useEffect(() => {
-    if (!hasMore || postsLoading) return;
-    const el = sentinelRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(async (entries) => {
-      const first = entries[0];
-      if (first.isIntersecting && !loadingMore) {
-        try {
-          setLoadingMore(true);
-          const pageSize = 8;
-          const { data } = await getUserPosts(user.id, pageSize, offset);
-          const newItems = data || [];
-          setPosts((prev) => [...prev, ...newItems]);
-          setOffset((prev) => prev + newItems.length);
-          if (newItems.length < pageSize) setHasMore(false);
-        } finally {
-          setLoadingMore(false);
-        }
-      }
-    }, { root: null, rootMargin: '200px', threshold: 0 });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [hasMore, postsLoading, loadingMore, offset, user?.id]);
+    // Mock infinite scroll - disabled for UI demo
+  }, []);
 
   if (showPrivacyPolicy) return <PrivacyPolicy onBack={() => setShowPrivacyPolicy(false)} />;
   if (showTermsOfService) return <TermsOfService onBack={() => setShowTermsOfService(false)} />;
 
-  // Followers/following loaders
-  const loadPeople = async (type) => {
-    if (!user?.id) return;
-    try {
-      setPeopleLoading(true);
-      if (type === 'followers') {
-        const res = await getUserFollowers(user.id);
-        const ids = (res.data || []).map((f) => f.follower_id);
-        if (ids.length === 0) { setFollowers([]); return; }
-        const { data: profiles } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', ids);
-        setFollowers(profiles || []);
-      } else {
-        const res = await getUserFollowing(user.id);
-        const ids = (res.data || []).map((f) => f.following_id);
-        if (ids.length === 0) { setFollowing([]); return; }
-        const { data: profiles } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', ids);
-        setFollowing(profiles || []);
-      }
-    } finally {
+  // Mock people loader
+  const loadPeople = (type) => {
+    setPeopleLoading(true);
+    setTimeout(() => {
       setPeopleLoading(false);
-    }
+    }, 500);
   };
 
   if (showFollowers || showFollowing) {
@@ -273,7 +265,7 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile</h3>
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
             <div className="text-sm text-gray-600">Email</div>
-            <div className="text-base text-gray-900">{user?.email}</div>
+            <div className="text-base text-gray-900">{mockUser?.email}</div>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">App</h3>
             <div className="space-y-3">
@@ -338,9 +330,9 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
             {/* Username + email (right col, first row) */}
             <div className="min-w-0">
               <div className="text-base font-semibold text-gray-900 truncate">
-                {userProfile?.display_name || userProfile?.username || user?.email?.split('@')[0] || 'User'}
+                {mockUserProfile?.display_name || mockUserProfile?.username || mockUser?.email?.split('@')[0] || 'User'}
               </div>
-              <div className="text-sm text-gray-500 truncate">{user?.email}</div>
+              <div className="text-sm text-gray-500 truncate">{mockUser?.email}</div>
             </div>
 
             {/* Counts row (right col, second row) */}
@@ -427,16 +419,13 @@ const ProfileView = ({ onBack, isRefreshing = false, onEditItem, onNavigateToUse
                     className="relative cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onEditItem && onEditItem(post.items, post.lists);
+                      console.log('Mock: Edit item', post.items?.name);
                     }}
                   >
-                    <SmartImage
+                    <MockImage
                       src={post.items?.image_url}
                       alt={post.items?.name || 'Item'}
                       className="w-full aspect-square object-cover rounded-xl"
-                      useThumbnail={true}
-                      size="medium"
-                      lazyLoad={true}
                     />
                   </div>
 

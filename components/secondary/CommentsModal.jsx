@@ -1,24 +1,47 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, User } from 'lucide-react';
-import { commentOnPost, getPostComments } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
+
+// Mock data
+const mockComments = [
+  {
+    id: 'comment1',
+    content: 'This looks amazing! Where did you find it?',
+    created_at: '2024-01-15T14:00:00Z',
+    profiles: {
+      username: 'sarah_chen',
+      display_name: 'Sarah Chen',
+      avatar_url: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop'
+    },
+    replies: [
+      {
+        id: 'reply1',
+        content: 'Downtown bakery on 5th street!',
+        created_at: '2024-01-15T14:05:00Z',
+        profiles: {
+          username: 'foodlover',
+          display_name: 'Food Lover',
+          avatar_url: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop'
+        }
+      }
+    ]
+  }
+];
 
 const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
-  const [comments, setComments] = useState([]);
+  const [comments, setComments] = useState(mockComments);
   const [newComment, setNewComment] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // { commentId, username }
-  const { userProfile } = useAuth();
+  
+  const mockUserProfile = {
+    username: 'foodlover',
+    display_name: 'Food Lover',
+    avatar_url: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop'
+  };
+  
   const inputRef = useRef(null);
-
-  // Load comments when modal opens
-  useEffect(() => {
-    if (isOpen && post?.id) {
-      loadComments();
-    }
-  }, [isOpen, post?.id]);
 
   // Focus input when modal opens
   useEffect(() => {
@@ -29,110 +52,44 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
     }
   }, [isOpen]);
 
-  const loadComments = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await getPostComments(post.id);
-      if (error) {
-        console.error('❌ Error loading comments:', error?.message || 'Unknown error');
-        console.error('❌ Error details:', JSON.stringify({
-          message: error?.message,
-          details: error?.details,
-          hint: error?.hint,
-          code: error?.code,
-          name: error?.name
-        }, null, 2));
-      } else {
-        setComments(data || []);
-      }
-    } catch (error) {
-      console.error('❌ Error loading comments exception:', error?.message || 'Unknown error');
-      console.error('❌ Exception details:', JSON.stringify({
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code,
-        name: error?.name
-      }, null, 2));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmitComment = async () => {
     if (!newComment.trim() || submitting) return;
 
-    try {
-      setSubmitting(true);
-      const { data, error } = await commentOnPost(
-        post.id, 
-        newComment.trim(), 
-        replyingTo?.commentId || null
-      );
-      
-      if (error) {
-        console.error('❌ Error posting comment:', error?.message || 'Unknown error');
-        console.error('❌ Error details:', JSON.stringify({
-          message: error?.message,
-          details: error?.details,
-          hint: error?.hint,
-          code: error?.code,
-          name: error?.name
-        }, null, 2));
-        return;
-      }
-
-      // Format the new comment
+    setSubmitting(true);
+    
+    // Mock comment submission
+    setTimeout(() => {
       const formattedComment = {
-        id: data.id,
-        content: data.content,
-        created_at: data.created_at,
-        parent_id: data.parent_id,
-        profiles: {
-          username: userProfile?.username,
-          display_name: userProfile?.display_name,
-          avatar_url: userProfile?.avatar_url
-        },
+        id: `comment_${Date.now()}`,
+        content: newComment.trim(),
+        created_at: new Date().toISOString(),
+        parent_id: replyingTo?.commentId || null,
+        profiles: mockUserProfile,
         replies: []
       };
 
       // Add comment to the appropriate place
       if (replyingTo?.commentId) {
-        // This is a reply - add it to the parent comment's replies
         setComments(prev => prev.map(comment => 
           comment.id === replyingTo.commentId 
             ? { ...comment, replies: [...comment.replies, formattedComment] }
             : comment
         ));
       } else {
-        // This is a top-level comment
         setComments(prev => [...prev, formattedComment]);
       }
 
       setNewComment('');
       setReplyingTo(null);
+      setSubmitting(false);
       
-      // Notify parent component to update comment count
-      if (onCommentAdded) {
-        onCommentAdded(post.id);
-      }
+      console.log('Mock: Comment added');
       
       // Provide haptic feedback
       if (navigator.vibrate) {
         navigator.vibrate(50);
       }
-    } catch (error) {
-      console.error('❌ Error submitting comment exception:', error?.message || 'Unknown error');
-      console.error('❌ Exception details:', JSON.stringify({
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code,
-        name: error?.name
-      }, null, 2));
-    } finally {
-      setSubmitting(false);
-    }
+    }, 1000);
   };
 
   const handleReplyToComment = (comment) => {
@@ -325,9 +282,9 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
               
               <div className="flex gap-3 items-end">
                 <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-                  {userProfile?.avatar_url ? (
+                  {mockUserProfile?.avatar_url ? (
                     <img
-                      src={userProfile.avatar_url}
+                      src={mockUserProfile.avatar_url}
                       alt="Your avatar"
                       className="w-full h-full object-cover"
                     />
@@ -374,4 +331,4 @@ const CommentsModal = ({ isOpen, onClose, post, onCommentAdded }) => {
   );
 };
 
-export default CommentsModal; 
+export default CommentsModal;

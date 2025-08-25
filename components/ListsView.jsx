@@ -2,9 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { Plus, MoreHorizontal, Star, X, ArrowLeft, GripVertical, Share, Trash2 } from 'lucide-react';
 import ShareModal from './secondary/ShareModal';
-import LoadingSpinner from '../ui/LoadingSpinner';
-import SmartImage from './secondary/SmartImage';
-import { deleteItemAndRelated } from '../lib/supabase';
+
+// Mock image component
+const MockImage = ({ src, alt, className, style, onClick, ...props }) => (
+  <img
+    src={src || 'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg?auto=compress&cs=tinysrgb&w=400'}
+    alt={alt}
+    className={className}
+    style={style}
+    onClick={onClick}
+    {...props}
+  />
+);
 
 
 const StarRating = ({ rating }) => {
@@ -71,14 +80,11 @@ const ItemTile = ({
       }}
     >
       <div className="relative">
-        <SmartImage
+        <MockImage
           src={item.image_url || item.image}
           alt={item.name}
           className="w-26 h-26 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
           style={{ width: '200px', height: '200px' }}
-          useThumbnail={true}
-          size="small"
-          lazyLoad={true}
           onClick={(e) => {
             e.stopPropagation();
             if (showSelection) {
@@ -310,30 +316,16 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleBulkDelete = async () => {
     if (!selectionEnabled || selectedItemIds.length === 0) return;
-    try {
-      const errors = [];
-      for (const id of selectedItemIds) {
-        const { error } = await deleteItemAndRelated(id);
-        if (error) errors.push({ id, error });
-      }
-      // Optimistic update of data in view
-      setReorderedLists(prev => prev.map(l => ({
-        ...l,
-        items: (l.items || []).filter(it => !selectedItemIds.includes(it.id)),
-        stayAways: (l.stayAways || []).filter(it => !selectedItemIds.includes(it.id))
-      })));
-      if (errors.length > 0) {
-        console.error('Some deletions failed:', JSON.stringify(errors, null, 2));
-        const firstMsg = errors[0]?.error?.message || errors[0]?.error || 'Unknown error';
-        alert(`Failed to delete ${errors.length} item(s). First error: ${firstMsg}`);
-      }
-    } catch (error) {
-      console.error('Error deleting selected items:', error);
-      alert('Failed to delete selected items. Please try again.');
-    } finally {
-      setSelectedItemIds([]);
-      setSelectionEnabled(false);
-    }
+    
+    console.log('Mock: Delete selected items', selectedItemIds);
+    // Mock optimistic update
+    setReorderedLists(prev => prev.map(l => ({
+      ...l,
+      items: (l.items || []).filter(it => !selectedItemIds.includes(it.id)),
+      stayAways: (l.stayAways || []).filter(it => !selectedItemIds.includes(it.id))
+    })));
+    setSelectedItemIds([]);
+    setSelectionEnabled(false);
   };
 
   const handleItemImageTap = (item) => {
@@ -438,14 +430,16 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   const handleRenameList = async () => {
     if (renameDialog.list && renameDialog.newName.trim()) {
-      await onUpdateList(renameDialog.list.id, { name: renameDialog.newName.trim() });
+      console.log('Mock: Rename list', { id: renameDialog.list.id, name: renameDialog.newName.trim() });
+      onUpdateList?.(renameDialog.list.id, { name: renameDialog.newName.trim() });
       setRenameDialog({ isOpen: false, list: null, newName: '' });
     }
   };
 
   const handleDeleteList = async () => {
     if (deleteDialog.list) {
-      await onDeleteList(deleteDialog.list.id);
+      console.log('Mock: Delete list', deleteDialog.list.id);
+      onDeleteList?.(deleteDialog.list.id);
       setDeleteDialog({ isOpen: false, list: null });
     }
   };

@@ -1,7 +1,14 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Link2, Share, ExternalLink } from 'lucide-react';
-import { appConfig, deepLinkUrl } from '../../lib/appConfig';
+
+// Mock app config
+const mockAppConfig = {
+  displayName: 'Breadcrumbs',
+  name: 'breadcrumbs'
+};
+
+const mockDeepLinkUrl = 'breadcrumbs://';
 
 // WhatsApp Icon Component
 const WhatsAppIcon = ({ className }) => (
@@ -12,14 +19,14 @@ const WhatsAppIcon = ({ className }) => (
 
 const ShareModal = ({ isOpen, onClose, post, list }) => {
   // Use deep link URL for direct app opening
-  const appUrl = deepLinkUrl;
+  const appUrl = mockDeepLinkUrl;
 
   // Determine if we're sharing a post or a list
   const isSharingList = !!list;
   
   const shareData = isSharingList ? {
     title: `${list?.name} by ${list?.user?.name || 'User'}`,
-    text: `Check out this amazing list "${list?.name}" on ${appConfig.displayName}! ${list?.itemCount ? `Contains ${list.itemCount} items.` : ''}`,
+    text: `Check out this amazing list "${list?.name}" on ${mockAppConfig.displayName}! ${list?.itemCount ? `Contains ${list.itemCount} items.` : ''}`,
     url: `${appUrl}/list/${list?.id}` // This will be the specific list URL
   } : {
     title: `${post?.item_name} from ${post?.list_name}`,
@@ -28,44 +35,26 @@ const ShareModal = ({ isOpen, onClose, post, list }) => {
   };
 
   const handleWhatsAppShare = () => {
-    const message = `Check out my post on ${appConfig.displayName}!\n\n${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
+    const message = `Check out my post on ${mockAppConfig.displayName}!\n\n${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+    console.log('Mock: Share to WhatsApp', whatsappUrl);
     onClose();
   };
 
   const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(shareData.url);
-      
-      // Show success feedback
-      console.log('✅ Link copied to clipboard!');
-      
-      // Haptic feedback
-      if (navigator.vibrate) {
-        navigator.vibrate(50);
-      }
-      
-      onClose();
-    } catch (error) {
-      console.error('❌ Failed to copy link:', error);
+    console.log('Mock: Copy link', shareData.url);
+    
+    // Haptic feedback
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
     }
+    
+    onClose();
   };
 
   const handleNativeShare = async () => {
-    try {
-      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-        await navigator.share(shareData);
-      } else {
-        // Fallback to copy
-        await handleCopyLink();
-      }
-      onClose();
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('❌ Error sharing:', error);
-      }
-    }
+    console.log('Mock: Native share', shareData);
+    onClose();
   };
 
   const shareOptions = [

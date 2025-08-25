@@ -473,13 +473,22 @@ const App = () => {
 
   // OPTIMIZED: Memoized navigation with reduced operations
   const navigateToScreen = React.useCallback((screen) => {
+    console.log('🔧 [App] navigateToScreen called with screen:', screen, 'from currentScreen:', currentScreen);
     // Skip navigation if already on the target screen
-    if (currentScreen === screen) return;
+    if (currentScreen === screen) {
+      console.log('🔧 [App] Already on target screen, skipping navigation');
+      return;
+    }
     
     setPreviousScreen(currentScreen);
     setCurrentScreen(screen);
-    setSelectedList(null);
+    // Don't clear selectedList when navigating to list-detail
+    if (screen !== 'list-detail') {
+      setSelectedList(null);
+    }
     setSelectedItem(null);
+    
+    console.log('🔧 [App] Navigation state updated, new screen:', screen);
     
     // Defer scroll reset to avoid blocking UI
     requestAnimationFrame(() => {
@@ -1341,8 +1350,12 @@ const App = () => {
   };
 
   const handleSelectList = (list) => {
+    console.log('🔧 [App] handleSelectList called with list:', list?.name, list?.id);
+    // Set both the list and screen in the same render cycle
     setSelectedList(list);
-    navigateToScreen('list-detail');
+    setCurrentScreen('list-detail');
+    setPreviousScreen('lists');
+    console.log('🔧 [App] List selection and navigation completed');
   };
 
   const handleBackFromList = () => {
@@ -1493,6 +1506,7 @@ const App = () => {
   };
 
   const renderScreen = () => {
+    console.log('🔧 [App] renderScreen called with currentScreen:', currentScreen, 'selectedList:', selectedList?.name);
     // Only handle detail screens - keep these as conditional renders (they should reload when context changes)
     if (currentScreen === 'post-detail' && selectedPostId) {
       return (
@@ -1525,6 +1539,7 @@ const App = () => {
     }
 
     if (currentScreen === 'list-detail' && selectedList) {
+      console.log('🔧 [App] Rendering ShowItemsInListView for list:', selectedList?.name, selectedList?.id);
       return (
         <PullToRefresh onRefresh={handleListDetailRefresh} disabled={refreshing}>
           <ShowItemsInListView 
@@ -1539,6 +1554,16 @@ const App = () => {
             onItemDeleted={handleItemDeleted}
           />
         </PullToRefresh>
+      );
+    } else if (currentScreen === 'list-detail' && !selectedList) {
+      console.log('🔧 [App] List detail screen requested but no list selected, showing loading...');
+      return (
+        <div className="min-h-screen bg-stone-50 flex items-center justify-center" style={{ backgroundColor: '#F6F6F4' }}>
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-teal-700 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading list...</p>
+          </div>
+        </div>
       );
     }
 

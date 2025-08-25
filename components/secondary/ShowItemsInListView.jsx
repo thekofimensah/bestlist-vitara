@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, MoreHorizontal, Search, X, Star, Plus, Trash2, Share } from 'lucide-react';
 import AddItemModal from '../AddItemModal';

@@ -5,27 +5,19 @@ const SimpleVariationPopup = ({ isOpen, anchorRect, word, variations, onSelect, 
   const [hoverKey, setHoverKey] = useState(null);
   const isActiveDragRef = useRef(false);
   const globalTouchHandlerRef = useRef(null);
-  const lastHapticKey = useRef(null); // Track last haptic to prevent rapid fire
-  const currentHoverKeyRef = useRef(null); // Ref to track current selection for touch end
+  const lastHapticKey = useRef(null);
+  const currentHoverKeyRef = useRef(null);
 
   // Reset drag state when popup opens/closes
   useEffect(() => {
     if (isOpen) {
-      isActiveDragRef.current = hasActiveTouch; // Start active if touch is ongoing
+      isActiveDragRef.current = hasActiveTouch;
       setHoverKey(null);
-      currentHoverKeyRef.current = null; // Reset selection tracking
-      lastHapticKey.current = null; // Reset haptic tracking
+      currentHoverKeyRef.current = null;
+      lastHapticKey.current = null;
       
       if (hasActiveTouch) {
         try { console.log('🔄 [SimpleVariationPopup] Opening with active touch - listening globally'); } catch {}
-        
-        // Set up global touch handlers to capture ongoing touches
-        const centerX = anchorRect ? anchorRect.left + anchorRect.width / 2 : window.innerWidth / 2;
-        const centerY = anchorRect ? anchorRect.top + anchorRect.height / 2 : window.innerHeight / 2;
-        
-        const { enhanced, opposite, synonyms = [] } = variations || {};
-        const left = synonyms[0] || null;
-        const right = synonyms[1] || null;
         
         const handleGlobalTouchMove = (e) => {
           if (!isActiveDragRef.current) return;
@@ -35,105 +27,69 @@ const SimpleVariationPopup = ({ isOpen, anchorRect, word, variations, onSelect, 
           
           const x = touch.clientX;
           const y = touch.clientY;
-          const dx = x - centerX;
-          const dy = y - centerY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
           
-          let key = null;
+          // Find closest word with generous touch areas
+          let bestMatch = null;
+          let closestDistance = Infinity;
           
-          // Exit if too far from center (beyond the circle boundary)
-          if (distance > 150) {
-            key = 'exit';
-          } else if (distance > 8) {
-            // Find closest positioned word
-            let closestWord = null;
-            let closestDistance = Infinity;
-            
-            wordPositions.forEach(pos => {
-              const wordDx = x - pos.x;
-              const wordDy = y - pos.y;
-              const wordDistance = Math.sqrt(wordDx * wordDx + wordDy * wordDy);
-              
-              // Reasonable activation radius for circular layout
-              if (wordDistance < closestDistance && wordDistance < 50) {
-                closestDistance = wordDistance;
-                closestWord = pos;
-              }
-            });
-            
-            if (closestWord) {
-              key = closestWord.type;
-            }
+          // Check center word
+          const centerDx = x - centerPosition.x;
+          const centerDy = y - centerPosition.y;
+          const centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+          if (centerDistance < 80) {
+            bestMatch = 'original';
+            closestDistance = centerDistance;
           }
           
-          try { console.log('🌐 [SimpleVariationPopup] Global drag', JSON.stringify({ x, y, dx, dy, distance, key }, null, 2)); } catch {}
+          // Check positioned words
+          positionedWords.forEach(pos => {
+            const wordDx = x - pos.x;
+            const wordDy = y - pos.y;
+            const wordDistance = Math.sqrt(wordDx * wordDx + wordDy * wordDy);
+            
+            if (wordDistance < 80 && wordDistance < closestDistance) {
+              closestDistance = wordDistance;
+              bestMatch = pos.type;
+            }
+          });
           
-          // Add haptic feedback when selection changes (debounced)
-          if (key !== hoverKey && key !== null && key !== lastHapticKey.current) {
+          // Haptic feedback on selection change
+          if (bestMatch !== hoverKey && bestMatch !== null && bestMatch !== lastHapticKey.current) {
             if (navigator.vibrate) {
-              navigator.vibrate(5); // Very subtle, only on actual change
-              lastHapticKey.current = key; // Remember this to prevent rapid fire
+              navigator.vibrate(5);
+              lastHapticKey.current = bestMatch;
             }
           }
           
-          setHoverKey(key);
-          currentHoverKeyRef.current = key; // Keep ref in sync for touch end
+          setHoverKey(bestMatch);
+          currentHoverKeyRef.current = bestMatch;
         };
         
         const handleGlobalTouchEnd = (e) => {
-          const currentKey = currentHoverKeyRef.current; // Use ref instead of state
-          try { 
-            console.log('🌐 [SimpleVariationPopup] Global touch end', { 
-              currentKey,
-              enhanced,
-              opposite,
-              left,
-              right,
-              hasOnSelect: !!onSelect,
-              hasOnClose: !!onClose
-            }); 
-          } catch {}
+          const currentSelection = currentHoverKeyRef.current;
           isActiveDragRef.current = false;
           
-          if (!currentKey) {
-            try { console.log('🎯 [SimpleVariationPopup] No direction - selecting original word'); } catch {}
-            onSelect?.(word); // Select the original word if no direction chosen
-            return;
-          }
-          
-          if (currentKey === 'exit') {
-            try { console.log('🚪 [SimpleVariationPopup] Exit distance reached - closing'); } catch {}
+          if (!currentSelection) {
             onClose?.();
             return;
           }
           
-          // Find the chosen word from positioned words
-          const chosenWord = wordPositions.find(pos => pos.type === currentKey);
-          const chosen = chosenWord?.text;
+          if (currentSelection === 'original') {
+            setHoverKey(null);
+            onSelect?.(word);
+            return;
+          }
+          
+          const chosenWord = positionedWords.find(pos => pos.type === currentSelection);
           setHoverKey(null);
           
-          if (chosen) {
-            try { 
-              console.log('✅ [SimpleVariationPopup] Calling onSelect', { 
-                key: currentKey, 
-                chosen,
-                onSelectType: typeof onSelect
-              }); 
-            } catch {}
-            onSelect?.(chosen);
+          if (chosenWord?.text) {
+            onSelect?.(chosenWord.text);
           } else {
-            try { 
-              console.log('❌ [SimpleVariationPopup] No valid choice', { 
-                key: currentKey, 
-                mapKeys: Object.keys(map),
-                mapValues: Object.values(map)
-              }); 
-            } catch {}
             onClose?.();
           }
         };
         
-        // Add global listeners
         document.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
         document.addEventListener('touchend', handleGlobalTouchEnd, { passive: false });
         
@@ -143,43 +99,30 @@ const SimpleVariationPopup = ({ isOpen, anchorRect, word, variations, onSelect, 
         };
       }
     } else {
-      // Reset all state when closing
       isActiveDragRef.current = false;
       setHoverKey(null);
       currentHoverKeyRef.current = null;
       lastHapticKey.current = null;
       
-      // Clean up global handlers
       if (globalTouchHandlerRef.current) {
         globalTouchHandlerRef.current();
         globalTouchHandlerRef.current = null;
       }
     }
-    
-    try {
-      console.log('🎪 [SimpleVariationPopup] Render state', JSON.stringify({
-        isOpen,
-        word,
-        hasVariations: !!variations,
-        anchorRect: anchorRect ? 'present' : 'missing',
-        hasActiveTouch
-      }, null, 2));
-    } catch {}
   }, [isOpen, word, variations, anchorRect, hasActiveTouch, onSelect, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
+    
     const onKey = (e) => e.key === 'Escape' && onClose?.();
     document.addEventListener('keydown', onKey);
     
-    // Prevent scrolling during popup interaction
     const preventScroll = (e) => {
       if (isActiveDragRef.current) {
         e.preventDefault();
       }
     };
     
-    // Add with non-passive listeners to allow preventDefault
     document.addEventListener('touchmove', preventScroll, { passive: false });
     document.addEventListener('touchstart', preventScroll, { passive: false });
     
@@ -192,272 +135,339 @@ const SimpleVariationPopup = ({ isOpen, anchorRect, word, variations, onSelect, 
 
   if (!isOpen || !variations) return null;
 
-  try {
-    console.log('🎪 [SimpleVariationPopup] Rendering', JSON.stringify({
-      isOpen,
-      word,
-      hasVariations: !!variations,
-      hasAnchorRect: !!anchorRect,
-      variationsKeys: variations ? Object.keys(variations) : 'none'
-    }, null, 2));
-  } catch {}
+  // Calculate center position
+  const centerX = anchorRect ? anchorRect.left + anchorRect.width / 2 : window.innerWidth / 2;
+  const centerY = anchorRect ? anchorRect.top + anchorRect.height / 2 : window.innerHeight / 2;
+  const centerPosition = { x: centerX, y: centerY };
 
-  // Compact circular positioning with rectangular boxes
-  const originalCenterX = anchorRect ? anchorRect.left + anchorRect.width / 2 : window.innerWidth / 2;
-  const originalCenterY = anchorRect ? anchorRect.top + anchorRect.height / 2 : window.innerHeight / 2;
-  
-  // Calculate dynamic bubble sizes (25% smaller)
-  const getWordWidth = (text) => Math.max(45, (text?.length || 0) * 7 + 24);
-  
-  const { original, synonyms = [], enhanced, opposite } = variations || {};
+  // Get available words
+  const { synonyms = [], enhanced, opposite } = variations || {};
   const availableWords = [
     enhanced && { text: enhanced, type: 'enhanced' },
     synonyms[0] && { text: synonyms[0], type: 'synonym1' },
     synonyms[1] && { text: synonyms[1], type: 'synonym2' },
     opposite && { text: opposite, type: 'opposite' }
   ].filter(Boolean);
-  
-  // Create a tight circular arrangement
-  const radius = 90; // Fixed radius for consistent spacing
-  const startAngle = -90; // Start at top
-  const angleStep = availableWords.length > 1 ? 360 / availableWords.length : 0;
-  
-  const initialWordPositions = availableWords.map((word, index) => {
-    const angle = startAngle + (index * angleStep);
-    const radians = (angle * Math.PI) / 180;
-    const x = originalCenterX + Math.cos(radians) * radius;
-    const y = originalCenterY + Math.sin(radians) * radius;
-    
-    return {
-      ...word,
-      x,
-      y,
-      width: getWordWidth(word.text)
-    };
-  });
-  
-  // Smart positioning to keep all words on screen
-  const margin = 20;
-  let adjustedCenterX = originalCenterX;
-  let adjustedCenterY = originalCenterY;
-  
-  // Check if any words would go off screen and adjust center accordingly
-  const worstX = Math.max(
-    ...initialWordPositions.map(pos => pos.x + pos.width / 2),
-    originalCenterX + getWordWidth(original) / 2
-  );
-  const bestX = Math.min(
-    ...initialWordPositions.map(pos => pos.x - pos.width / 2),
-    originalCenterX - getWordWidth(original) / 2
-  );
-  const worstY = Math.max(
-    ...initialWordPositions.map(pos => pos.y + 17), // Half button height
-    originalCenterY + 17
-  );
-  const bestY = Math.min(
-    ...initialWordPositions.map(pos => pos.y - 17),
-    originalCenterY - 17
-  );
-  
-  // Adjust center to keep everything on screen
-  if (worstX > window.innerWidth - margin) {
-    adjustedCenterX = originalCenterX - (worstX - (window.innerWidth - margin));
-  }
-  if (bestX < margin) {
-    adjustedCenterX = originalCenterX + (margin - bestX);
-  }
-  if (worstY > window.innerHeight - margin) {
-    adjustedCenterY = originalCenterY - (worstY - (window.innerHeight - margin));
-  }
-  if (bestY < margin) {
-    adjustedCenterY = originalCenterY + (margin - bestY);
-  }
-  
-  // Recalculate positions with adjusted center
-  const wordPositions = availableWords.map((word, index) => {
-    const angle = startAngle + (index * angleStep);
-    const radians = (angle * Math.PI) / 180;
-    const x = adjustedCenterX + Math.cos(radians) * radius;
-    const y = adjustedCenterY + Math.sin(radians) * radius;
-    
-    return {
-      ...word,
-      x,
-      y,
-      width: getWordWidth(word.text)
-    };
-  });
-  
-  const centerX = adjustedCenterX;
-  const centerY = adjustedCenterY;
-  const centerWidth = getWordWidth(original);
 
-  const bubble = (label, key, position) => {
-    const isHover = hoverKey === key;
+  // Pinterest-style positioning: Clean arc angled up to left or right
+  const positionedWords = (() => {
+    if (availableWords.length === 0) return [];
+
+    const radius = 85; // Distance from center
+    const margin = 20; // Screen edge margin
+    
+    // Determine preferred side (away from screen edges)
+    // Always go left or right, never center-up or center-down
+    const goLeft = centerX > window.innerWidth / 2;
+    
+    // Base angles for clean positioning - always angled up to a side
+    let positions = [];
+    
+    if (availableWords.length === 1) {
+      // Single word: up-left or up-right depending on space
+      positions = [{ angle: goLeft ? -135 : -45 }];
+    } else if (availableWords.length === 2) {
+      if (goLeft) {
+        // Two words angled up-left
+        positions = [{ angle: -150 }, { angle: -120 }];
+      } else {
+        // Two words angled up-right  
+        positions = [{ angle: -60 }, { angle: -30 }];
+      }
+    } else if (availableWords.length === 3) {
+      if (goLeft) {
+        // Three words spreading up-left
+        positions = [{ angle: -165 }, { angle: -135 }, { angle: -105 }];
+      } else {
+        // Three words spreading up-right
+        positions = [{ angle: -75 }, { angle: -45 }, { angle: -15 }];
+      }
+    } else {
+      if (goLeft) {
+        // Four words spreading up-left
+        positions = [{ angle: -180 }, { angle: -150 }, { angle: -120 }, { angle: -90 }];
+      } else {
+        // Four words spreading up-right
+        positions = [{ angle: -90 }, { angle: -60 }, { angle: -30 }, { angle: 0 }];
+      }
+    }
+
+    // Convert to coordinates and ensure screen bounds with vertical spacing
+    const positionedResults = availableWords.map((word, index) => {
+      const angle = positions[index].angle;
+      const radians = (angle * Math.PI) / 180;
+      
+      let x = centerX + Math.cos(radians) * radius;
+      let y = centerY + Math.sin(radians) * radius;
+      
+      // Calculate button dimensions (smaller font and boxes)
+      const buttonWidth = Math.max(50, word.text.length * 7 + 18);
+      const buttonHeight = 30;
+      
+      // Ensure button stays on screen
+      const halfWidth = buttonWidth / 2;
+      const halfHeight = buttonHeight / 2;
+      
+      x = Math.max(margin + halfWidth, Math.min(window.innerWidth - margin - halfWidth, x));
+      y = Math.max(margin + halfHeight, Math.min(window.innerHeight - margin - halfHeight, y));
+      
+      return {
+        ...word,
+        x,
+        y,
+        width: buttonWidth,
+        height: buttonHeight
+      };
+    });
+
+    // Calculate center word dimensions and a circular exclusion radius
+    const centerWordWidth = Math.max(50, word.length * 7 + 18);
+    const centerWordHeight = 30;
+    const centerClearance = 20; // minimum requested clearance
+    const centerRadius = Math.sqrt((centerWordWidth / 2) ** 2 + (centerWordHeight / 2) ** 2) + centerClearance + 2;
+
+    // Radial push-out from the center to avoid overlaps with the center word
+    positionedResults.forEach(pos => {
+      const dx = pos.x - centerX;
+      const dy = pos.y - centerY;
+      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      if (dist < centerRadius) {
+        const scale = centerRadius / dist;
+        pos.x = centerX + dx * scale;
+        pos.y = centerY + dy * scale;
+        const halfWidth = pos.width / 2;
+        const halfHeight = pos.height / 2;
+        pos.x = Math.max(margin + halfWidth, Math.min(window.innerWidth - margin - halfWidth, pos.x));
+        pos.y = Math.max(margin + halfHeight, Math.min(window.innerHeight - margin - halfHeight, pos.y));
+      }
+    });
+
+    // Only minimal pairwise separation - just enough to prevent direct overlap
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < positionedResults.length; i++) {
+        for (let j = i + 1; j < positionedResults.length; j++) {
+          const a = positionedResults[i];
+          const b = positionedResults[j];
+          const overlapX = (a.width / 2 + b.width / 2 + 4) - Math.abs(a.x - b.x);
+          const overlapY = (a.height / 2 + b.height / 2 + 4) - Math.abs(a.y - b.y);
+          if (overlapX > 0 && overlapY > 0) {
+            const push = Math.min(overlapX, overlapY) / 4; // Very small push
+            if (overlapX < overlapY) {
+              const dir = a.x <= b.x ? -1 : 1;
+              a.x += dir * push;
+              b.x -= dir * push;
+            } else {
+              const dir = a.y <= b.y ? -1 : 1;
+              a.y += dir * push;
+              b.y -= dir * push;
+            }
+          }
+        }
+      }
+    }
+
+    // Ensure 20px vertical separation between words
+    const minVerticalGap = 18;
+    const sortedByY = [...positionedResults].sort((a, b) => a.y - b.y);
+    
+    for (let i = 1; i < sortedByY.length; i++) {
+      const current = sortedByY[i];
+      const previous = sortedByY[i - 1];
+      
+      const previousBottom = previous.y + previous.height / 2;
+      const currentTop = current.y - current.height / 2;
+      const actualGap = currentTop - previousBottom;
+      
+      if (actualGap < minVerticalGap) {
+        const adjustment = minVerticalGap - actualGap;
+        current.y += adjustment;
+        
+        // Ensure adjusted position stays on screen
+        const maxY = window.innerHeight - margin - current.height / 2;
+        current.y = Math.min(current.y, maxY);
+      }
+    }
+    
+    return positionedResults;
+  })();
+
+  const renderButton = (text, key, isCenter = false, position = null) => {
+    const isHovered = hoverKey === key;
+    const isOriginal = key === 'original';
+    
     return (
       <button
         key={key}
-        onClick={() => onSelect?.(label)}
-        onMouseEnter={() => setHoverKey(key)}
-        onMouseLeave={() => setHoverKey(null)}
-        onTouchStart={() => setHoverKey(key)}
-        onTouchEnd={() => setHoverKey(null)}
-        className={`px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap shadow-sm border ${
-          isHover 
-            ? 'bg-teal-600 text-white border-teal-700/30 scale-105' 
-            : 'bg-white border-gray-200 text-gray-700 scale-100'
+        onClick={() => onSelect?.(text)}
+        className={`rounded-xl text-sm font-medium whitespace-nowrap shadow-lg border-2 transition-all duration-150 ease-out ${
+          isHovered 
+            ? 'bg-teal-500 text-white border-teal-600 scale-110 shadow-xl' 
+            : isOriginal
+              ? 'bg-gray-50 text-gray-800 border-gray-300'
+              : 'bg-white text-gray-700 border-gray-200'
         }`}
         style={{ 
-          minHeight: 33, // 25% smaller (was 44)
-          minWidth: position?.width || Math.max(45, label.length * 7 + 24),
-          transform: isHover ? 'scale(1.05)' : 'scale(1)',
-          transition: 'all 0.1s ease-out'
+          minHeight: position?.height || 30,
+          minWidth: position?.width || Math.max(50, text.length * 7 + 18),
+          padding: '8px 12px',
+          transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+          zIndex: isHovered ? 30 : 20
         }}
+        title={`Select "${text}"`}
       >
-        {label}
+        {text}
       </button>
     );
   };
-
-  // Use the already declared variables from above
-  const left = synonyms[0] || null;
-  const right = synonyms[1] || null;
 
   return (
     <div 
       className="fixed inset-0 pointer-events-auto"
       style={{ 
         zIndex: 10050,
-        backgroundColor: 'rgba(0,0,0,0.4)'
+        backgroundColor: 'rgba(0, 0, 0, 0.4)'
       }}
     >
-      {/* Dim background */}
+      {/* Background overlay */}
       <div 
         className="absolute inset-0" 
-        onClick={() => { 
-          try { console.log('🕳️ [SimpleVariationPopup] backdrop click'); } catch {} 
-          onClose?.(); 
-        }} 
+        onClick={() => onClose?.()} 
       />
 
-      {/* Bubbles around the center with hold-and-drag select */}
-      <div className="absolute inset-0">
-        {/* Center word */}
-        <div
-          className="absolute pointer-events-none"
-          style={{ left: centerX, top: centerY, transform: 'translate(-50%, -50%)' }}
-        >
-          <div 
-            className={`px-3 py-2 rounded-xl text-xs font-medium shadow-sm border ${
-              hoverKey ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-white text-gray-700 border-gray-200'
-            }`}
-            style={{ 
-              minHeight: 33,
-              minWidth: centerWidth,
-              transition: 'all 0.1s ease-out'
-            }}
-          >
-            {word}
-          </div>
-        </div>
-
-        {/* Dynamically positioned words in circular arrangement */}
-        {wordPositions.map((pos, index) => (
-          <div 
-            key={pos.type}
-            className="absolute pointer-events-auto" 
-            style={{ 
-              left: pos.x, 
-              top: pos.y, 
-              transform: 'translate(-50%, -50%)' 
-            }}
-          >
-            {bubble(pos.text, pos.type, pos)}
-          </div>
-        ))}
-
-        {/* Touch drag to select - highlight and select on lift */}
-        <div
-          className="absolute inset-0 pointer-events-auto"
-          onTouchMove={(e) => {
-            // Don't call preventDefault here - it's handled by document listener
-            if (!isActiveDragRef.current) return;
-            
-            const touch = e.touches[0];
-            const x = touch.clientX;
-            const y = touch.clientY;
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            // Require minimum movement from center before activating selection
-            let key = null;
-            
-            // Exit if too far from center (beyond the circle boundary)
-            if (distance > 150) {
-              key = 'exit';
-            } else if (distance > 8) {
-              // Find closest positioned word
-              let closestWord = null;
-              let closestDistance = Infinity;
-              
-              wordPositions.forEach(pos => {
-                const wordDx = x - pos.x;
-                const wordDy = y - pos.y;
-                const wordDistance = Math.sqrt(wordDx * wordDx + wordDy * wordDy);
-                
-                // Reasonable activation radius for circular layout
-                if (wordDistance < closestDistance && wordDistance < 50) {
-                  closestDistance = wordDistance;
-                  closestWord = pos;
-                }
-              });
-              
-              if (closestWord) {
-                key = closestWord.type;
-              }
-            }
-            
-            try { console.log('🧭 [SimpleVariationPopup] drag', JSON.stringify({ x, y, dx, dy, distance, key }, null, 2)); } catch {}
-            
-            // Add haptic feedback when selection changes (debounced)
-            if (key !== hoverKey && key !== null && key !== lastHapticKey.current) {
-              if (navigator.vibrate) {
-                navigator.vibrate(5); // Very subtle, only on actual change
-                lastHapticKey.current = key; // Remember this to prevent rapid fire
-              }
-            }
-            
-            setHoverKey(key);
-            currentHoverKeyRef.current = key; // Keep ref in sync for touch end
-          }}
-          onTouchEnd={(e) => {
-            // Don't call preventDefault here - handled by document listener
-            isActiveDragRef.current = false;
-            
-            if (!hoverKey) { 
-              try { console.log('🕳️ [SimpleVariationPopup] touch end - no selection, closing'); } catch {}
-              onClose?.(); 
-              return; 
-            }
-            
-            const map = { enhanced, opposite, left, right };
-            const chosen = map[hoverKey];
-            setHoverKey(null);
-            if (chosen) {
-              try { console.log('🎯 [SimpleVariationPopup] chosen', JSON.stringify({ hoverKey, chosen }, null, 2)); } catch {}
-              onSelect?.(chosen);
-            } else {
-              onClose?.();
-            }
-          }}
-          onTouchStart={(e) => {
-            // Ensure we're in active drag mode if touch starts on the overlay
-            isActiveDragRef.current = true;
-            try { console.log('🔄 [SimpleVariationPopup] touch start on overlay - activating drag'); } catch {}
-          }}
-        />
+      {/* Center word (original) */}
+      <div
+        className="absolute pointer-events-auto"
+        style={{ 
+          left: centerPosition.x, 
+          top: centerPosition.y, 
+          transform: 'translate(-50%, -50%)',
+          zIndex: 20
+        }}
+      >
+        {renderButton(word, 'original', true)}
       </div>
+
+      {/* Positioned variation words */}
+      {positionedWords.map((pos) => (
+        <div 
+          key={pos.type}
+          className="absolute pointer-events-auto" 
+          style={{ 
+            left: pos.x, 
+            top: pos.y, 
+            transform: 'translate(-50%, -50%)',
+            zIndex: 20
+          }}
+        >
+          {renderButton(pos.text, pos.type, false, pos)}
+        </div>
+      ))}
+
+      {/* Touch interaction overlay */}
+      <div
+        className="absolute inset-0 pointer-events-auto"
+        onTouchMove={(e) => {
+          if (!isActiveDragRef.current) return;
+          
+          const touch = e.touches[0];
+          const x = touch.clientX;
+          const y = touch.clientY;
+          
+          let bestMatch = null;
+          let closestDistance = Infinity;
+          
+          // Check center word
+          const centerDx = x - centerPosition.x;
+          const centerDy = y - centerPosition.y;
+          const centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+          if (centerDistance < 80) {
+            bestMatch = 'original';
+            closestDistance = centerDistance;
+          }
+          
+          // Check positioned words
+          positionedWords.forEach(pos => {
+            const wordDx = x - pos.x;
+            const wordDy = y - pos.y;
+            const wordDistance = Math.sqrt(wordDx * wordDx + wordDy * wordDy);
+            
+            if (wordDistance < 80 && wordDistance < closestDistance) {
+              closestDistance = wordDistance;
+              bestMatch = pos.type;
+            }
+          });
+          
+          if (bestMatch !== hoverKey && bestMatch !== null && bestMatch !== lastHapticKey.current) {
+            if (navigator.vibrate) {
+              navigator.vibrate(5);
+              lastHapticKey.current = bestMatch;
+            }
+          }
+          
+          setHoverKey(bestMatch);
+          currentHoverKeyRef.current = bestMatch;
+        }}
+        onTouchEnd={(e) => {
+          isActiveDragRef.current = false;
+          const currentSelection = currentHoverKeyRef.current || hoverKey;
+          
+          if (!currentSelection) { 
+            onClose?.(); 
+            return; 
+          }
+          
+          if (currentSelection === 'original') {
+            setHoverKey(null);
+            onSelect?.(word);
+            return;
+          }
+          
+          const chosenWord = positionedWords.find(pos => pos.type === currentSelection);
+          setHoverKey(null);
+          
+          if (chosenWord?.text) {
+            onSelect?.(chosenWord.text);
+          } else {
+            onClose?.();
+          }
+        }}
+        onTouchStart={(e) => {
+          isActiveDragRef.current = true;
+        }}
+        onMouseMove={(e) => {
+          const x = e.clientX;
+          const y = e.clientY;
+          
+          let bestMatch = null;
+          let closestDistance = Infinity;
+          
+          // Check center word
+          const centerDx = x - centerPosition.x;
+          const centerDy = y - centerPosition.y;
+          const centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+          if (centerDistance <= 60) {
+            bestMatch = 'original';
+            closestDistance = centerDistance;
+          }
+          
+          // Check positioned words
+          positionedWords.forEach(pos => {
+            const wordDx = x - pos.x;
+            const wordDy = y - pos.y;
+            const wordDistance = Math.sqrt(wordDx * wordDx + wordDy * wordDy);
+            
+            if (wordDistance <= 60 && wordDistance < closestDistance) {
+              closestDistance = wordDistance;
+              bestMatch = pos.type;
+            }
+          });
+          
+          setHoverKey(bestMatch);
+        }}
+        onMouseLeave={() => {
+          setHoverKey(null);
+        }}
+      />
     </div>
   );
 };

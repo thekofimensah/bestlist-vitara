@@ -82,7 +82,12 @@ export const useAI = () => {
         
         // Expert prompt to produce a canonical, human-style product name
         const prompt = `
-You are a product identification expert. Identify the on-pack product and produce a single, canonical product name people would naturally use when referring to it in conversation or search.
+
+You are a product identification expert. Your job is to identify consumer products from images with high accuracy. Identify the on-pack product and produce a single, canonical product name people would naturally use when referring to it in conversation or search.
+
+CRITICAL: If you cannot clearly see a recognizable product, set confidence less than 0.5. Do NOT guess or hallucinate products.
+
+If the 
 
 Rules for the name field (MUST follow):
 1) Structure: [Brand] [Core product] [Variant/essential qualifiers]
@@ -93,6 +98,7 @@ Rules for the name field (MUST follow):
 3) Exclude pack/count/size/weight unless it’s the defining variant (e.g., "2%" or "4%" milk fat IS allowed).
 4) Remove long ingredient/benefit lists (e.g., "with Aloe Vera, Tea Tree and Xylitol"). Keep it short and canonical.
 5) Language: English. Use Title Case. No emojis. No trailing punctuation. Max 80 chars.
+
 
 Additional guidance${location ? ` (photo taken in ${location})` : ''}:
 - Prefer brands and variants common to the region; avoid unlikely guesses.
@@ -229,6 +235,8 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
         const elapsed = Date.now() - startTime;
         
         console.log(`🤖 [AI] Response received in ${elapsed}ms`);
+        console.log('🤖 [AI] RAW API RESPONSE:', JSON.stringify(json, null, 2));
+        console.log('🤖 [AI] EXTRACTED TEXT:', responseText);
         
         if (!responseText) {
           console.error('🤖 [AI] Empty response from Gemini: ' + JSON.stringify(json, null, 2));

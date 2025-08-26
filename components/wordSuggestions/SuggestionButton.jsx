@@ -54,7 +54,6 @@ const SuggestionButton = React.memo(({ suggestion, onTap, onLongPress }) => {
   };
 
   const onPointerUp = (e) => {
-    setIsPressed(false);
     clearTimer();
     
     // Check if this was a scroll gesture vs a tap
@@ -78,11 +77,19 @@ const SuggestionButton = React.memo(({ suggestion, onTap, onLongPress }) => {
     } catch {}
     
     if (!longPressTriggeredRef.current && !wasScrolling) {
+      setIsPressed(false); // Reset immediately for normal taps
       onTap?.(suggestion);
+    } else if (longPressTriggeredRef.current) {
+      // For long press, reset after a delay to allow smooth popup transition
+      setTimeout(() => {
+        setIsPressed(false);
+        longPressTriggeredRef.current = false;
+      }, 50);
+    } else {
+      setIsPressed(false); // Reset for scrolling or other cases
     }
     
     initialTouchRef.current = null; // Reset
-    // Don't reset longPressTriggered here - let the popup handle the touch continuation
   };
 
   const onPointerLeave = () => {

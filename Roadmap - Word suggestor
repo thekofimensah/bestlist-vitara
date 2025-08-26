@@ -1,0 +1,209 @@
+# Word Suggestion Feature Roadmap
+
+## Overview
+Implement an intelligent horizontal scroll suggestion system for the notes section in AddItemModal that helps users write better product reviews with contextual word suggestions.
+
+## Phase 1: Foundation & Static Data (Week 1)
+**Goal: Build core UI components with static data to validate design and interactions**
+
+### 1.1 Static Data Setup
+- [ ] Create `mockSuggestions.js` with categorized sample data
+  ```javascript
+  // Structure: { specific: [], meta: [], outcome: [], functional: [] }
+  // Include variations for each suggestion word
+  ```
+- [ ] Define suggestion categories with priority ordering
+- [ ] Create sample data for 1-2 product categories (food, beauty)
+
+### 1.2 Base Components
+- [ ] Create `HorizontalSuggestions.jsx` component
+  - 1-row layout
+  - Custom horizontal scrolling
+  - Responsive design for mobile-first
+- [ ] Create `SuggestionRow.jsx` subcomponent
+  - Touch-friendly buttons (44px min height)
+  - Smooth scroll behavior
+  - Row offset styling (8px for row 2)
+- [ ] Create `SuggestionButton.jsx` with interaction states
+  - Idle, pressed, selected states
+  - Quick tap visual feedback
+  - Accessible touch targets
+
+### 1.3 Basic Interaction Logic
+- [ ] Implement single tap to add word functionality. After click, the suggested word disappears
+- [ ] Integrate with existing notes textarea in AddItemModal, under
+- [ ] Basic show/hide toggle for suggestions. "Hold & drag for variations" For user guidance
+
+
+**Deliverable: Working static suggestion UI with basic interactions**
+
+## Phase 2: Advanced Interactions & State Management (Week 2)
+**Goal: Implement long-press interactions and comprehensive state management**
+
+### 2.1 Long Press & Variations
+- [ ] Create `VariationPopup.jsx` component
+  - 4 options: Original (center), Synonyms left and right (2), Enhanced (top), Opposite ("not" <center word> bottom)
+  - Proper positioning and mobile-friendly sizing
+  - If let go of hold, it should auto close. If they hover over one option then that is selected,
+- [ ] Implement 500ms long press detection
+  - Use `useRef` and `setTimeout` for performance
+  - Handle touch events properly for mobile
+  - Prevent conflicts with single tap
+  - Add haptic feedback for interactions
+  - Screen should grey the app, and show the suggestions as hovering around the word selected with the word seleceted in the middle with highlighted term changing the backgound to indicate being highlighted
+
+- [ ] Create variation data structure and logic
+  ```javascript
+  // { original, synonyms: [], enhanced, opposite }
+  ```
+
+### 2.2 Smart State Management
+- [ ] Implement comprehensive state management
+  ```javascript
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+  const [availableSuggestions, setAvailableSuggestions] = useState([]);
+  const [longPressTarget, setLongPressTarget] = useState(null);
+  ```
+- [ ] Add duplicate prevention logic
+- [ ] Add textarea cursor position management
+
+### 2.3 Performance Optimizations
+- [ ] Implement `React.memo` for suggestion components
+- [ ] Add debouncing for user interactions
+- [ ] Optimize re-renders with `useMemo` and `useCallback`
+- [ ] Lazy rendering for suggestions outside viewport
+
+**Deliverable: Full interaction system with variations and smart filtering**
+
+## Phase 3: AI Integration & Dynamic Suggestions (Week 3)
+**Goal: Connect with AI service and generate contextual suggestions**
+
+### 3.1 Extend useAI.js
+- [ ] Add suggestion generation to AI prompt
+  ```javascript
+  // Add to existing Gemini prompt:
+  suggestionCategories: {
+    specific: [], // sensory/product-class (priority 1)
+    meta: [],     // cross-category judgments (priority 2)
+    outcome: [],  // decisions & intent (priority 3)
+    functional: [] // performance/usage (priority 4)
+  }
+  ```
+- [ ] Update response schema to include suggestions
+- [ ] Add suggestion caching to prevent repeated API calls
+- [ ] Implement fallback to static suggestions if AI fails
+
+### 3.2 Context-Aware Generation
+- [ ] Use product category to influence suggestions
+- [ ] Consider user's rating (1-5 stars) for suggestion tone
+- [ ] Factor in existing tags and description
+- [ ] Add location context if relevant
+
+### 3.3 AI Request Optimization
+- [ ] Batch suggestion requests with existing image analysis
+- [ ] Implement request deduplication
+- [ ] Add timeout handling for suggestion requests
+- [ ] Cache suggestions per product category
+
+**Deliverable: AI-powered contextual suggestions integrated with existing flow**
+
+## Phase 4: Polish & Performance (Week 4)
+**Goal: Optimize for Capacitor and mobile performance**
+
+### 4.1 Mobile Optimization
+- [ ] Optimize touch interactions for iOS/Android
+- [ ] Implement proper keyboard handling
+- [ ] Test and optimize scroll performance
+
+### 4.2 Animation & Visual Polish
+- [ ] Add smooth entry/exit animations
+- [ ] Implement suggestion removal animations
+- [ ] Add loading states for AI-generated suggestions
+- [ ] Polish variation popup animations
+
+### 4.3 Capacitor-Specific Optimizations
+- [ ] Test memory usage with large suggestion sets
+- [ ] Optimize for different screen densities
+- [ ] Handle app backgrounding/foregrounding
+- [ ] Test performance on lower-end devices
+
+### 4.4 Error Handling & Fallbacks
+- [ ] Graceful degradation when AI fails
+- [ ] Offline suggestion support
+- [ ] Error state UI for suggestion loading
+- [ ] User feedback for failed suggestions
+
+**Deliverable: Production-ready feature optimized for mobile**
+
+## Phase 5: Integration & Testing (Week 5)
+**Goal: Seamless integration with existing AddItemModal**
+
+### 5.1 AddItemModal Integration
+- [ ] Add suggestions toggle in notes section
+- [ ] Integrate with existing validation
+- [ ] Ensure compatibility with bulk photo processing
+- [ ] Test with existing save flow
+
+### 5.2 User Experience Refinements
+- [ ] A/B test suggestion placement
+- [ ] Optimize suggestion ordering algorithm
+- [ ] Add user preference storage
+- [ ] Implement suggestion learning
+
+### 5.3 Performance Testing
+- [ ] Load test with 50+ suggestions
+- [ ] Test on various device types
+- [ ] Memory leak testing
+- [ ] Battery usage optimization
+
+**Deliverable: Fully integrated and tested feature**
+
+## Technical Architecture
+
+### Component Structure
+```
+AddItemModal/
+├── NotesSection/
+│   ├── ReviewTextarea
+│   ├── HorizontalSuggestions/
+│   │   ├── SuggestionRow (even indices)
+│   │   ├── SuggestionRow (odd indices + offset)
+│   │   ├── SuggestionButton
+│   │   └── VariationPopup
+│   └── SuggestionToggle
+```
+
+### Data Flow
+1. User focuses on notes textarea
+2. AI analyzes product context and generates suggestions
+3. Suggestions rendered in 2-row staggered layout
+4. User interactions update both textarea and suggestion state
+5. Smart filtering removes used suggestions
+6. Real-time updates maintain clean interface
+
+### Key Performance Considerations
+- **Memory**: Limit suggestion cache size
+- **Rendering**: Use virtualization for large lists
+- **AI Requests**: Debounce and batch where possible
+- **Animations**: Use transform properties for better performance
+- **Touch**: Optimize touch event handling for mobile
+
+### Success Metrics
+- [ ] Reduced review writing time by 30%
+- [ ] Increased descriptive word usage by 50%
+- [ ] 90%+ mobile performance score
+- [ ] <200ms interaction response time
+- [ ] Zero memory leaks in testing
+
+## Risk Mitigation
+- **AI Latency**: Always provide static fallbacks
+- **Mobile Performance**: Progressive enhancement approach
+- **User Adoption**: Make feature discoverable but optional
+- **API Costs**: Implement smart caching and request optimization
+
+## Dependencies
+- Existing AddItemModal component
+- useAI.js hook
+- Framer Motion (for animations)
+- React performance optimization patterns

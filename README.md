@@ -194,6 +194,7 @@ Should not have another same name in the same selling space
 Small bonus, it can be good if when a person talks about it, the name is slightly unpredictable to get the other person to say "Huh, that sounds interesting"
 
 "Remember the milk" as a shopping list app
+"spark" Chispa, for a dating app
 
 Features
 Track user version

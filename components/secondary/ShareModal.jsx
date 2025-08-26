@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Link2, Share, ExternalLink } from 'lucide-react';
-import { appConfig } from '../../lib/appConfig';
+import { X, Link2 } from 'lucide-react';
+
 
 // WhatsApp Icon Component (from Wikimedia Commons)
 // Source: https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg
@@ -11,30 +11,23 @@ const WhatsAppIcon = ({ className }) => (
 
 const ShareModal = ({ isOpen, onClose, post, list, isInviteMode = false }) => {
   // Use web URL for shareability (clickable in most apps)
-  const webBaseUrl = appConfig.webUrl?.replace(/\/$/, '') || '';
+  const webBaseUrl = 'https://bestlist.app';
 
   // Determine what we're sharing
   const isSharingList = !!list;
   const isSharingInvite = isInviteMode;
   
-  const shareData = isSharingInvite ? {
-    title: 'Join me on bestlist!',
-    text: `I'm using bestlist to discover and share amazing products. Join me!`,
-    url: `${webBaseUrl}` || 'https://bestlist.app' // App URL for invites
-  } : isSharingList ? {
-    title: `${list?.name} by ${list?.user?.name || 'User'}`,
-    text: `Check out this amazing list "${list?.name}" on ${appConfig.displayName}! ${list?.itemCount ? `Contains ${list.itemCount} items.` : ''}`,
-    url: `${webBaseUrl}/list/${list?.id}` // Clickable web URL
-  } : {
-    title: `${post?.item_name} from ${post?.list_name}`,
-    text: `Check out this find: ${post?.item_name} from ${post?.user?.name}'s ${post?.list_name}! ${post?.snippet ? `"${post.snippet}"` : ''}`,
-    url: `${webBaseUrl}/post/${post?.id}` // Clickable web URL
-  };
+  // Get the appropriate URL for sharing
+  const shareUrl = isSharingInvite 
+    ? `${webBaseUrl}` || 'https://bestlist.app'
+    : isSharingList 
+      ? `${webBaseUrl}/list/${list?.id}`
+      : `${webBaseUrl}/post/${post?.id}`;
 
   const handleWhatsAppShare = () => {
     const message = isSharingInvite 
-      ? `${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`
-      : `Check out my post on ${appConfig.displayName}!\n\n${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
+      ? `Join me on bestlist!\n\nI'm using bestlist to discover and share amazing products. Join me!\n\n${shareUrl}`
+      : `Check out this on bestlist!\n\n${shareUrl}`;
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
     onClose();
@@ -42,7 +35,7 @@ const ShareModal = ({ isOpen, onClose, post, list, isInviteMode = false }) => {
 
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(shareData.url);
+      await navigator.clipboard.writeText(shareUrl);
       
       // Show success feedback
       console.log('✅ Link copied to clipboard!');
@@ -58,26 +51,7 @@ const ShareModal = ({ isOpen, onClose, post, list, isInviteMode = false }) => {
     }
   };
 
-  const handleNativeShare = async () => {
-    try {
-      if (navigator.share) {
-        try {
-          await navigator.share(shareData);
-        } catch (e) {
-          // Fallback to copy if share aborted or not supported fully
-          await handleCopyLink();
-        }
-      } else {
-        // Fallback to copy
-        await handleCopyLink();
-      }
-      onClose();
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('❌ Error sharing:', error);
-      }
-    }
-  };
+
 
   const shareOptions = [
     {
@@ -126,9 +100,9 @@ const ShareModal = ({ isOpen, onClose, post, list, isInviteMode = false }) => {
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between px-6 py-4">
               <h2 className="text-lg font-semibold text-gray-900">
-                {isSharingInvite ? 'Invite Friends' : `Share ${isSharingList ? 'List' : 'Post'}`}
+                {isSharingInvite ? 'Invite Friends' : 'Share'}
               </h2>
               <button
                 onClick={onClose}
@@ -138,65 +112,7 @@ const ShareModal = ({ isOpen, onClose, post, list, isInviteMode = false }) => {
               </button>
             </div>
 
-            {/* Content Preview */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <div className="bg-gray-50 rounded-2xl p-4">
-                {isSharingInvite ? (
-                  // Invite Preview
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-2xl">🎉</span>
-                    </div>
-                    <div className="font-medium text-gray-900 text-sm mb-1">
-                      {shareData.title}
-                    </div>
-                    <div className="text-xs text-gray-500 mb-3">
-                      {shareData.text}
-                    </div>
-                    <div className="text-xs text-teal-600 font-medium">
-                      {shareData.url}
-                    </div>
-                  </div>
-                ) : isSharingList ? (
-                  // List Preview
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">📋</span>
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900 text-sm">
-                        {list?.name}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {list?.itemCount || 0} items • by {list?.user?.name || 'User'}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  // Post Preview
-                  <div className="flex items-center gap-3 mb-3">
-                    <img
-                      src={post?.user?.avatar}
-                      alt={post?.user?.name}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                    <div>
-                      <div className="font-medium text-gray-900 text-sm">
-                        {post?.user?.name}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {post?.item_name} from {post?.list_name}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {!isSharingList && !isSharingInvite && post?.snippet && (
-                  <p className="text-gray-700 text-sm">
-                    "{post.snippet}"
-                  </p>
-                )}
-              </div>
-            </div>
+
 
             {/* Share Options */}
             <div className="px-6 py-6 space-y-3">

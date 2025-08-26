@@ -9,25 +9,6 @@ import { removeProfilePostsByItemIds } from '../../hooks/useOptimizedFeed';
 import { removeCachedImage } from '../../lib/localImageCache';
 import { supabase } from '../../lib/supabase';
 
-const VerdictBadge = ({ verdict }) => {
-  const getVerdictStyle = () => {
-    switch (verdict) {
-      case 'AVOID':
-        return 'bg-red-50 text-red-700 border-red-100';
-      case 'KEEP':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-100';
-    }
-  };
-
-  return (
-    <span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${getVerdictStyle()}`}>
-      {verdict}
-    </span>
-  );
-};
-
 const StarRating = ({ rating }) => {
   if (!rating) return null;
   
@@ -92,7 +73,6 @@ const ItemTile = ({
         {showSelection && isSelected && (
           <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
         )}
-        <VerdictBadge verdict={verdict} />
         <StarRating rating={item.rating} />
         
         {/* Selection indicator */}

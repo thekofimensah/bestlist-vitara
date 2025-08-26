@@ -44,7 +44,7 @@ Implement an intelligent horizontal scroll suggestion system for the notes secti
 - [ ] Create `VariationPopup.jsx` component
   - 4 options: Original (center), Synonyms left and right (2), Enhanced (top), Opposite ("not" <center word> bottom)
   - Proper positioning and mobile-friendly sizing
-  - If let go of hold, it should auto close. If they hover over one option then that is selected,
+  - If let go of hold, it should auto close. If they hover over one option then that word is selected,
 - [ ] Implement 500ms long press detection
   - Use `useRef` and `setTimeout` for performance
   - Handle touch events properly for mobile
@@ -207,3 +207,17 @@ AddItemModal/
 - useAI.js hook
 - Framer Motion (for animations)
 - React performance optimization patterns
+
+
+Addional prompts:
+A couple of adjustments, currently when I hold, the hold doesn't carry over to the  popup screen and so I need to let go and then manually select the one I want to select. That's not how it shouod work. IT should work like the hold should open the new screen and I move my finger in one of the directions, even slightly, and it should highlight the option. If I let go of the hold it should exit the screen unless I had highlighted on one of them
+
+Now when I move it vibrates many times i the diretion I sleect. It should only vibrate once on each word.. the spacing should be dynamic depending on the size of the word, long hold should take 300ms, and it should be  a smart popup, so if I'mon the left of the screen all of the options should shift to be all on the screeen and right as well. 
+
+There's alsoa. bug that when I click on one option, several of the options go into the text box at the same time. Also the popup selction doesn't correctly get selected int the text area. also the popup selection prevents the original suggestion word from disappearing.
+
+Lastly I want the options not to be in one big grey box but in individal boxes like in the screenshot I added.  One row only, but they can press show more to make it 2 rows. Both rows should scroll together.
+
+Now a few adjustments.. When I select one entry in the suggestions list, the one I select and the one to the right get both selected. That shouldn't be. Also there's a weird middle state when I first select a suggestion, the keyboard pops up and then hides the rest of the suggestions. I want the words to be added to the text area without the keyboard being rendered. Only if the user selects the text area should the keyboard popup.
+
+If the user goes further than X pixels from any of the selections, it should exit without selcting any

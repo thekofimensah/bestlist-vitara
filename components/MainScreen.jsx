@@ -424,10 +424,19 @@ const MainScreen = React.forwardRef(({
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         streamRef.current = stream;
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
+          const v = videoRef.current;
+          // Ensure autoplay/inline/muted before attaching stream (prevents Android play overlay)
+          try {
+            v.muted = true;
+            v.playsInline = true;
+            v.setAttribute('muted', '');
+            v.setAttribute('playsinline', '');
+            v.setAttribute('autoplay', '');
+          } catch (_) {}
+          v.srcObject = stream;
+          v.onloadedmetadata = () => {
             setVideoReady(true);
-            videoRef.current?.play();
+            try { v.play(); } catch (_) {}
           };
         }
         setError(null);
@@ -443,10 +452,18 @@ const MainScreen = React.forwardRef(({
         });
         streamRef.current = stream;
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
+          const v = videoRef.current;
+          try {
+            v.muted = true;
+            v.playsInline = true;
+            v.setAttribute('muted', '');
+            v.setAttribute('playsinline', '');
+            v.setAttribute('autoplay', '');
+          } catch (_) {}
+          v.srcObject = stream;
+          v.onloadedmetadata = () => {
             setVideoReady(true);
-            videoRef.current?.play();
+            try { v.play(); } catch (_) {}
           };
         }
         setError(null);
@@ -463,10 +480,18 @@ const MainScreen = React.forwardRef(({
         });
         streamRef.current = stream;
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
+          const v = videoRef.current;
+          try {
+            v.muted = true;
+            v.playsInline = true;
+            v.setAttribute('muted', '');
+            v.setAttribute('playsinline', '');
+            v.setAttribute('autoplay', '');
+          } catch (_) {}
+          v.srcObject = stream;
+          v.onloadedmetadata = () => {
             setVideoReady(true);
-            videoRef.current?.play();
+            try { v.play(); } catch (_) {}
           };
         }
         setError(null);
@@ -488,6 +513,16 @@ const MainScreen = React.forwardRef(({
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
+    }
+    // Clear video element to avoid Android/iOS "Play" overlay
+    if (videoRef.current) {
+      try {
+        const v = videoRef.current;
+        try { v.pause(); } catch (_) {}
+        v.srcObject = null;
+        // load() resets the media element and prevents transient overlay
+        try { v.load(); } catch (_) {}
+      } catch (_) {}
     }
     setVideoReady(false);
     setIsCameraStreamActive(false);
@@ -511,14 +546,14 @@ const MainScreen = React.forwardRef(({
   };
 
   useEffect(() => {
-    // OPTIMIZED: Only start camera if tab is active and visible
-    if (isActive && isCameraVisible) {
-      console.log('📷 [MainScreen] Starting camera - tab active and visible');
+    // OPTIMIZED: Only start camera if tab is active, visible, AND no modal is open
+    if (isActive && isCameraVisible && !showModal) {
+      console.log('📷 [MainScreen] Starting camera - tab active, visible, no modal');
       startCamera(facingMode);
     } else {
-      // Stop camera when tab becomes inactive or invisible
+      // Stop camera when tab becomes inactive, invisible, or modal is open
       if (streamRef.current) {
-        console.log('📷 [MainScreen] Stopping camera - tab inactive or invisible');
+        console.log('📷 [MainScreen] Stopping camera - tab inactive, invisible, or modal open');
         stopCamera();
       }
     }
@@ -528,7 +563,7 @@ const MainScreen = React.forwardRef(({
       }
     };
     // eslint-disable-next-line
-  }, [facingMode, flashEnabled, isActive, isCameraVisible]);
+  }, [facingMode, flashEnabled, isActive, isCameraVisible, showModal]);
 
   // Get location on component mount
   useEffect(() => {
@@ -546,26 +581,26 @@ const MainScreen = React.forwardRef(({
         const [entry] = entries;
         const isVisible = entry.isIntersecting;
         
-        // Clear any pending visibility changes
-        if (visibilityTimeout) {
-          clearTimeout(visibilityTimeout);
+        // For becoming visible, start immediately to avoid brief overlay
+        if (isVisible && !isCameraStreamActive && isActive && !showModal) {
+          console.log('📷 [Visibility] Immediate start (no debounce)');
+          setIsCameraVisible(true);
+          startCamera(facingMode);
+          return;
         }
-        
-        // Debounce visibility changes to prevent rapid camera start/stop
+
+        // Debounce only the stop case to prevent flicker
+        if (visibilityTimeout) clearTimeout(visibilityTimeout);
         visibilityTimeout = setTimeout(() => {
-          console.log('📷 [Visibility] Camera visibility changed:', isVisible, 'isActive:', isActive);
+          console.log('📷 [Visibility] Camera visibility changed:', isVisible, 'isActive:', isActive, 'showModal:', showModal);
           setIsCameraVisible(isVisible);
           
-          if (isVisible && !isCameraStreamActive && isActive) {
-            // Camera became visible, stream is not active, AND tab is active - restart it
-            console.log('📷 [Visibility] Camera visible and tab active, restarting stream');
-            startCamera(facingMode);
-          } else if ((!isVisible || !isActive) && isCameraStreamActive) {
-            // Camera is no longer visible OR tab is inactive and stream is active - stop it
-            console.log('📷 [Visibility] Camera hidden or tab inactive, stopping stream');
+          if ((!isVisible || !isActive || showModal) && isCameraStreamActive) {
+            // Camera is no longer visible OR tab is inactive OR modal is open and stream is active - stop it
+            console.log('📷 [Visibility] Camera hidden, tab inactive, or modal open - stopping stream');
             stopCamera();
           }
-        }, 300); // 300ms debounce to prevent rapid toggling
+        }, 200);
       },
       {
         threshold: 0.1, // Trigger when at least 10% of camera is visible
@@ -581,7 +616,7 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
-  }, [facingMode, isCameraStreamActive, isActive]);
+  }, [facingMode, isCameraStreamActive, isActive, showModal]);
 
   // Handle app visibility changes - restart camera when app becomes visible
   // OPTIMIZED: Reduce dependency array and add performance checks

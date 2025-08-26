@@ -29,6 +29,12 @@ import FirstInWorldBadge from './gamification/FirstInWorldBadge';
 import { useGlobalAchievements } from '../hooks/useGlobalAchievements';
 import ShareModal from './secondary/ShareModal';
 
+// Word suggestion (Phase 1 & 2) - static data + UI
+import HorizontalSuggestions from './wordSuggestions/HorizontalSuggestions';
+import VariationPopup from './wordSuggestions/VariationPopup';
+import SimpleVariationPopup from './wordSuggestions/SimpleVariationPopup';
+import { MOCK_SUGGESTIONS, SUGGESTION_CATEGORIES } from './wordSuggestions/mockSuggestions';
+
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
   const [justClicked, setJustClicked] = useState(null);
@@ -196,44 +202,7 @@ const AddItemModal = ({
   aiTriggeredAchievements
 }) => {
   
-  // Comprehensive logging of item data
-  console.log('🔍 [AddItemModal] Component initialized with item data:');
-  console.log('  📋 Item ID:', item?.id);
-  console.log('  📋 Has Item:', !!item);
-  console.log('  📋 All Item Fields:', item ? Object.keys(item) : 'no item');
-  
-  if (item) {
-    console.log('  🤖 AI Fields:', JSON.stringify({
-      ai_product_name: item?.ai_product_name,
-      ai_brand: item?.ai_brand,
-      ai_category: item?.ai_category,
-      ai_confidence: item?.ai_confidence,
-      ai_description: item?.ai_description,
-      ai_tags: item?.ai_tags,
-      ai_allergens: item?.ai_allergens,
-      ai_lookup_status: item?.ai_lookup_status
-    }, null, 2));
-    
-    console.log('  👤 User Fields:', JSON.stringify({
-      user_product_name: item?.user_product_name,
-      user_description: item?.user_description,
-      user_tags: item?.user_tags,
-      user_allergens: item?.user_allergens
-    }, null, 2));
-    
-    console.log('  📜 Legacy Fields:', JSON.stringify({
-      name: item?.name,
-      category: item?.category,
-      species: item?.species,
-      certainty: item?.certainty,
-      tags: item?.tags
-    }, null, 2));
-  }
-  
-  console.log('  ⚡ Has AI Metadata:', !!aiMetadata);
-  if (aiMetadata) {
-    console.log('  ⚡ AI Metadata Fields:', Object.keys(aiMetadata));
-  }
+  // Removed verbose init logs to avoid noise on each re-render
   
   const [currentImage, setCurrentImage] = useState(image); // image shown & saved
   
@@ -1756,6 +1725,140 @@ const AddItemModal = ({
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
 
+  // --- Word Suggestions (Phase 1 & 2) ---
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const notesTextareaRef = useRef(null);
+  const initialSuggestions = React.useMemo(() => {
+    // Flatten by category priority for a simple 2-row layout
+    const byPriority = [...SUGGESTION_CATEGORIES].sort((a, b) => a.priority - b.priority);
+    const flat = [];
+    byPriority.forEach((cat) => {
+      (MOCK_SUGGESTIONS[cat.key] || []).forEach((s) => {
+        flat.push({ ...s, categoryKey: cat.key, priority: cat.priority });
+      });
+    });
+    return flat;
+  }, []);
+  const [availableSuggestions, setAvailableSuggestions] = useState(initialSuggestions);
+  const [variationState, setVariationState] = useState({ open: false, anchorRect: null, word: '', variations: null, sourceId: null });
+  const activeTouchRef = useRef(null);
+
+  const insertAtCursor = useCallback((text) => {
+    const el = notesTextareaRef.current;
+    if (!el) {
+      setNotes((prev) => {
+        if (!prev || prev.trim().length === 0) return text.charAt(0).toUpperCase() + text.slice(1);
+        const endsWithComma = /[,;]$/.test(prev.trim());
+        const endsWithSpace = /\s$/.test(prev);
+        const joiner = endsWithComma ? ' ' : (endsWithSpace ? '' : ', ');
+        return prev + joiner + text;
+      });
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const before = notes.slice(0, start);
+    const after = notes.slice(end);
+    const trimmedBefore = before.trimEnd();
+    const endsWithComma = /[,;]$/.test(trimmedBefore);
+    const needsComma = trimmedBefore.length > 0 && !endsWithComma && trimmedBefore !== '';
+    const spacer = trimmedBefore.length === 0 ? '' : (endsWithComma ? ' ' : ', ');
+    const insert = `${spacer}${text}`;
+    const next = before + insert + after;
+    setNotes(next);
+    // Don't focus/show keyboard when inserting suggestions
+    requestAnimationFrame(() => {
+      const pos = (before + insert).length;
+      el.setSelectionRange(pos, pos);
+      // el.focus(); // Removed to prevent keyboard popup
+    });
+  }, [notes]);
+
+  const lastTapRef = useRef({ id: null, time: 0 });
+  
+  const handleSuggestionTap = useCallback((s) => {
+    const now = Date.now();
+    
+    // Prevent rapid double taps (within 500ms)
+    if (lastTapRef.current.id === s.id && now - lastTapRef.current.time < 500) {
+      try { console.log('🚫 [AddItemModal] Ignoring rapid double tap', s.label); } catch {}
+      return;
+    }
+    
+    lastTapRef.current = { id: s.id, time: now };
+    
+    try { 
+      console.log('👆 [AddItemModal] Suggestion tapped', { 
+        id: s?.id, 
+        label: s?.label,
+        timestamp: now
+      }); 
+    } catch {}
+    
+    // Prevent duplicates: simple token check
+    const exists = (notes || '').toLowerCase().includes(s.label.toLowerCase());
+    if (!exists) {
+      insertAtCursor(s.label);
+      // Remove the selected suggestion
+      setAvailableSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    }
+    if (navigator.vibrate) navigator.vibrate(5);
+  }, [insertAtCursor, notes]);
+
+  const handleSuggestionLongPress = useCallback((s, rect, touchInfo) => {
+    try { 
+      console.log('🧰 [AddItemModal] Long press received', JSON.stringify({ 
+        id: s?.id, 
+        label: s?.label, 
+        hasVariations: !!s?.variations,
+        variations: s?.variations,
+        rect, 
+        touchInfo 
+      }, null, 2)); 
+    } catch {}
+    
+    const newState = { 
+      open: true, 
+      anchorRect: rect, 
+      word: s.label, 
+      variations: s.variations, 
+      sourceId: s.id,
+      hasActiveTouch: touchInfo?.hasActiveTouch
+    };
+    
+    try { 
+      console.log('🔧 [AddItemModal] Setting variation state', JSON.stringify(newState, null, 2)); 
+    } catch {}
+    
+    setVariationState(newState);
+  }, []);
+
+  const handleVariationSelect = useCallback((text) => {
+    try { 
+      console.log('✅ [AddItemModal] Variation selected', { 
+        text: String(text || ''),
+        currentNotes: notes,
+        sourceId: variationState.sourceId
+      }); 
+    } catch {}
+    const exists = (notes || '').toLowerCase().includes(text.toLowerCase());
+    if (!exists) {
+      try { console.log('📝 [AddItemModal] Inserting text:', text); } catch {}
+      insertAtCursor(text);
+      // Remove the original suggestion word that was long-pressed
+      setAvailableSuggestions((prev) => prev.filter((x) => x.id !== variationState.sourceId));
+    } else {
+      try { console.log('⚠️ [AddItemModal] Text already exists, skipping insert'); } catch {}
+    }
+    setVariationState({ open: false, anchorRect: null, word: '', variations: null, sourceId: null });
+    if (navigator.vibrate) navigator.vibrate(10);
+  }, [insertAtCursor, notes, variationState.sourceId]);
+
+  const handleCloseVariation = useCallback(() => {
+    try { console.log('🧹 [AddItemModal] Variation popup closed'); } catch {}
+    setVariationState({ open: false, anchorRect: null, word: '', variations: null, sourceId: null });
+  }, []);
+
   return (
     <div 
       className="fixed inset-0 bg-stone-50 overflow-y-auto modal-overlay" 
@@ -2201,6 +2304,7 @@ const AddItemModal = ({
             <div className="mb-2 mt-2">
               <h3 className="text-sm font-medium text-gray-900 mb-3">Your Notes</h3>
               <textarea
+                ref={notesTextareaRef}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add your personal thoughts, memories, or additional notes..."
@@ -2211,6 +2315,27 @@ const AddItemModal = ({
                 autoCapitalize="sentences"
                 spellCheck="true"
               />
+              {/* Suggestions toggle and container */}
+              <div className="mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <button
+                    onClick={() => setShowSuggestions(!showSuggestions)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    {showSuggestions ? 'Hide suggestions' : 'Show suggestions'}
+                  </button>
+                  <span className="text-[11px] text-gray-500">Hold for variations</span>
+                </div>
+                {showSuggestions && (
+                  <div className="p-2">
+                    <HorizontalSuggestions
+                      suggestions={availableSuggestions}
+                      onTap={handleSuggestionTap}
+                      onLongPress={handleSuggestionLongPress}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-3 mt-4 mb-4">
@@ -3298,6 +3423,17 @@ const AddItemModal = ({
           />
         )}
               </AnimatePresence>
+
+      {/* Variation Popup - using simple approach */}
+      <SimpleVariationPopup
+        isOpen={variationState.open}
+        anchorRect={variationState.anchorRect}
+        word={variationState.word}
+        variations={variationState.variations}
+        onSelect={handleVariationSelect}
+        onClose={handleCloseVariation}
+        hasActiveTouch={variationState.hasActiveTouch}
+      />
 
         {/* First in World Achievement Popup */}
         {showFirstInWorldPopup && (

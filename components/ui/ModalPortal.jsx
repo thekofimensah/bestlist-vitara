@@ -14,7 +14,7 @@ const getPortalContainer = () => {
       width: 100%;
       height: 100%;
       pointer-events: none;
-      z-index: 9999;
+      z-index: 10050;
       contain: layout style paint;
     `;
     document.body.appendChild(portalContainer);

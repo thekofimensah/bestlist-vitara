@@ -40,7 +40,9 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
               <SuggestionButton
                 key={suggestion.id}
                 suggestion={suggestion}
-                onTap={(suggestion, buttonRect) => onTap(suggestion, buttonRect)}
+                onTap={(tappedSuggestion, buttonRect, isDoubleTap = false) => {
+                  onTap(tappedSuggestion, buttonRect, isDoubleTap);
+                }}
               />
             ))}
             </div>
@@ -52,7 +54,9 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
                   <SuggestionButton
                     key={suggestion.id}
                     suggestion={suggestion}
-                    onTap={(suggestion, buttonRect) => onTap(suggestion, buttonRect)}
+                    onTap={(tappedSuggestion, buttonRect, isDoubleTap = false) => {
+                      onTap(tappedSuggestion, buttonRect, isDoubleTap);
+                    }}
                   />
                 ))}
               </div>

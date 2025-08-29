@@ -1731,7 +1731,7 @@ const AddItemModal = ({
   const [flyingAnimations, setFlyingAnimations] = useState([]);
 
   // Create flying animation for suggestion tap
-  const createFlyingAnimation = useCallback((buttonRect, word) => {
+  const createFlyingAnimation = useCallback((buttonRect, word, isDoubleTap = false) => {
     const animationId = Date.now() + Math.random();
 
     // Calculate end position (near the notes textarea)
@@ -1750,6 +1750,7 @@ const AddItemModal = ({
       startY,
       endX,
       endY,
+      isDoubleTap,
       createdAt: Date.now()
     };
 
@@ -1763,78 +1764,127 @@ const AddItemModal = ({
 
   const insertAtCursor = useCallback((text) => {
     const el = notesTextareaRef.current;
+    
+    // Helper function to capitalize first letter
+    const capitalizeFirst = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+    
+    // Helper function to create a cleaner sentence structure
+    const createCleanSentence = (existingText, newText) => {
+      const trimmed = existingText.trim();
+      
+      // If empty, start with capitalized text
+      if (!trimmed) {
+        return capitalizeFirst(newText);
+      }
+      
+      // Check if we're at the start of a new sentence (after period, exclamation, question mark)
+      const endsWithSentenceEnd = /[.!?]\s*$/.test(trimmed);
+      if (endsWithSentenceEnd) {
+        // Start new sentence with proper spacing and capitalization
+        const needsSpace = !/\s$/.test(existingText);
+        return existingText + (needsSpace ? ' ' : '') + capitalizeFirst(newText);
+      }
+      
+      // Check if we're continuing a list or phrase
+      const endsWithComma = /,\s*$/.test(trimmed);
+      const endsWithAnd = /\band\s*$/i.test(trimmed);
+      const endsWithSpace = /\s$/.test(existingText);
+      
+      // If already ends with "and", just add the word
+      if (endsWithAnd) {
+        return existingText + (endsWithSpace ? '' : ' ') + newText;
+      }
+      
+      // If ends with comma, add "and" before the new word
+      if (endsWithComma) {
+        return existingText + (endsWithSpace ? '' : ' ') + 'and ' + newText;
+      }
+      
+      // If it's a continuation of descriptive text, handle based on word count
+      const wordCount = trimmed.split(/[,\s]+/).filter(w => w.length > 0).length;
+      if (wordCount === 1) {
+        // For the second word, just use "and" (no comma): "fresh and crispy"
+        return existingText + (endsWithSpace ? '' : ' ') + 'and ' + newText;
+      } else if (wordCount >= 2) {
+        // For three or more words, use ", and": "fresh, crispy, and delicious"
+        return existingText + (endsWithSpace ? '' : ', ') + 'and ' + newText;
+      } else {
+        // Fallback (shouldn't reach here)
+        return existingText + (endsWithSpace ? '' : ', ') + newText;
+      }
+    };
+    
     if (!el) {
-      setNotes((prev) => {
-        if (!prev || prev.trim().length === 0) return text.charAt(0).toUpperCase() + text.slice(1);
-        const endsWithComma = /[,;]$/.test(prev.trim());
-        const endsWithSpace = /\s$/.test(prev);
-        const joiner = endsWithComma ? ' ' : (endsWithSpace ? '' : ', ');
-        return prev + joiner + text;
-      });
+      setNotes((prev) => createCleanSentence(prev || '', text));
       return;
     }
+    
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
     const before = notes.slice(0, start);
     const after = notes.slice(end);
-    const trimmedBefore = before.trimEnd();
-    const endsWithComma = /[,;]$/.test(trimmedBefore);
-    const needsComma = trimmedBefore.length > 0 && !endsWithComma && trimmedBefore !== '';
-    const spacer = trimmedBefore.length === 0 ? '' : (endsWithComma ? ' ' : ', ');
-    const insert = `${spacer}${text}`;
-    const next = before + insert + after;
+    
+    // Create the clean insertion
+    const beforeWithInsert = createCleanSentence(before, text);
+    const next = beforeWithInsert + after;
+    
     setNotes(next);
+    
     // Don't focus/show keyboard when inserting suggestions
     requestAnimationFrame(() => {
-      const pos = (before + insert).length;
+      const pos = beforeWithInsert.length;
       el.setSelectionRange(pos, pos);
       // el.focus(); // Removed to prevent keyboard popup
     });
   }, [notes]);
 
-  const lastTapRef = useRef({ id: null, time: 0 });
-  const globalCooldownRef = useRef(0); // Global cooldown for ALL suggestions
+
   
-  const handleSuggestionTap = useCallback((s, buttonRect) => {
-    const now = Date.now();
+  // Generate negative/opposite form of a word
+  const generateNegativeForm = useCallback((word) => {
+    const lowerWord = word.toLowerCase();
 
-    // Global cooldown - prevent ANY suggestion from being tapped too quickly
-    if (now - globalCooldownRef.current < 300) {
-      try { console.log('🚫 [AddItemModal] Global cooldown active, ignoring tap', s.label); } catch {}
-      return;
+    // Handle different word types with appropriate negatives
+    if (lowerWord.includes('fresh') || lowerWord.includes('crisp') || lowerWord.includes('clean')) {
+      return `not ${word.toLowerCase()}`;
+    } else if (lowerWord.includes('tasty') || lowerWord.includes('delicious') || lowerWord.includes('flavorful')) {
+      return `not ${word.toLowerCase()}`;
+    } else if (lowerWord.includes('sweet') || lowerWord.includes('salty') || lowerWord.includes('spicy')) {
+      return `not ${word.toLowerCase()}`;
+    } else if (lowerWord.includes('soft') || lowerWord.includes('crunchy') || lowerWord.includes('chewy')) {
+      return `not ${word.toLowerCase()}`;
+    } else if (lowerWord.includes('hot') || lowerWord.includes('cold') || lowerWord.includes('warm')) {
+      return `not ${word.toLowerCase()}`;
+    } else if (lowerWord.includes('expensive') || lowerWord.includes('cheap')) {
+      return `not ${word.toLowerCase()}`;
+    } else if (lowerWord.includes('good') || lowerWord.includes('bad') || lowerWord.includes('great')) {
+      return `not ${word.toLowerCase()}`;
+    } else {
+      // Default: use "would" for adjectives that don't fit other categories
+      return `not ${word.toLowerCase()}`;
     }
+  }, []);
 
-    // Prevent rapid double taps on the same suggestion (within 500ms)
-    if (lastTapRef.current.id === s.id && now - lastTapRef.current.time < 500) {
-      try { console.log('🚫 [AddItemModal] Ignoring rapid double tap', s.label); } catch {}
-      return;
-    }
+  const handleSuggestionTap = useCallback((s, buttonRect, isDoubleTap = false) => {
 
-    // Update both the specific suggestion timer and global cooldown
-    lastTapRef.current = { id: s.id, time: now };
-    globalCooldownRef.current = now;
-
-    try {
-      console.log('👆 [AddItemModal] Suggestion tapped', {
-        id: s?.id,
-        label: s?.label,
-        timestamp: now
-      });
-    } catch {}
+    const wordToAdd = isDoubleTap ? generateNegativeForm(s.label) : s.label;
+    const wordToCheck = isDoubleTap ? generateNegativeForm(s.label) : s.label;
 
     // Prevent duplicates: simple token check
-    const exists = (notes || '').toLowerCase().includes(s.label.toLowerCase());
+    const exists = (notes || '').toLowerCase().includes(wordToCheck.toLowerCase());
     if (!exists) {
-      insertAtCursor(s.label);
+      insertAtCursor(wordToAdd);
       // Create flying animation if we have button position
       if (buttonRect) {
-        createFlyingAnimation(buttonRect, s.label);
+        createFlyingAnimation(buttonRect, wordToAdd, isDoubleTap);
       }
-      // Remove the selected suggestion
-      setAvailableSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+      // Remove the selected suggestion with a small delay to prevent accidental taps on the next word
+      setTimeout(() => {
+        setAvailableSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+      }, 300);
     }
-    if (navigator.vibrate) navigator.vibrate(5);
-  }, [insertAtCursor, notes, createFlyingAnimation]);
+    if (navigator.vibrate) navigator.vibrate(isDoubleTap ? 20 : 5); // Stronger vibration for double tap
+  }, [insertAtCursor, notes, createFlyingAnimation, generateNegativeForm]);
 
 
 
@@ -2300,7 +2350,7 @@ const AddItemModal = ({
               <div className="mt-2">
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="w-3 h-3 text-gray-500" />
-                  <span className="text-xs text-gray-500">Tap to add</span>
+                  <span className="text-xs text-gray-500">Tap to add • Double-tap for opposite (not/would)</span>
                 </div>
                 <div className="p-2">
                   <HorizontalSuggestions
@@ -2862,7 +2912,11 @@ const AddItemModal = ({
                   animation: 'flyAndFade 0.6s ease-out forwards'
                 }}
               >
-                <div className="px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap bg-teal-100 text-teal-800 border border-teal-200 shadow-sm">
+                <div className={`px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap shadow-sm ${
+                  animation.isDoubleTap
+                    ? 'bg-red-100 text-red-700 border border-red-200'
+                    : 'bg-teal-100 text-teal-800 border border-teal-200'
+                }`}>
                   {animation.word}
                 </div>
               </div>

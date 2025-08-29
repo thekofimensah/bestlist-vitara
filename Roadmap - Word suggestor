@@ -95,16 +95,14 @@ Implement an intelligent horizontal scroll suggestion system for the notes secti
 - [ ] Implement fallback to static suggestions if AI fails
 
 ### 3.2 Context-Aware Generation
-- [ ] Use product category to influence suggestions
 - [ ] Consider user's rating (1-5 stars) for suggestion tone
-- [ ] Factor in existing tags and description
-- [ ] Add location context if relevant
 
 ### 3.3 AI Request Optimization
 - [ ] Batch suggestion requests with existing image analysis
 - [ ] Implement request deduplication
 - [ ] Add timeout handling for suggestion requests
-- [ ] Cache suggestions per product category
+- [ ] Cache suggestions per product 
+- [ ] Remove duplicates from displaying
 
 **Deliverable: AI-powered contextual suggestions integrated with existing flow**
 

@@ -1,129 +1,86 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState } from 'react';
 
-// Touch-friendly suggestion pill with long-press detection  
-const LONG_PRESS_MS = 300; // Slightly faster for better UX
-
-const SuggestionButton = React.memo(({ suggestion, onTap, onLongPress }) => {
-  const timerRef = useRef(null);
-  const ignoreMouseRef = useRef(false);
-  const longPressTriggeredRef = useRef(false);
+const SuggestionButton = React.memo(({ suggestion, onTap }) => {
   const buttonRef = useRef(null);
   const [isPressed, setIsPressed] = useState(false);
-  const initialTouchRef = useRef(null); // Track initial touch for scroll detection
+  const tapStateRef = useRef({ lastTapTime: 0, isDoubleTapHandled: false, resetTimer: null });
 
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const triggerLongPress = useCallback(() => {
-    longPressTriggeredRef.current = true;
-    if (navigator.vibrate) navigator.vibrate(10);
+  const executeTap = (isDoubleTap = false) => {
     const rect = buttonRef.current?.getBoundingClientRect();
-    try {
-      console.log('🟢 [SuggestionButton] Long press detected', JSON.stringify({
-        id: suggestion?.id,
-        label: suggestion?.label,
-        rect
-      }, null, 2));
-    } catch {}
-    
-    // Pass through any active touch information
-    const activeTouches = Array.from(document.querySelectorAll(':active'));
-    onLongPress?.(suggestion, rect, { hasActiveTouch: activeTouches.length > 0 });
-  }, [suggestion, onLongPress]);
+    onTap?.(suggestion, rect, isDoubleTap);
+  };
 
   const onPointerDown = (e) => {
+    // Prevent scrolling from interfering with tap detection
+    e.preventDefault();
     setIsPressed(true);
-    longPressTriggeredRef.current = false;
-    clearTimer();
     
-    // Track initial touch position for scroll detection
-    if (e.touches && e.touches[0]) {
-      initialTouchRef.current = {
-        x: e.touches[0].clientX,
-        y: e.touches[0].clientY,
-        time: Date.now()
-      };
+    const currentTime = Date.now();
+    const timeSinceLastTap = currentTime - tapStateRef.current.lastTapTime;
+    
+    console.log('DOWN: currentTime:', currentTime, 'lastTapTime:', tapStateRef.current.lastTapTime, 'timeSinceLastTap:', timeSinceLastTap, 'isDoubleTapHandled:', tapStateRef.current.isDoubleTapHandled);
+    
+    if (tapStateRef.current.lastTapTime > 0 && timeSinceLastTap < 160) {
+      console.log('Double tap detected! timeSinceLastTap:', timeSinceLastTap);
+      executeTap(true); // Double tap - add negative word
+      tapStateRef.current.lastTapTime = 0; // Reset for next sequence
+      tapStateRef.current.isDoubleTapHandled = true;
+    } else {
+      console.log('Setting up for potential single/first tap. lastTapTime was:', tapStateRef.current.lastTapTime, 'timeSinceLastTap:', timeSinceLastTap);
+      
+      // Clear any existing reset timer
+      if (tapStateRef.current.resetTimer) {
+        clearTimeout(tapStateRef.current.resetTimer);
+      }
+      
+      tapStateRef.current.lastTapTime = currentTime;
+      tapStateRef.current.isDoubleTapHandled = false;
+      
+      // Set a timer to reset lastTapTime after 500ms (longer than double tap window)
+      tapStateRef.current.resetTimer = setTimeout(() => {
+        console.log('Resetting lastTapTime after timeout');
+        tapStateRef.current.lastTapTime = 0;
+      }, 500);
     }
-    
-    try { console.log('🟡 [SuggestionButton] Pointer down', String(suggestion?.label || '')); } catch {}
-    timerRef.current = setTimeout(triggerLongPress, LONG_PRESS_MS);
   };
 
-  const onPointerUp = (e) => {
-    clearTimer();
-    
-    // Check if this was a scroll gesture vs a tap
-    let wasScrolling = false;
-    if (initialTouchRef.current && e.changedTouches && e.changedTouches[0]) {
-      const touch = e.changedTouches[0];
-      const deltaX = Math.abs(touch.clientX - initialTouchRef.current.x);
-      const deltaY = Math.abs(touch.clientY - initialTouchRef.current.y);
-      const deltaTime = Date.now() - initialTouchRef.current.time;
-      
-      // Consider it scrolling if moved more than 15px horizontally with some speed
-      wasScrolling = deltaX > 15 && deltaTime < 300;
-    }
-    
-    try { 
-      console.log('🔵 [SuggestionButton] Pointer up', JSON.stringify({ 
-        label: suggestion?.label, 
-        longPressTriggered: longPressTriggeredRef.current,
-        wasScrolling 
-      }, null, 2)); 
-    } catch {}
-    
-    if (!longPressTriggeredRef.current && !wasScrolling) {
-      setIsPressed(false); // Reset immediately for normal taps
-      // Get button rectangle for animation
-      const rect = buttonRef.current?.getBoundingClientRect();
-      onTap?.(suggestion, rect);
-    } else if (longPressTriggeredRef.current) {
-      // For long press, reset after a delay to allow smooth popup transition
+  const onPointerUp = () => {
+    console.log('UP:', {
+      isPressed,
+      isDoubleTapHandled: tapStateRef.current.isDoubleTapHandled
+    });
+
+    if (isPressed && !tapStateRef.current.isDoubleTapHandled) {
+      // Delay single tap execution to allow for potential double tap
       setTimeout(() => {
-        setIsPressed(false);
-        longPressTriggeredRef.current = false;
-      }, 50);
-    } else {
-      setIsPressed(false); // Reset for scrolling or other cases
+        if (!tapStateRef.current.isDoubleTapHandled) {
+          console.log('Executing delayed single tap');
+          executeTap(false); // Single tap - add word
+        } else {
+          console.log('Single tap cancelled - double tap was detected');
+        }
+      }, 165); // Slightly longer than double tap window (300ms)
+    } else if (tapStateRef.current.isDoubleTapHandled) {
+      console.log('Double tap already handled, skipping');
     }
-    
-    initialTouchRef.current = null; // Reset
+    setIsPressed(false);
   };
 
   const onPointerLeave = () => {
     setIsPressed(false);
-    clearTimer();
+    // Don't reset lastTapTime here - let double tap detection work across brief pointer leaves
   };
 
   return (
     <button
       ref={buttonRef}
-      onMouseDown={(e) => { if (ignoreMouseRef.current) return; onPointerDown(e); }}
-      onMouseUp={(e) => { if (ignoreMouseRef.current) return; onPointerUp(e); }}
-      onMouseLeave={onPointerLeave}
-      onTouchStart={(e) => { 
-        e.stopPropagation(); 
-        e.preventDefault(); // Prevent scrolling when touching suggestions
-        ignoreMouseRef.current = true; 
-        onPointerDown(e); 
-      }}
-      onTouchEnd={(e) => { 
-        if (longPressTriggeredRef.current) {
-          // Don't consume the touch end if long press was triggered - let it bubble to popup
-          try { console.log('🎭 [SuggestionButton] Long press active, not consuming touchend'); } catch {}
-          return;
-        }
-        e.stopPropagation(); 
-        onPointerUp(e); 
-        setTimeout(() => { ignoreMouseRef.current = false; }, 400); 
-      }}
-      onTouchCancel={onPointerLeave}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
       className={`px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all select-none border ${
-        isPressed ? 'bg-gray-200 text-gray-900 border-gray-300' : 'bg-white text-gray-700 border-gray-200 shadow-sm'
+        isPressed
+          ? 'bg-gray-200 text-gray-900 border-gray-300'
+          : 'bg-white text-gray-700 border-gray-200 shadow-sm'
       }`}
       style={{
         minHeight: 28,

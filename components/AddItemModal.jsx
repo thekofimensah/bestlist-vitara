@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, SkipForward, Plus, Star, ChevronDown, ChevronUp, Edit3, Navigation, Trash2, Share } from 'lucide-react';
+import { X, MapPin, Sparkles, ArrowLeft,ArrowRight, SkipForward,  Plus, Star, ChevronDown, ChevronUp, Share } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
 import { RatingOverlay } from './Elements';
 import SmartImage from './secondary/SmartImage';
@@ -31,8 +31,6 @@ import ShareModal from './secondary/ShareModal';
 
 // Word suggestion (Phase 1 & 2) - static data + UI
 import HorizontalSuggestions from './wordSuggestions/HorizontalSuggestions';
-import VariationPopup from './wordSuggestions/VariationPopup';
-import SimpleVariationPopup from './wordSuggestions/SimpleVariationPopup';
 import { MOCK_SUGGESTIONS, SUGGESTION_CATEGORIES } from './wordSuggestions/mockSuggestions';
 
 
@@ -574,7 +572,7 @@ const AddItemModal = ({
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [currentCoords, setCurrentCoords] = useState(null);
-  const [rarity, setRarity] = useState(1); // 1=Common, 2=Uncommon, 3=Rare
+  // Rarity is now hardcoded to Common (1) - removed UI for now
   const [showListDropdown, setShowListDropdown] = useState(false);
   const listDropdownRef = useRef(null);
 
@@ -1165,7 +1163,7 @@ const AddItemModal = ({
       price: editPrice || null,
       currency_code: currency || 'USD',
       detailed_breakdown: attributes,
-      rarity,
+      rarity: 1, // Hardcoded to Common for now
       
       // Privacy setting
       is_public: isPublic,
@@ -1386,17 +1384,7 @@ const AddItemModal = ({
 
 
 
-  const handleRarityChange = (delta) => {
-    setRarity(prev => {
-      const newVal = ((prev - 1 + delta + 3) % 3) + 1;
-      return newVal;
-    });
-  };
-
-  const getRarityLabel = (rarity) => {
-    const labels = ['Common', 'Uncommon', 'Rare'];
-    return labels[rarity - 1] || 'Common';
-  };
+  // Rarity functions removed - hardcoded to Common (1)
 
   const getRatingLabel = (rating) => {
     const labels = {
@@ -1590,13 +1578,13 @@ const AddItemModal = ({
             setLocation(coordsText);
           }
         } catch (geocodeError) {
-          console.log('Reverse geocoding failed, using coordinates:', geocodeJSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          console.log('Reverse geocoding failed, using coordinates:', JSON.stringify({
+          message: geocodeError.message,
+          name: geocodeError.name,
+          details: geocodeError.details,
+          hint: geocodeError.hint,
+          code: geocodeError.code,
+          fullError: geocodeError
         }, null, 2));
           setLocation(coordsText);
           setCurrentCoords({ lat: position.coords.latitude, lon: position.coords.longitude });
@@ -1607,12 +1595,12 @@ const AddItemModal = ({
       
     } catch (error) {
       console.log('All location methods failed:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
       // Don't change location if it's already set from EXIF or other source
       if (location === 'Current Location') {
@@ -1726,7 +1714,6 @@ const AddItemModal = ({
   const [showShareModal, setShowShareModal] = useState(false);
 
   // --- Word Suggestions (Phase 1 & 2) ---
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const notesTextareaRef = useRef(null);
   const initialSuggestions = React.useMemo(() => {
     // Flatten by category priority for a simple 2-row layout
@@ -1740,8 +1727,39 @@ const AddItemModal = ({
     return flat;
   }, []);
   const [availableSuggestions, setAvailableSuggestions] = useState(initialSuggestions);
-  const [variationState, setVariationState] = useState({ open: false, anchorRect: null, word: '', variations: null, sourceId: null });
   const activeTouchRef = useRef(null);
+  const [flyingAnimations, setFlyingAnimations] = useState([]);
+
+  // Create flying animation for suggestion tap
+  const createFlyingAnimation = useCallback((buttonRect, word) => {
+    const animationId = Date.now() + Math.random();
+
+    // Calculate end position (near the notes textarea)
+    const notesRect = notesTextareaRef.current?.getBoundingClientRect();
+    if (!notesRect) return;
+
+    const startX = buttonRect.left + buttonRect.width / 2;
+    const startY = buttonRect.top + buttonRect.height / 2;
+    const endX = notesRect.left + notesRect.width / 2;
+    const endY = notesRect.top + 20; // Slightly above the textarea
+
+    const newAnimation = {
+      id: animationId,
+      word,
+      startX,
+      startY,
+      endX,
+      endY,
+      createdAt: Date.now()
+    };
+
+    setFlyingAnimations(prev => [...prev, newAnimation]);
+
+    // Remove animation after it completes (600ms)
+    setTimeout(() => {
+      setFlyingAnimations(prev => prev.filter(anim => anim.id !== animationId));
+    }, 600);
+  }, []);
 
   const insertAtCursor = useCallback((text) => {
     const el = notesTextareaRef.current;
@@ -1775,89 +1793,52 @@ const AddItemModal = ({
   }, [notes]);
 
   const lastTapRef = useRef({ id: null, time: 0 });
+  const globalCooldownRef = useRef(0); // Global cooldown for ALL suggestions
   
-  const handleSuggestionTap = useCallback((s) => {
+  const handleSuggestionTap = useCallback((s, buttonRect) => {
     const now = Date.now();
-    
-    // Prevent rapid double taps (within 500ms)
+
+    // Global cooldown - prevent ANY suggestion from being tapped too quickly
+    if (now - globalCooldownRef.current < 300) {
+      try { console.log('🚫 [AddItemModal] Global cooldown active, ignoring tap', s.label); } catch {}
+      return;
+    }
+
+    // Prevent rapid double taps on the same suggestion (within 500ms)
     if (lastTapRef.current.id === s.id && now - lastTapRef.current.time < 500) {
       try { console.log('🚫 [AddItemModal] Ignoring rapid double tap', s.label); } catch {}
       return;
     }
-    
+
+    // Update both the specific suggestion timer and global cooldown
     lastTapRef.current = { id: s.id, time: now };
-    
-    try { 
-      console.log('👆 [AddItemModal] Suggestion tapped', { 
-        id: s?.id, 
+    globalCooldownRef.current = now;
+
+    try {
+      console.log('👆 [AddItemModal] Suggestion tapped', {
+        id: s?.id,
         label: s?.label,
         timestamp: now
-      }); 
+      });
     } catch {}
-    
+
     // Prevent duplicates: simple token check
     const exists = (notes || '').toLowerCase().includes(s.label.toLowerCase());
     if (!exists) {
       insertAtCursor(s.label);
+      // Create flying animation if we have button position
+      if (buttonRect) {
+        createFlyingAnimation(buttonRect, s.label);
+      }
       // Remove the selected suggestion
       setAvailableSuggestions((prev) => prev.filter((x) => x.id !== s.id));
     }
     if (navigator.vibrate) navigator.vibrate(5);
-  }, [insertAtCursor, notes]);
+  }, [insertAtCursor, notes, createFlyingAnimation]);
 
-  const handleSuggestionLongPress = useCallback((s, rect, touchInfo) => {
-    try { 
-      console.log('🧰 [AddItemModal] Long press received', JSON.stringify({ 
-        id: s?.id, 
-        label: s?.label, 
-        hasVariations: !!s?.variations,
-        variations: s?.variations,
-        rect, 
-        touchInfo 
-      }, null, 2)); 
-    } catch {}
-    
-    const newState = { 
-      open: true, 
-      anchorRect: rect, 
-      word: s.label, 
-      variations: s.variations, 
-      sourceId: s.id,
-      hasActiveTouch: touchInfo?.hasActiveTouch
-    };
-    
-    try { 
-      console.log('🔧 [AddItemModal] Setting variation state', JSON.stringify(newState, null, 2)); 
-    } catch {}
-    
-    setVariationState(newState);
-  }, []);
 
-  const handleVariationSelect = useCallback((text) => {
-    try { 
-      console.log('✅ [AddItemModal] Variation selected', { 
-        text: String(text || ''),
-        currentNotes: notes,
-        sourceId: variationState.sourceId
-      }); 
-    } catch {}
-    const exists = (notes || '').toLowerCase().includes(text.toLowerCase());
-    if (!exists) {
-      try { console.log('📝 [AddItemModal] Inserting text:', text); } catch {}
-      insertAtCursor(text);
-      // Remove the original suggestion word that was long-pressed
-      setAvailableSuggestions((prev) => prev.filter((x) => x.id !== variationState.sourceId));
-    } else {
-      try { console.log('⚠️ [AddItemModal] Text already exists, skipping insert'); } catch {}
-    }
-    setVariationState({ open: false, anchorRect: null, word: '', variations: null, sourceId: null });
-    if (navigator.vibrate) navigator.vibrate(10);
-  }, [insertAtCursor, notes, variationState.sourceId]);
 
-  const handleCloseVariation = useCallback(() => {
-    try { console.log('🧹 [AddItemModal] Variation popup closed'); } catch {}
-    setVariationState({ open: false, anchorRect: null, word: '', variations: null, sourceId: null });
-  }, []);
+
 
   return (
     <div 
@@ -2315,51 +2296,22 @@ const AddItemModal = ({
                 autoCapitalize="sentences"
                 spellCheck="true"
               />
-              {/* Suggestions toggle and container */}
+              {/* Suggestions container */}
               <div className="mt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <button
-                    onClick={() => setShowSuggestions(!showSuggestions)}
-                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs font-medium hover:bg-gray-200 transition-colors"
-                  >
-                    {showSuggestions ? 'Hide suggestions' : 'Show suggestions'}
-                  </button>
-                  <span className="text-[11px] text-gray-500">Hold for variations</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-3 h-3 text-gray-500" />
+                  <span className="text-xs text-gray-500">Tap to add</span>
                 </div>
-                {showSuggestions && (
-                  <div className="p-2">
-                    <HorizontalSuggestions
-                      suggestions={availableSuggestions}
-                      onTap={handleSuggestionTap}
-                      onLongPress={handleSuggestionLongPress}
-                    />
-                  </div>
-                )}
+                <div className="p-2">
+                  <HorizontalSuggestions
+                    suggestions={availableSuggestions}
+                    onTap={handleSuggestionTap}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 mt-4 mb-4">
-                  <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-                    <span>Rarity:</span>
-                    <div className="flex items-center bg-gray-100 rounded-lg px-1 py-0.5">
-                      <button
-                        onClick={() => handleRarityChange(-1)}
-                        className="p-1 active:scale-95"
-                      >
-                        <ArrowLeft className="w-3 h-3 text-gray-600" />
-                      </button>
-                      <span className="text-xs font-medium text-gray-700 px-1 min-w-[60px] text-center">
-                        {getRarityLabel(rarity)}
-                      </span>
-                      <button
-                        onClick={() => handleRarityChange(1)}
-                        className="p-1 active:scale-95"
-                      >
-                        <ArrowRight className="w-3 h-3 text-gray-600" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+
 
             {/* AI Summary & Details Section */}
             <div className="mb-6 mt-2">
@@ -2898,6 +2850,24 @@ const AddItemModal = ({
               </div>
             </div>
 
+            {/* Flying Animation Elements */}
+            {flyingAnimations.map((animation) => (
+              <div
+                key={animation.id}
+                className="fixed pointer-events-none z-50"
+                style={{
+                  left: animation.startX,
+                  top: animation.startY,
+                  transform: 'translate(-50%, -50%)',
+                  animation: 'flyAndFade 0.6s ease-out forwards'
+                }}
+              >
+                <div className="px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap bg-teal-100 text-teal-800 border border-teal-200 shadow-sm">
+                  {animation.word}
+                </div>
+              </div>
+            ))}
+
             {/* Action Bar */}
             <div className="flex items-center justify-between">
               <button
@@ -3424,16 +3394,7 @@ const AddItemModal = ({
         )}
               </AnimatePresence>
 
-      {/* Variation Popup - using simple approach */}
-      <SimpleVariationPopup
-        isOpen={variationState.open}
-        anchorRect={variationState.anchorRect}
-        word={variationState.word}
-        variations={variationState.variations}
-        onSelect={handleVariationSelect}
-        onClose={handleCloseVariation}
-        hasActiveTouch={variationState.hasActiveTouch}
-      />
+
 
         {/* First in World Achievement Popup */}
         {showFirstInWorldPopup && (
@@ -3506,6 +3467,26 @@ const AddItemModal = ({
       />
       
       {/* LevelUpEffect removed */}
+
+      {/* Flying Animation Styles */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes flyAndFade {
+            0% {
+              transform: translate(-50%, -50%) scale(1);
+              opacity: 1;
+            }
+            50% {
+              transform: translate(-50%, -100px) scale(1.1);
+              opacity: 0.9;
+            }
+            100% {
+              transform: translate(-50%, -150px) scale(0.8);
+              opacity: 0;
+            }
+          }
+        `
+      }} />
     </div>
   );
 };

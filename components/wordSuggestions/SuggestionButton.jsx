@@ -78,7 +78,9 @@ const SuggestionButton = React.memo(({ suggestion, onTap, onLongPress }) => {
     
     if (!longPressTriggeredRef.current && !wasScrolling) {
       setIsPressed(false); // Reset immediately for normal taps
-      onTap?.(suggestion);
+      // Get button rectangle for animation
+      const rect = buttonRef.current?.getBoundingClientRect();
+      onTap?.(suggestion, rect);
     } else if (longPressTriggeredRef.current) {
       // For long press, reset after a delay to allow smooth popup transition
       setTimeout(() => {
@@ -120,12 +122,12 @@ const SuggestionButton = React.memo(({ suggestion, onTap, onLongPress }) => {
         setTimeout(() => { ignoreMouseRef.current = false; }, 400); 
       }}
       onTouchCancel={onPointerLeave}
-      className={`px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all select-none border ${
+      className={`px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all select-none border ${
         isPressed ? 'bg-gray-200 text-gray-900 border-gray-300' : 'bg-white text-gray-700 border-gray-200 shadow-sm'
       }`}
-      style={{ 
-        minHeight: 44, 
-        minWidth: Math.max(60, suggestion.label.length * 9 + 32), // Dynamic width based on text length
+      style={{
+        minHeight: 28,
+        minWidth: Math.max(36, suggestion.label.length * 7 + 20), // Dynamic width based on text length, 20% bigger
       }}
     >
       {suggestion.label}

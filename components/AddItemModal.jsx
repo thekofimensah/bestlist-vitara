@@ -2142,10 +2142,10 @@ const AddItemModal = ({
 
 
             {/* Item Header */}
-            <div className="mb-6 pt-3 relative">
+            <div className="mb-4 pt-3 relative">
               {/* First in World Badge - positioned in top right */}
               {firstInWorldAchievement && (
-                <div className="absolute top-0 right-0 z-10 pb-2">
+                <div className="absolute top-0 right-0 z-10 pb-6">
                   <FirstInWorldBadge 
                     achievement={firstInWorldAchievement}
                     size="medium"

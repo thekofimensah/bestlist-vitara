@@ -660,36 +660,97 @@ const MainScreen = React.forwardRef(({
     setFlashEnabled(!flashEnabled);
   };
 
-  // Main camera control effect - simplified logic
+  // Main camera control effect - only cleanup on true unmount
   useEffect(() => {
-    const shouldStartCamera = isActive && isCameraVisible && !showModal && !isCapturing && !capturedImage;
-    
-    if (shouldStartCamera && !isCameraStreamActive && !isCameraStarting) {
-      console.log('📷 [MainScreen] Starting camera - conditions met');
-      startCamera(facingMode);
-    } else if (!shouldStartCamera && isCameraStreamActive) {
-      console.log('📷 [MainScreen] Stopping camera - conditions not met');
-      stopCamera();
+    // Initial camera start when component mounts and conditions are met
+    const startCameraIfReady = () => {
+      if (isCameraVisible && !showModal && !isCapturing && !capturedImage) {
+        console.log('📷 [MainScreen] Starting camera on mount (isActive:', isActive, ')');
+        startCamera(facingMode);
+      } else {
+        console.log('📷 [MainScreen] Camera start delayed - conditions not met:', {
+          isCameraVisible,
+          showModal,
+          isCapturing,
+          capturedImage: !!capturedImage,
+          isActive
+        });
+      }
+    };
+
+    if (isActive) {
+      // If already active, start immediately
+      startCameraIfReady();
+    } else {
+      // If not active yet (app still loading), wait a bit and try again
+      console.log('📷 [MainScreen] App not active yet, waiting for activation...');
+      const delayedStart = setTimeout(() => {
+        console.log('📷 [MainScreen] Delayed camera start attempt...');
+        startCameraIfReady();
+      }, 1000); // Wait 1 second for app to finish loading
+      
+      // Store timeout ref for cleanup
+      cameraStartTimeoutRef.current = delayedStart;
     }
     
+    // Cleanup only on true component unmount
     return () => {
-      // Cleanup on unmount
+      console.log('📷 [MainScreen] Component unmounting - cleaning up camera');
       if (streamRef.current) {
-        console.log('📷 [MainScreen] Cleanup: stopping camera on unmount');
         streamRef.current.getTracks().forEach(track => {
           try {
             track.stop();
           } catch (e) {
-            console.warn('📷 [MainScreen] Error stopping track on cleanup:', e);
+            console.warn('📷 [MainScreen] Error stopping track on unmount:', e);
           }
         });
+        streamRef.current = null;
       }
       // Clear any pending timeouts
       if (cameraRetryTimeoutRef.current) {
         clearTimeout(cameraRetryTimeoutRef.current);
+        cameraRetryTimeoutRef.current = null;
+      }
+      if (cameraStartTimeoutRef.current) {
+        clearTimeout(cameraStartTimeoutRef.current);
+        cameraStartTimeoutRef.current = null;
+      }
+      // Cancel any ongoing AI requests
+      if (cancelAIRequest) {
+        try {
+          cancelAIRequest();
+        } catch (e) {
+          console.warn('📷 [MainScreen] Error canceling AI request:', e);
+        }
       }
     };
-  }, [facingMode, isActive, isCameraVisible, showModal, isCapturing, capturedImage, isCameraStreamActive, isCameraStarting]);
+  }, []); // Empty deps - only run on mount/unmount
+  
+  // Effect to start camera when app becomes active (after loading)
+  useEffect(() => {
+    if (isActive && !isCameraStreamActive && !isCameraStarting && isCameraVisible && !showModal && !isCapturing && !capturedImage) {
+      console.log('📷 [MainScreen] App became active - starting camera');
+      // Clear any pending delayed start
+      if (cameraStartTimeoutRef.current) {
+        clearTimeout(cameraStartTimeoutRef.current);
+        cameraStartTimeoutRef.current = null;
+      }
+      startCamera(facingMode);
+    }
+  }, [isActive, isCameraStreamActive, isCameraStarting, isCameraVisible, showModal, isCapturing, capturedImage, facingMode]);
+
+  // Effect to stop camera when conditions require it (simplified)
+  useEffect(() => {
+    // Only stop camera when modal opens or capture starts
+    if ((showModal || isCapturing || capturedImage) && isCameraStreamActive) {
+      console.log('📷 [MainScreen] Stopping camera due to modal/capture:', {
+        showModal,
+        isCapturing,
+        capturedImage: !!capturedImage
+      });
+      stopCamera();
+    }
+  }, [showModal, isCapturing, capturedImage, isCameraStreamActive]);
 
   // Get location on component mount - with error handling
   useEffect(() => {
@@ -727,8 +788,14 @@ const MainScreen = React.forwardRef(({
     return () => window.removeEventListener('feed:reset-camera', handleCameraReset);
   }, [facingMode, isActive, isCameraVisible, showModal]);
 
-  // Simplified intersection observer for camera visibility
+  // Simplified intersection observer for camera visibility - DISABLED for debugging
   useEffect(() => {
+    // Temporarily disable intersection observer to debug camera stopping issue
+    console.log('📷 [Visibility] Intersection observer disabled - camera always visible');
+    setIsCameraVisible(true);
+    
+    // TODO: Re-enable intersection observer after fixing camera stopping issue
+    /*
     if (!cameraContainerRef.current) return;
 
     let visibilityTimeout;
@@ -758,6 +825,7 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
+    */
   }, []); // No dependencies - just set up once
 
   // Handle app visibility changes - simplified approach
@@ -1485,11 +1553,11 @@ const MainScreen = React.forwardRef(({
     
     console.log('📷 [MainScreen] Flipping camera...');
     const newMode = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(newMode);
     
     // Stop current stream and restart with new facing mode
     stopCamera();
     setTimeout(() => {
+      setFacingMode(newMode);
       startCamera(newMode);
     }, 300);
   };
@@ -1568,42 +1636,6 @@ const MainScreen = React.forwardRef(({
   };
 
 
-
-  // Cleanup function for component unmount
-  useEffect(() => {
-    return () => {
-      console.log('📷 [MainScreen] Component unmounting - cleaning up...');
-      
-      // Clear all timeouts
-      if (cameraRetryTimeoutRef.current) {
-        clearTimeout(cameraRetryTimeoutRef.current);
-      }
-      if (cameraStartTimeoutRef.current) {
-        clearTimeout(cameraStartTimeoutRef.current);
-      }
-      
-      // Stop camera stream
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (e) {
-            console.warn('📷 [MainScreen] Error stopping track on unmount:', e);
-          }
-        });
-      }
-      
-      // Cancel any ongoing AI requests
-      if (cancelAIRequest) {
-        try {
-          cancelAIRequest();
-        } catch (e) {
-          console.warn('📷 [MainScreen] Error canceling AI request:', e);
-        }
-      }
-    };
-  }, []);
-
   return (
     <div 
       className="bg-stone-50 safe-area-inset" 
@@ -1669,11 +1701,7 @@ const MainScreen = React.forwardRef(({
                 <div className="text-sm opacity-70 animate-pulse mb-2">
                   {isCameraStarting ? 'Starting camera...' : 'Camera loading...'}
                 </div>
-                {!cameraInitialized && (
-                  <div className="text-xs opacity-50">
-                    This may take a moment
-                  </div>
-                )}
+                
               </div>
             </div>
           )}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import SuggestionButton from './SuggestionButton';
 
 const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect, rating = 3 }) => {
@@ -19,6 +19,13 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect,
       suggestions.slice(midpoint)
     ];
   }, [suggestions, showMore]);
+
+  // Auto-collapse when second row becomes empty (but only if we were expanded)
+  useEffect(() => {
+    if (showMore && secondRow.length === 0) {
+      setShowMore(false);
+    }
+  }, [showMore, secondRow.length]);
 
   return (
     <div className="w-full">

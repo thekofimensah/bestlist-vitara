@@ -2143,19 +2143,18 @@ const AddItemModal = ({
 
             {/* Item Header */}
             <div className="mb-4 pt-3 relative">
-              {/* First in World Badge - positioned in top right */}
-              {firstInWorldAchievement && (
-                <div className="absolute top-0 right-0 z-10 pb-6">
-                  <FirstInWorldBadge 
-                    achievement={firstInWorldAchievement}
-                    size="medium"
-                    className="cursor-pointer hover:scale-110 transition-transform"
-                    onClick={() => setShowFirstInWorldPopup(true)}
-                  />
-                </div>
-              )}
-              
               <div className="flex items-center justify-between mb-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
+                {/* First in World Badge - positioned in the corner */}
+                {firstInWorldAchievement && (
+                  <div className="absolute -top-1 -right-1">
+                    <FirstInWorldBadge 
+                      achievement={firstInWorldAchievement}
+                      size="medium"
+                      className="cursor-pointer hover:scale-110 transition-transform"
+                      onClick={() => setShowFirstInWorldPopup(true)}
+                    />
+                  </div>
+                )}
                 <div className="flex-1 relative min-h-[32px]" style={{ maxWidth: '66%' }}>
                   {isAIProcessing && !aiCancelled && !aiError ? (
                     // Match tags overlay style with shimmer pills

@@ -80,25 +80,20 @@ export const useAI = () => {
         const base64Image = await encodeImageToBase64(imageFile);
         console.log(`🤖 [AI] Image encoded (${base64Image.length} chars), location: ${location || 'none'}`);
         
-        // Expert prompt to produce a canonical, human-style product name
-        const prompt = `
-
-You are a product identification expert. Your job is to identify consumer products from images with high accuracy. Identify the on-pack product and produce a single, canonical product name people would naturally use when referring to it in conversation or search.
+        // Expert prompt to produce a canonical, human-style product name and word suggestions
+        const prompt = `You are a product identification expert. Your job is to identify consumer products from images with high accuracy. Identify the on-pack product and produce a single, canonical product name people would naturally use when referring to it in conversation or search.
 
 CRITICAL: If you cannot clearly see a recognizable product, set confidence less than 0.5. Do NOT guess or hallucinate products.
-
-If the 
 
 Rules for the name field (MUST follow):
 1) Structure: [Brand] [Core product] [Variant/essential qualifiers]
    - Include brand only if clearly visible. If unsure, DO NOT GUESS a brand and set this to an empty string.
    - "Core product" is the primary noun phrase (e.g., Toothpaste Tablets, Whole Milk, Dark Roast Coffee).
    - "Variant/essential qualifiers" include only intrinsic, distinguishing details like flavor, strength, fat %, roast level, SPF, form (tablets/powder/liquid), decaf, alcohol %, or other regulated style descriptors.
-2) Exclude marketing/packaging/ethos claims: plastic free, eco-friendly, zero-waste, cruelty-free, sustainable, BPA-free, non‑GMO, gluten-free (unless it is the legally defining style), etc.
-3) Exclude pack/count/size/weight unless it’s the defining variant (e.g., "2%" or "4%" milk fat IS allowed).
+2) Exclude marketing/packaging/ethos claims: plastic free, eco-friendly, zero-waste, cruelty-free, sustainable, BPA-free, non-GMO, gluten-free (unless it is the legally defining style), etc.
+3) Exclude pack/count/size/weight unless it's the defining variant (e.g., "2%" milk fat IS allowed).
 4) Remove long ingredient/benefit lists (e.g., "with Aloe Vera, Tea Tree and Xylitol"). Keep it short and canonical.
 5) Language: English. Use Title Case. No emojis. No trailing punctuation. Max 80 chars.
-
 
 Additional guidance${location ? ` (photo taken in ${location})` : ''}:
 - Prefer brands and variants common to the region; avoid unlikely guesses.
@@ -109,7 +104,49 @@ Brand field rules (MUST follow):
 - If you see generic placeholders like "unbranded", "generic", "store brand", "house brand", "brandless", "unknown", "n/a", etc., return an EMPTY string for brand.
 - Do not fabricate brand names.
 
-Return JSON using the schema. Ensure the name field adheres to the rules exactly.`;
+---
+
+### Word Suggestion Generation Task
+Generate descriptive words that users would naturally choose to describe this product in reviews. Focus on the MOST COMMON ways people describe this type of product.
+
+Generate TWO SETS of word pairs for each category:
+
+1. **Positive Review Words** - Words people use in positive reviews (3+ stars):
+   - Main word: positive descriptor (e.g., "good", "delicious", "would recommend")
+   - Negative version: add appropriate prefix (e.g., "not good", "not delicious", "wouldn't recommend")
+
+2. **Negative Review Words** - Words people use in negative reviews (1-2 stars):
+   - Main word: negative descriptor (can include "not" forms if common, e.g., "terrible", "not fresh", "bland")
+   - Positive opposite: the positive counterpart (e.g., "great", "fresh", "flavorful")
+
+Generate these pairs for these **4 categories**:
+
+1. **Product-Specific** (6-8 pairs per set) → Words describing the actual experience of using/consuming the product. Focus on sensations, feelings, and interactions while using it. Examples:
+   - Positive set: How it feels during use, how it interacts with you, immediate sensations, lasting effects
+   - Negative set: Difficulties during use, unpleasant interactions, unwanted sensations, problematic effects
+
+2. **Intensity ("Too...")** (3-4 pairs) → Common "too" phrases used in both positive and negative reviews. Examples:
+   - Positive set: {"not too strong" ↔ "too strong"}, {"not too heavy" ↔ "too heavy"}
+   - Negative set: {"not too strong" ↔ "too strong"}, {"not too heavy" ↔ "too heavy"}
+   Note: Use the EXACT SAME "too" words for both positive and negative reviews - people use "too X" vs "not too X" regardless of review sentiment
+
+IMPORTANT: 
+- All words within each category must be DIFFERENT from each other
+- Choose words that people ACTUALLY use in product reviews
+- For negative versions of positive words, use appropriate prefixes:
+  * General words: use "not" (e.g., "not good", "not fresh")
+  * "Would I..." words: use "wouldn't" (e.g., "wouldn't recommend")
+- For negative review words, use natural negative expressions:
+  * Can be specific negative words (e.g., "terrible", "bland")
+  * Can be "not" forms if that's how people commonly express it (e.g., "not fresh")
+- Keep words simple and commonly understood
+
+FORMAT (MUST follow exactly):
+
+Word suggestion keys (each is a single comma-separated list of **pairs** in the form "A:B"):
+- ps_pos (Product-Specific, positive set): 6–8 pairs, "positive:negative" (e.g., "fresh:not fresh, flavorful:bland")
+- ps_neg (Product-Specific, negative set): 6–8 pairs, "negative:positive" (e.g., "stale:fresh, bland:flavorful")
+- intensity_pairs: 3–4 pairs, SAME list for both sentiments; each pair as "not too X:too X" (e.g., "not too strong:too strong, not too sweet:too sweet")`;
 
         const requestBody = {
           contents: [{
@@ -123,52 +160,58 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
               }
             ]
           }],
-          // Configure structured output using responseSchema
           generationConfig: {
-            responseMimeType: "application/json",
+            responseMimeType: 'application/json',
             responseSchema: {
-              type: "OBJECT",
+              type: 'OBJECT',
               properties: {
-                name: {
-                  type: "STRING",
-                  description: "Canonical human-style product name following rules: [Brand] [Variant/essential qualifiers] [Core product] ; exclude marketing/packaging/ethos claims; Title Case; English; <= 80 chars."
+                name: { 
+                  type: 'STRING', 
+                  description: 'Canonical human-style product name following rules: [Brand] [Core product] [Variant/essential qualifiers] ; exclude marketing/packaging/ethos claims; Title Case; English; <= 80 chars.' 
                 },
-                brand: {
-                  type: "STRING", 
-                  description: "Brand/manufacturer name; return empty string if not clearly visible or if only a generic placeholder (unbranded/generic/store brand/brandless). Do not guess."
+                brand: { 
+                  type: 'STRING', 
+                  description: 'Brand/manufacturer name; return empty string if not clearly visible or if only a generic placeholder (unbranded/generic/store brand/brandless). Do not guess.' 
                 },
-                category: {
-                  type: "STRING",
-                  description: "Product category (e.g., Dairy, Beverages, Snacks, Frozen Foods, Pantry Items)"
+                category: { 
+                  type: 'STRING', 
+                  description: 'Product category (e.g., Dairy, Beverages, Snacks, Frozen Foods, Pantry Items)' 
                 },
-                confidence: {
-                  type: "NUMBER",
-                  description: "Confidence in the identification (between 0 and 1)"
+                confidence: { 
+                  type: 'NUMBER', 
+                  description: 'Confidence in the identification (between 0 and 1)' 
                 },
-                description: {
-                  type: "STRING",
-                  description: "A concise, distinguishing description that helps identify this specific product variant. Focus on key differentiating features like flavor, type, size, dietary attributes, or unique characteristics. Keep it under 15 words and be specific."
+                description: { 
+                  type: 'STRING', 
+                  description: 'For mass-produced items: provide a concise factual description of what the product is. For specialty/artisanal products: include fascinating details that would delight and surprise readers about the product itself - unexpected origins, remarkable production secrets, surprising historical connections, or extraordinary characteristics that make people say "I had no idea!" DO NOT describe packaging, bottle colors, label designs, or visual elements visible in the image. Focus exclusively on the product content, ingredients, production methods, or usage experience that would be relevant to someone considering this product.' 
                 },
-                product: {
-                  type: "STRING", 
-                  description: "A string with three parts: Brand (if exists), Quantifiers (e.g., 'fat free', 'organic', 'chocolate'), What it is (e.g., 'milk', 'cheese', 'cookies'). Clean up to remove repetitions. Must be in clear language describing exactly what the product is."
+                tags: { 
+                  type: 'ARRAY', 
+                  items: { type: 'STRING' }, 
+                  description: '3-4 focused tags.' 
                 },
-                tags: {
-                  type: "ARRAY",
-                  items: { type: "STRING" },
-                  description: "Array of 3-4 focused tags for filtering. Include dietary restrictions, health attributes, flavor profiles, dietary lifestyles, product characteristics, and meal context. Avoid storage requirements, sizes, basic categories."
+                allergens: { 
+                  type: 'ARRAY', 
+                  items: { type: 'STRING' }, 
+                  description: 'Array of allergens if mentioned or inferred.' 
                 },
-                allergens: {
-                  type: "ARRAY", 
-                  items: { type: "STRING" },
-                  description: "Array of allergens if mentioned or inferred from description"
+                ps_pos: {
+                  type: 'STRING',
+                  description: 'Product-Specific positive pairs: 6-8 pairs as "positive:negative" (e.g., "fresh:not fresh,flavorful:bland")'
+                },
+                ps_neg: {
+                  type: 'STRING', 
+                  description: 'Product-Specific negative pairs: 6-8 pairs as "negative:positive" (e.g., "stale:fresh,bland:flavorful")'
+                },
+                intensity_pairs: {
+                  type: 'STRING',
+                  description: 'Intensity pairs: 3-4 pairs as "not too X:too X" (e.g., "not too strong:too strong,not too sweet:too sweet")'
                 }
               },
-              required: ["name", "brand", "category", "confidence", "description", "tags"],
-              propertyOrdering: ["name", "brand", "product", "category", "confidence", "description", "tags", "allergens"]
+              required: ['name', 'brand', 'category', 'confidence', 'description', 'tags', 'ps_pos', 'ps_neg', 'intensity_pairs']
             }
           }
-        };
+    };
 
         const response = await safeFetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -300,6 +343,41 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
           ? aiData.name.trim()
           : normalizeProductName(brand, aiData.product, aiData.name);
 
+        // Parse the new format word suggestions and add manual fields
+        const parseWordPairs = (pairString) => {
+          if (!pairString) return [];
+          return pairString.split(',').map(pair => {
+            const [main, opposite] = pair.split(':').map(s => s.trim());
+            return { main, opposite };
+          }).filter(pair => pair.main && pair.opposite);
+        };
+
+        // Add manual value/quality and would-I fields
+        const vq_pos = "good value:poor value,high quality:low quality,worth it:not worth it,delicious:tasteless,natural:artificial";
+        const vq_neg = "overpriced:affordable,low quality:high quality,not worth it:worth it,tasteless:delicious,artificial:natural";
+        const wi_pos = "would recommend:wouldn't recommend,would buy again:wouldn't buy again,would repurchase:wouldn't repurchase";
+        const wi_neg = "wouldn't recommend:would recommend,wouldn't buy again:would buy again,wouldn't repurchase:would repurchase";
+
+        // Convert to the format expected by useWordSuggestions
+        const wordSuggestions = {
+          productSpecific: {
+            positiveReviewWords: parseWordPairs(aiData.ps_pos),
+            negativeReviewWords: parseWordPairs(aiData.ps_neg)
+          },
+          valueQuality: {
+            positiveReviewWords: parseWordPairs(vq_pos),
+            negativeReviewWords: parseWordPairs(vq_neg)
+          },
+          wouldI: {
+            positiveReviewWords: parseWordPairs(wi_pos),
+            negativeReviewWords: parseWordPairs(wi_neg)
+          },
+          intensity: {
+            positiveReviewWords: parseWordPairs(aiData.intensity_pairs),
+            negativeReviewWords: parseWordPairs(aiData.intensity_pairs) // Same for both as per requirements
+          }
+        };
+
         // Return data in the format expected by the app
         const aiResult = {
           productName: normalizedName,
@@ -309,17 +387,19 @@ Return JSON using the schema. Ensure the name field adheres to the rules exactly
           certainty: Math.round((aiData.confidence || 0) * 100),
           tags: aiData.tags || ['Untagged'],
           productType: aiData.category || 'Unknown',
-          allergens: aiData.allergens || []
+          allergens: aiData.allergens || [],
+          wordSuggestions: wordSuggestions
         };
 
         console.log(`🤖 [AI] Analysis completed in ${elapsed}ms`);
         console.log('🤖 [AI] Structured response:', JSON.stringify(aiData, null, 2));
-        console.log('🤖 [AI] Normalized product name:', JSON.stringify({ brand, nameField: aiData.name, productField: aiData.product, normalizedName }, null, 2));
+        console.log('🤖 [AI] Normalized product name:', JSON.stringify({ brand, nameField: aiData.name, normalizedName }, null, 2));
+        console.log('🤖 [AI] Word suggestions parsed:', JSON.stringify(wordSuggestions, null, 2));
         console.log('🤖 [AI] Formatted result:', JSON.stringify(aiResult, null, 2));
 
         // Auto-cancel rules: low confidence or missing essential fields
         const confidence = typeof aiData.confidence === 'number' ? aiData.confidence : 0;
-        const hasName = Boolean(aiData.product || aiData.name);
+        const hasName = Boolean(aiData.name);
         if (!hasName || confidence < 0.4) {
           const reason = !hasName ? 'missing product name' : `low confidence (${Math.round(confidence * 100)}%)`;
           console.warn(`🤖 [AI] Auto-cancelling due to ${reason}`);

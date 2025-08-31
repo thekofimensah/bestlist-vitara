@@ -1,9 +1,34 @@
 import React, { useRef, useState } from 'react';
 
-const SuggestionButton = React.memo(({ suggestion, onTap }) => {
+const SuggestionButton = React.memo(({ suggestion, onTap, rating = 3 }) => {
   const buttonRef = useRef(null);
   const [isPressed, setIsPressed] = useState(false);
+  const [isDoubleTapPreview, setIsDoubleTapPreview] = useState(false);
   const tapStateRef = useRef({ lastTapTime: 0, isDoubleTapHandled: false, resetTimer: null });
+
+  // Determine colors based on rating and tap type
+  const getButtonColors = (isPressed, isDoubleTap = false) => {
+    const isLowRating = rating <= 2; // 1-2 stars
+    
+    // For low ratings (1-2): single tap = red (negative), double tap = teal (positive opposite)
+    // For high ratings (3-5): single tap = teal (positive), double tap = red (negative opposite)
+    const singleTapColor = isLowRating ? 'red' : 'teal';
+    const doubleTapColor = isLowRating ? 'teal' : 'red';
+    
+    if (isPressed) {
+      // Show preview of what color it will be when tapped
+      const previewColor = isDoubleTap ? doubleTapColor : singleTapColor;
+      
+      if (previewColor === 'red') {
+        return 'bg-red-100 text-red-800 border-red-200';
+      } else {
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      }
+    }
+    
+    // Default state - neutral
+    return 'bg-white text-gray-700 border-gray-200 shadow-sm hover:bg-gray-50';
+  };
 
   const executeTap = (isDoubleTap = false) => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -22,11 +47,14 @@ const SuggestionButton = React.memo(({ suggestion, onTap }) => {
     
     if (tapStateRef.current.lastTapTime > 0 && timeSinceLastTap < 160) {
       console.log('Double tap detected! timeSinceLastTap:', timeSinceLastTap);
-      executeTap(true); // Double tap - add negative word
+      setIsDoubleTapPreview(true); // Show double tap color preview
+      executeTap(true); // Double tap - add opposite word
       tapStateRef.current.lastTapTime = 0; // Reset for next sequence
       tapStateRef.current.isDoubleTapHandled = true;
     } else {
       console.log('Setting up for potential single/first tap. lastTapTime was:', tapStateRef.current.lastTapTime, 'timeSinceLastTap:', timeSinceLastTap);
+      
+      setIsDoubleTapPreview(false); // Show single tap color preview
       
       // Clear any existing reset timer
       if (tapStateRef.current.resetTimer) {
@@ -64,11 +92,21 @@ const SuggestionButton = React.memo(({ suggestion, onTap }) => {
       console.log('Double tap already handled, skipping');
     }
     setIsPressed(false);
+    setIsDoubleTapPreview(false);
   };
 
   const onPointerLeave = () => {
+    // If we're currently pressed (holding), cancel the tap
+    if (isPressed) {
+      tapStateRef.current.lastTapTime = 0;
+      tapStateRef.current.isDoubleTapHandled = true; // Prevent the tap from executing
+      if (tapStateRef.current.resetTimer) {
+        clearTimeout(tapStateRef.current.resetTimer);
+      }
+      console.log('Cancelling tap due to pointer leave while pressed');
+    }
     setIsPressed(false);
-    // Don't reset lastTapTime here - let double tap detection work across brief pointer leaves
+    setIsDoubleTapPreview(false);
   };
 
   return (
@@ -78,9 +116,7 @@ const SuggestionButton = React.memo(({ suggestion, onTap }) => {
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
       className={`px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all select-none border ${
-        isPressed
-          ? 'bg-gray-200 text-gray-900 border-gray-300'
-          : 'bg-white text-gray-700 border-gray-200 shadow-sm'
+        getButtonColors(isPressed, isDoubleTapPreview)
       }`}
       style={{
         minHeight: 28,

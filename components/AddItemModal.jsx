@@ -29,9 +29,9 @@ import FirstInWorldBadge from './gamification/FirstInWorldBadge';
 import { useGlobalAchievements } from '../hooks/useGlobalAchievements';
 import ShareModal from './secondary/ShareModal';
 
-// Word suggestion (Phase 1 & 2) - static data + UI
+// Word suggestion (Phase 3 - AI Integration)
 import HorizontalSuggestions from './wordSuggestions/HorizontalSuggestions';
-import { MOCK_SUGGESTIONS, SUGGESTION_CATEGORIES } from './wordSuggestions/mockSuggestions';
+import { useWordSuggestions } from '../hooks/useWordSuggestions';
 
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
@@ -1713,22 +1713,67 @@ const AddItemModal = ({
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // --- Word Suggestions (Phase 1 & 2) ---
+  // --- Word Suggestions (Phase 3 - AI Integration) ---
   const notesTextareaRef = useRef(null);
-  const initialSuggestions = React.useMemo(() => {
-    // Flatten by category priority for a simple 2-row layout
-    const byPriority = [...SUGGESTION_CATEGORIES].sort((a, b) => a.priority - b.priority);
-    const flat = [];
-    byPriority.forEach((cat) => {
-      (MOCK_SUGGESTIONS[cat.key] || []).forEach((s) => {
-        flat.push({ ...s, categoryKey: cat.key, priority: cat.priority });
-      });
-    });
-    return flat;
-  }, []);
-  const [availableSuggestions, setAvailableSuggestions] = useState(initialSuggestions);
+  const { getSuggestions, removeDuplicates, getFilteredSuggestions } = useWordSuggestions();
+  
+  // AI-only suggestions (no fallback)
+  const [availableSuggestions, setAvailableSuggestions] = useState([]);
+  const [usedSuggestionWords, setUsedSuggestionWords] = useState([]);
+  const [hasSuggestions, setHasSuggestions] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const activeTouchRef = useRef(null);
   const [flyingAnimations, setFlyingAnimations] = useState([]);
+
+  // Update word suggestions when AI metadata or rating changes
+  useEffect(() => {
+    const updateSuggestions = async () => {
+      // Only proceed if we have sufficient product identification
+      if (aiMetadata && (!aiMetadata.productName || aiMetadata.certainty < 40)) {
+        console.log('📝 [AddItemModal] Skipping word suggestions - insufficient product identification:', {
+          productName: aiMetadata.productName,
+          certainty: aiMetadata.certainty
+        });
+        setAvailableSuggestions([]);
+        setHasSuggestions(false);
+        setIsLoadingSuggestions(false);
+        return;
+      }
+
+      // Only show loading if we expect AI suggestions (when AI is processing or we have metadata)
+      if (aiMetadata?.wordSuggestions || isAIProcessing) {
+        setIsLoadingSuggestions(true);
+      }
+      
+      try {
+        console.log('📝 [AddItemModal] Updating word suggestions for rating:', rating, 'AI metadata:', !!aiMetadata?.wordSuggestions);
+        const newSuggestions = await getSuggestions(aiMetadata, rating);
+        
+        if (newSuggestions && newSuggestions.length > 0) {
+          // Remove duplicates and filter out already used words
+          const cleanedSuggestions = removeDuplicates(newSuggestions);
+          const filteredSuggestions = getFilteredSuggestions(cleanedSuggestions, usedSuggestionWords);
+          
+          setAvailableSuggestions(filteredSuggestions);
+          setHasSuggestions(true);
+          console.log('📝 [AddItemModal] Updated suggestions:', filteredSuggestions.length, 'items');
+        } else {
+          // No AI suggestions available
+          setAvailableSuggestions([]);
+          setHasSuggestions(false);
+          console.log('📝 [AddItemModal] No AI suggestions available');
+        }
+      } catch (error) {
+        console.error('📝 [AddItemModal] Error updating suggestions:', error);
+        setAvailableSuggestions([]);
+        setHasSuggestions(false);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    };
+
+    updateSuggestions();
+  }, [aiMetadata, rating, usedSuggestionWords, isAIProcessing, getSuggestions, removeDuplicates, getFilteredSuggestions]);
 
   // Create flying animation for suggestion tap
   const createFlyingAnimation = useCallback((buttonRect, word, isDoubleTap = false) => {
@@ -1761,61 +1806,88 @@ const AddItemModal = ({
       setFlyingAnimations(prev => prev.filter(anim => anim.id !== animationId));
     }, 600);
   }, []);
-
   const insertAtCursor = useCallback((text) => {
     const el = notesTextareaRef.current;
+    
+    // Helper function to format a list of adjectives naturally
+    const formatAdjectives = (adjectives) => {
+      if (adjectives.length === 0) return '';
+      if (adjectives.length === 1) return adjectives[0];
+      if (adjectives.length === 2) return `${adjectives[0]} and ${adjectives[1]}`;
+      
+      // For 3+ adjectives: "word1, word2, and word3" (Oxford comma)
+      const allButLast = adjectives.slice(0, -1).join(', ');
+      const last = adjectives[adjectives.length - 1];
+      return `${allButLast}, and ${last}`;
+    };
     
     // Helper function to capitalize first letter
     const capitalizeFirst = (str) => str.charAt(0).toUpperCase() + str.slice(1);
     
-    // Helper function to create a cleaner sentence structure
-    const createCleanSentence = (existingText, newText) => {
-      const trimmed = existingText.trim();
+    const insertText = (beforeText, newText) => {
+      const trimmedBefore = beforeText.trim();
       
-      // If empty, start with capitalized text
-      if (!trimmed) {
+      // If completely empty, just add the capitalized word
+      if (!beforeText) {
         return capitalizeFirst(newText);
       }
       
-      // Check if we're at the start of a new sentence (after period, exclamation, question mark)
-      const endsWithSentenceEnd = /[.!?]\s*$/.test(trimmed);
-      if (endsWithSentenceEnd) {
-        // Start new sentence with proper spacing and capitalization
-        const needsSpace = !/\s$/.test(existingText);
-        return existingText + (needsSpace ? ' ' : '') + capitalizeFirst(newText);
+      // If starts new sentence (after period, exclamation, question, or newline), capitalize and add
+      if (/[.!?]\s*$/.test(trimmedBefore) || beforeText.endsWith('\n')) {
+        const needsSpace = !/[\s\n]$/.test(beforeText);
+        return beforeText + (needsSpace ? ' ' : '') + capitalizeFirst(newText);
       }
       
-      // Check if we're continuing a list or phrase
-      const endsWithComma = /,\s*$/.test(trimmed);
-      const endsWithAnd = /\band\s*$/i.test(trimmed);
-      const endsWithSpace = /\s$/.test(existingText);
+      // Extract current sentence/line (everything after last sentence-ending punctuation or newline)
+      const lastBreakMatch = beforeText.match(/([.!?\n])([^.!?\n]*)$/);
+      const currentSentence = lastBreakMatch ? lastBreakMatch[2].trim() : trimmedBefore;
       
-      // If already ends with "and", just add the word
-      if (endsWithAnd) {
-        return existingText + (endsWithSpace ? '' : ' ') + newText;
+      // Parse existing adjectives in current sentence
+      let existingAdjectives = [];
+      
+      // Remove common non-adjective words and split by commas and "and"
+      const cleanSentence = currentSentence
+        .replace(/\b(is|are|was|were|the|a|an|very|quite|really|extremely)\b/gi, ' ')
+        .trim();
+      
+      if (cleanSentence) {
+        // Split by comma and "and", then clean up
+        existingAdjectives = cleanSentence
+          .split(/,|\sand\s/i)
+          .map(adj => adj.trim())
+          .filter(adj => adj.length > 0);
       }
       
-      // If ends with comma, add "and" before the new word
-      if (endsWithComma) {
-        return existingText + (endsWithSpace ? '' : ' ') + 'and ' + newText;
+      // Check if the new adjective already exists (case-insensitive)
+      const newTextLower = newText.toLowerCase();
+      const isDuplicate = existingAdjectives.some(adj => 
+        adj.toLowerCase().includes(newTextLower) || newTextLower.includes(adj.toLowerCase())
+      );
+      
+      if (isDuplicate) {
+        return beforeText; // Don't add duplicates
       }
       
-      // If it's a continuation of descriptive text, handle based on word count
-      const wordCount = trimmed.split(/[,\s]+/).filter(w => w.length > 0).length;
-      if (wordCount === 1) {
-        // For the second word, just use "and" (no comma): "fresh and crispy"
-        return existingText + (endsWithSpace ? '' : ' ') + 'and ' + newText;
-      } else if (wordCount >= 2) {
-        // For three or more words, use ", and": "fresh, crispy, and delicious"
-        return existingText + (endsWithSpace ? '' : ', ') + 'and ' + newText;
+      // Add new adjective to the list
+      const allAdjectives = [...existingAdjectives, newText];
+      const formattedList = formatAdjectives(allAdjectives);
+      
+      // Replace the adjective portion in the sentence
+      if (lastBreakMatch) {
+        // We have a sentence break, replace just the current sentence's content
+        const beforeCurrentSentence = beforeText.substring(0, lastBreakMatch.index + lastBreakMatch[1].length);
+        const leadingWhitespace = lastBreakMatch[2].match(/^\s*/)?.[0] || '';
+        
+        return beforeCurrentSentence + leadingWhitespace + formattedList;
       } else {
-        // Fallback (shouldn't reach here)
-        return existingText + (endsWithSpace ? '' : ', ') + newText;
+        // We're at the very start, need to handle spacing carefully
+        const leadingWhitespace = beforeText.match(/^\s*/)?.[0] || '';
+        return leadingWhitespace + capitalizeFirst(formattedList);
       }
     };
     
     if (!el) {
-      setNotes((prev) => createCleanSentence(prev || '', text));
+      setNotes((prev) => insertText(prev || '', text));
       return;
     }
     
@@ -1824,67 +1896,55 @@ const AddItemModal = ({
     const before = notes.slice(0, start);
     const after = notes.slice(end);
     
-    // Create the clean insertion
-    const beforeWithInsert = createCleanSentence(before, text);
-    const next = beforeWithInsert + after;
+    const newBefore = insertText(before, text);
+    const newValue = newBefore + after;
     
-    setNotes(next);
+    setNotes(newValue);
     
-    // Don't focus/show keyboard when inserting suggestions
     requestAnimationFrame(() => {
-      const pos = beforeWithInsert.length;
+      const pos = newBefore.length;
       el.setSelectionRange(pos, pos);
-      // el.focus(); // Removed to prevent keyboard popup
     });
   }, [notes]);
 
 
   
-  // Generate negative/opposite form of a word
-  const generateNegativeForm = useCallback((word) => {
-    const lowerWord = word.toLowerCase();
-
-    // Handle different word types with appropriate negatives
-    if (lowerWord.includes('fresh') || lowerWord.includes('crisp') || lowerWord.includes('clean')) {
-      return `not ${word.toLowerCase()}`;
-    } else if (lowerWord.includes('tasty') || lowerWord.includes('delicious') || lowerWord.includes('flavorful')) {
-      return `not ${word.toLowerCase()}`;
-    } else if (lowerWord.includes('sweet') || lowerWord.includes('salty') || lowerWord.includes('spicy')) {
-      return `not ${word.toLowerCase()}`;
-    } else if (lowerWord.includes('soft') || lowerWord.includes('crunchy') || lowerWord.includes('chewy')) {
-      return `not ${word.toLowerCase()}`;
-    } else if (lowerWord.includes('hot') || lowerWord.includes('cold') || lowerWord.includes('warm')) {
-      return `not ${word.toLowerCase()}`;
-    } else if (lowerWord.includes('expensive') || lowerWord.includes('cheap')) {
-      return `not ${word.toLowerCase()}`;
-    } else if (lowerWord.includes('good') || lowerWord.includes('bad') || lowerWord.includes('great')) {
-      return `not ${word.toLowerCase()}`;
-    } else {
-      // Default: use "would" for adjectives that don't fit other categories
-      return `not ${word.toLowerCase()}`;
-    }
-  }, []);
 
   const handleSuggestionTap = useCallback((s, buttonRect, isDoubleTap = false) => {
+    const wordToAdd = isDoubleTap 
+      ? (s.variations?.opposite)
+      : s.label;
+    const wordToCheck = wordToAdd;
 
-    const wordToAdd = isDoubleTap ? generateNegativeForm(s.label) : s.label;
-    const wordToCheck = isDoubleTap ? generateNegativeForm(s.label) : s.label;
+    console.log('📝 [AddItemModal] Suggestion tap:', {
+      label: s.label,
+      isDoubleTap,
+      wordToAdd,
+      hasAIOpposite: !!s.variations?.opposite,
+      variations: s.variations
+    });
 
     // Prevent duplicates: simple token check
     const exists = (notes || '').toLowerCase().includes(wordToCheck.toLowerCase());
     if (!exists) {
       insertAtCursor(wordToAdd);
+      
+      // Track used words to filter future suggestions
+      setUsedSuggestionWords(prev => [...prev, s.label, wordToAdd]);
+      
       // Create flying animation if we have button position
       if (buttonRect) {
         createFlyingAnimation(buttonRect, wordToAdd, isDoubleTap);
       }
+      
       // Remove the selected suggestion with a small delay to prevent accidental taps on the next word
       setTimeout(() => {
         setAvailableSuggestions((prev) => prev.filter((x) => x.id !== s.id));
       }, 300);
     }
+    
     if (navigator.vibrate) navigator.vibrate(isDoubleTap ? 20 : 5); // Stronger vibration for double tap
-  }, [insertAtCursor, notes, createFlyingAnimation, generateNegativeForm]);
+  }, [insertAtCursor, notes, createFlyingAnimation]);
 
 
 
@@ -1895,7 +1955,7 @@ const AddItemModal = ({
       className="fixed inset-0 bg-stone-50 overflow-y-auto modal-overlay" 
       style={{ 
         backgroundColor: '#F6F6F4',
-        zIndex: 9999, // Ensure it's always on top when rendered in portal
+        zIndex: 'var(--z-modal)', // Use standardized z-index for modals
         // Allow native gestures on the edges
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: 'env(safe-area-inset-right)',
@@ -2082,7 +2142,19 @@ const AddItemModal = ({
 
 
             {/* Item Header */}
-            <div className="mb-4 pt-6">
+            <div className="mb-6 pt-3 relative">
+              {/* First in World Badge - positioned in top right */}
+              {firstInWorldAchievement && (
+                <div className="absolute top-0 right-0 z-10 pb-2">
+                  <FirstInWorldBadge 
+                    achievement={firstInWorldAchievement}
+                    size="medium"
+                    className="cursor-pointer hover:scale-110 transition-transform"
+                    onClick={() => setShowFirstInWorldPopup(true)}
+                  />
+                </div>
+              )}
+              
               <div className="flex items-center justify-between mb-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
                 <div className="flex-1 relative min-h-[32px]" style={{ maxWidth: '66%' }}>
                   {isAIProcessing && !aiCancelled && !aiError ? (
@@ -2223,17 +2295,7 @@ const AddItemModal = ({
                       )}
                     </button>
                   )}
-                  {/* First in World Badge - positioned to the right of the chevron */}
-                  {firstInWorldAchievement && (
-                    <div className="ml-auto">
-                      <FirstInWorldBadge 
-                        achievement={firstInWorldAchievement}
-                        size="medium"
-                        className="cursor-pointer hover:scale-110 transition-transform"
-                        onClick={() => setShowFirstInWorldPopup(true)}
-                      />
-                    </div>
-                  )}
+
                 </div>
                 
                 {showDetailedAttributes && !isAIProcessing && (
@@ -2346,19 +2408,38 @@ const AddItemModal = ({
                 autoCapitalize="sentences"
                 spellCheck="true"
               />
-              {/* Suggestions container */}
-              <div className="mt-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-3 h-3 text-gray-500" />
-                  <span className="text-xs text-gray-500">Tap to add • Double-tap for opposite (not/would)</span>
+              {/* Suggestions container - only show if AI provided suggestions */}
+              {(hasSuggestions || isLoadingSuggestions) && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-3 h-3 text-gray-500" />
+                    <span className="text-xs text-gray-500">
+                      {isLoadingSuggestions ? 'Loading suggestions...' : (
+                        <>
+                          Tap to add • Double-tap for opposite 
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  <div className="p-2">
+                    {isLoadingSuggestions ? (
+                      <div className="flex gap-2 pb-1">
+                        {/* Loading skeleton */}
+                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-16"></div>
+                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-20"></div>
+                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-14"></div>
+                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-18"></div>
+                      </div>
+                    ) : (
+                      <HorizontalSuggestions
+                        suggestions={availableSuggestions}
+                        onTap={handleSuggestionTap}
+                        rating={rating}
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="p-2">
-                  <HorizontalSuggestions
-                    suggestions={availableSuggestions}
-                    onTap={handleSuggestionTap}
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
 
@@ -2901,26 +2982,34 @@ const AddItemModal = ({
             </div>
 
             {/* Flying Animation Elements */}
-            {flyingAnimations.map((animation) => (
-              <div
-                key={animation.id}
-                className="fixed pointer-events-none z-50"
-                style={{
-                  left: animation.startX,
-                  top: animation.startY,
-                  transform: 'translate(-50%, -50%)',
-                  animation: 'flyAndFade 0.6s ease-out forwards'
-                }}
-              >
-                <div className={`px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap shadow-sm ${
-                  animation.isDoubleTap
-                    ? 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-teal-100 text-teal-800 border border-teal-200'
-                }`}>
-                  {animation.word}
+            {flyingAnimations.map((animation) => {
+              // Determine color based on rating and tap type (same logic as SuggestionButton)
+              const isLowRating = rating <= 2;
+              const singleTapColor = isLowRating ? 'red' : 'teal';
+              const doubleTapColor = isLowRating ? 'teal' : 'red';
+              const animationColor = animation.isDoubleTap ? doubleTapColor : singleTapColor;
+              
+              const colorClasses = animationColor === 'red' 
+                ? 'bg-red-100 text-red-700 border border-red-200'
+                : 'bg-teal-100 text-teal-800 border border-teal-200';
+              
+              return (
+                <div
+                  key={animation.id}
+                  className="fixed pointer-events-none z-50"
+                  style={{
+                    left: animation.startX,
+                    top: animation.startY,
+                    transform: 'translate(-50%, -50%)',
+                    animation: 'flyAndFade 0.6s ease-out forwards'
+                  }}
+                >
+                  <div className={`px-2.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap shadow-sm ${colorClasses}`}>
+                    {animation.word}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Action Bar */}
             <div className="flex items-center justify-between">

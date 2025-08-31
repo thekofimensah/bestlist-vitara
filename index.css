@@ -57,7 +57,7 @@
     
     /* 🎨 MOST USED Z-INDEX */
     --z-modal: 1050;
-    --z-toast: 1080;
+    --z-toast: 1100;
     
     /* 📱 EXTENDED COLORS (less commonly used) */
     --color-primary-200: #C1E5DB;

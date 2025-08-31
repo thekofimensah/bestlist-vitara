@@ -26,7 +26,6 @@ export const AchievementProvider = ({ children }) => {
 
   // Add achievement notification to queue
   const showAchievement = (achievementData) => {
-    console.log('🏆 [Achievement] showAchievement called with:', achievementData);
     
     const { achievement, isGlobalFirst = false } = achievementData;
     
@@ -50,12 +49,10 @@ export const AchievementProvider = ({ children }) => {
     if (shouldShowModal) {
       // Show full-screen modal for legendary (non-global-first) achievements
       setCurrentModal({ ...achievementData, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, createdAt: now });
-      console.log('🏆 [Achievement] Showing modal for:', achievement.name);
     } else {
       // Show toast notification for common achievements and global first achievements
       // (Global first achievements also get the glow effect in AddItemModal)
       setNotifications(prev => [...prev, { ...achievementData, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, createdAt: now }]);
-      console.log('🏆 [Achievement] Showing toast for:', achievement.name, isGlobalFirst ? '(Global First)' : '');
     }
   };
 
@@ -88,6 +85,19 @@ export const AchievementProvider = ({ children }) => {
             rarity: 'common'
           },
           isGlobalFirst: false
+        });
+      };
+      
+      window.testFirstInWorldAchievement = () => {
+        showAchievement({
+          achievement: {
+            id: 'test-first-world',
+            name: 'First in World',
+            description: 'You are the first to discover this!',
+            icon: '🌍',
+            rarity: 'legendary'
+          },
+          isGlobalFirst: true
         });
       };
     }

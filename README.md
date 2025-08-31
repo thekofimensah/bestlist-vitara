@@ -195,6 +195,8 @@ Small bonus, it can be good if when a person talks about it, the name is slightl
 
 "Remember the milk" as a shopping list app
 "spark" Chispa, for a dating app
+emochi -- smiling mochi desserts
+
 
 Features
 Track user version

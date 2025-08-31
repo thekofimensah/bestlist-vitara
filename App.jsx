@@ -82,8 +82,6 @@ import iconUrl from './assets/icon.svg';
 };
 
 
-
-
 const App = () => {
   // Enable native keyboard features globally
   useEffect(() => {
@@ -1539,7 +1537,6 @@ const App = () => {
     }
 
     if (currentScreen === 'list-detail' && selectedList) {
-      console.log('🔧 [App] Rendering ShowItemsInListView for list:', selectedList?.name, selectedList?.id);
       return (
         <PullToRefresh onRefresh={handleListDetailRefresh} disabled={refreshing}>
           <ShowItemsInListView 
@@ -1554,16 +1551,6 @@ const App = () => {
             onItemDeleted={handleItemDeleted}
           />
         </PullToRefresh>
-      );
-    } else if (currentScreen === 'list-detail' && !selectedList) {
-      console.log('🔧 [App] List detail screen requested but no list selected, showing loading...');
-      return (
-        <div className="min-h-screen bg-stone-50 flex items-center justify-center" style={{ backgroundColor: '#F6F6F4' }}>
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-teal-700 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading list...</p>
-          </div>
-        </div>
       );
     }
 
@@ -1633,7 +1620,7 @@ const App = () => {
                 textLoaded={textLoaded}
                 imagesLoaded={imagesLoaded}
                 onUpdateFeedPosts={handleUpdateFeedPosts}
-                isActive={currentScreen === 'home'} // Pass active state
+                isActive={currentScreen === 'home' && !appLoading} // Pass active state, but not during app loading
               />
             </PullToRefresh>
           )}

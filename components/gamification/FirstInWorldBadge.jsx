@@ -1,25 +1,17 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import earthIcon from '../../assets/earth-1.svg';
+import firstWorldIcon from '../../assets/first-world-icon.svg';
 import { ShineBorder } from '@/registry/magicui/shine-border';
 
-// Earth Icon Component using imported SVG as mask, filled with outline gradient
-const EarthIcon = ({ className, gradientColors }) => {
-  const [start, end] = gradientColors || ['#14b8a6', '#10b981'];
+// First World Icon Component displaying the SVG directly to preserve colors
+const FirstWorldIcon = ({ className }) => {
   return (
-    <div
+    <img
+      src={firstWorldIcon}
+      alt="First World Icon"
       className={className}
-      aria-label="Earth Icon"
       style={{
-        background: `linear-gradient(135deg, ${start}, ${end})`,
-        WebkitMaskImage: `url(${earthIcon})`,
-        maskImage: `url(${earthIcon})`,
-        WebkitMaskRepeat: 'no-repeat',
-        maskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'center',
-        maskPosition: 'center',
-        WebkitMaskSize: 'contain',
-        maskSize: 'contain'
+        objectFit: 'contain'
       }}
     />
   );
@@ -40,15 +32,8 @@ const FirstInWorldBadge = ({
   }
 
   const getRarityColors = (rarity) => {
-    // Keep text color mapping for labels only; border handled via hex colors below
-    switch (rarity) {
-      case 'legendary':
-        return { text: 'text-white' };
-      case 'rare':
-        return { text: 'text-white' };
-      default:
-        return { text: 'text-white' };
-    }
+    // Use default text colors for all rarities
+    return { text: 'text-white' };
   };
 
   const getSizeClasses = (size) => {
@@ -98,20 +83,15 @@ const FirstInWorldBadge = ({
     }
   } : {};
 
-  const shineColorsByRarity = {
-    legendary: ['#a855f7', '#ec4899'],
-    rare: ['#3b82f6', '#06b6d4'],
-    default: ['#14b8a6', '#10b981'],
-  };
-
-  const gradientForOutline = shineColorsByRarity[achievementRarity] || shineColorsByRarity.default;
+  // Use default colors for all rarities
+  const gradientForOutline = ['#14b8a6', '#10b981'];
 
   const getIcon = () => {
-    // Use the achievement's icon if available, otherwise default to earth icon mask
+    // Use the achievement's icon if available, otherwise default to first world icon mask
     if (achievementIcon && achievementIcon !== '🌍') {
       return <span className="text-current">{achievementIcon}</span>;
     }
-    return <EarthIcon className={sizes.icon} gradientColors={gradientForOutline} />;
+    return <FirstWorldIcon className={sizes.icon} />;
   };
 
   const renderBasicBadge = () => (
@@ -129,7 +109,7 @@ const FirstInWorldBadge = ({
     >
       <BadgeComponent
         {...badgeProps}
-        className={`flex items-center justify-center ${sizes.badgeWrapper} ${variant === 'square' ? 'rounded-lg' : 'rounded-full'}`}
+        className={`flex items-center justify-center ${sizes.badgeWrapper} ${variant === 'square' ? 'rounded-lg' : 'rounded-full'} bg-white shadow-sm`}
         onClick={onClick}
       >
         {getIcon()}
@@ -162,7 +142,7 @@ const FirstInWorldBadge = ({
         borderWidth={2}
         duration={14}
       >
-        <BadgeComponent {...badgeProps} className={`flex items-center justify-center rounded-full ${sizes.badgeWrapper}`} onClick={onClick}>
+        <BadgeComponent {...badgeProps} className={`flex items-center justify-center rounded-full ${sizes.badgeWrapper} bg-white shadow-sm`} onClick={onClick}>
           {getIcon()}
         </BadgeComponent>
       </ShineBorder>

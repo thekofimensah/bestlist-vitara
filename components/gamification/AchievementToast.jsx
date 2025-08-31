@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Star, Sparkles } from 'lucide-react';
+import ModalPortal from '../ui/ModalPortal';
 
 const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
   useEffect(() => {
@@ -48,32 +49,11 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
   };
 
   const styles = getRarityStyles(achievement.rarity);
-  const controls = useAnimation();
 
-  const handleDragEnd = async (_, info) => {
-    const distance = info.offset.x;
-    const velocity = info.velocity.x || 0;
-    const threshold = 100;
-    const fast = Math.abs(velocity) > 400;
-    
-    if (Math.abs(distance) > threshold || fast) {
-      const direction = distance >= 0 ? 1 : -1;
-      await controls.start({
-        x: direction * (window.innerWidth + 200),
-        opacity: 0,
-        transition: { type: 'spring', stiffness: 500, damping: 30 }
-      });
-      onClose();
-    } else {
-      controls.start({ 
-        x: 0, 
-        opacity: 1, 
-        transition: { type: 'spring', stiffness: 400, damping: 25 } 
-      });
-    }
-  };
 
   return (
+    // CRITICAL: Must pass isOpen prop to ModalPortal for toast to render in DOM
+    <ModalPortal type="toast" isOpen={isVisible}>
     <AnimatePresence>
       {isVisible && (
         <motion.div
@@ -81,17 +61,13 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -80, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="fixed top-4 left-4 right-4 z-[10001]"
-          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+          className="fixed top-4 left-4 right-4 z-toast pointer-events-none"
+          style={{ 
+            paddingTop: 'env(safe-area-inset-top)'
+          }}
         >
-          <motion.div
-            animate={controls}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.1}
-            whileTap={{ scale: 0.98 }}
-            onDragEnd={handleDragEnd}
-            className={`relative ${styles.bg} ${styles.border} border rounded-xl shadow-lg cursor-pointer overflow-hidden backdrop-blur-sm`}
+          <div
+            className={`relative ${styles.bg} ${styles.border} border rounded-xl shadow-lg overflow-hidden backdrop-blur-sm`}
             style={{
               boxShadow: `0 8px 25px -8px ${styles.accent}40, 0 4px 12px -4px ${styles.accent}20`
             }}
@@ -159,10 +135,11 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
                 transformOrigin: 'left'
               }}
             />
-          </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
+    </ModalPortal>
   );
 };
 

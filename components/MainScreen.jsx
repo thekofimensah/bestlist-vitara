@@ -377,17 +377,21 @@ const MainScreen = React.forwardRef(({
   // Track camera startup to prevent multiple simultaneous requests
   const [isCameraStarting, setIsCameraStarting] = useState(false);
   const cameraStartTimeoutRef = useRef(null);
+  const cameraRetryTimeoutRef = useRef(null);
   
   // Track camera visibility for battery optimization
   const [isCameraVisible, setIsCameraVisible] = useState(true);
   const [isCameraStreamActive, setIsCameraStreamActive] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [cameraInitialized, setCameraInitialized] = useState(false);
 
-  const startCamera = async (mode = 'environment') => {
+  const startCamera = async (mode = 'environment', retryCount = 0) => {
     // Skip camera start while gallery picker is active to avoid pause/resume churn
     if (isGalleryPickerActiveRef.current) {
       console.log('📷 [MainScreen] startCamera skipped - gallery picker active');
       return;
     }
+    
     // Prevent multiple simultaneous camera starts
     if (isCameraStarting) {
       console.log('📷 [MainScreen] Camera start already in progress, skipping...');
@@ -400,132 +404,243 @@ const MainScreen = React.forwardRef(({
       return;
     }
 
+    console.log(`📷 [MainScreen] Starting camera (attempt ${retryCount + 1})...`);
     setIsCameraStarting(true);
     setVideoReady(false);
+    setError(null);
+    setCameraError(null);
+    
+    // Clear any existing retry timeout
+    if (cameraRetryTimeoutRef.current) {
+      clearTimeout(cameraRetryTimeoutRef.current);
+      cameraRetryTimeoutRef.current = null;
+    }
     
     try {
+      // Clean up any existing stream first
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        console.log('📷 [MainScreen] Cleaning up existing stream...');
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (e) {
+            console.warn('📷 [MainScreen] Error stopping track:', e);
+          }
+        });
+        streamRef.current = null;
       }
       
-      const constraints = {
-        video: {
-          facingMode: { exact: mode },
-          torch: flashEnabled,
-          // Instagram-quality viewport settings
-          width: { ideal: 1080, min: 720 },
-          height: { ideal: 1080, min: 720 },  // Square-ish like Instagram
-          frameRate: { ideal: 30, min: 24 },
-          aspectRatio: { ideal: 1.0 }  // Instagram's signature square ratio
-        }
-      };
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        streamRef.current = stream;
-        if (videoRef.current) {
+      // Clear video element
+      if (videoRef.current) {
+        try {
           const v = videoRef.current;
-          // Ensure autoplay/inline/muted before attaching stream (prevents Android play overlay)
-          try {
-            v.muted = true;
-            v.playsInline = true;
-            v.setAttribute('muted', '');
-            v.setAttribute('playsinline', '');
-            v.setAttribute('autoplay', '');
-          } catch (_) {}
-          v.srcObject = stream;
-          v.onloadedmetadata = () => {
-            setVideoReady(true);
-            try { v.play(); } catch (_) {}
-          };
+          v.srcObject = null;
+          v.load();
+        } catch (e) {
+          console.warn('📷 [MainScreen] Error clearing video element:', e);
         }
-        setError(null);
-      } catch (err) {
-        // Fallback without torch constraint
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+      }
+      
+      // Progressive constraint fallback strategy
+      const constraintSets = [
+        // First attempt: High quality with exact facing mode and torch
+        {
+          video: {
+            facingMode: { exact: mode },
+            torch: flashEnabled,
+            width: { ideal: 1080, min: 720 },
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, min: 24 },
+            aspectRatio: { ideal: 1.0 }
+          }
+        },
+        // Second attempt: High quality with exact facing mode, no torch
+        {
+          video: {
             facingMode: { exact: mode },
             width: { ideal: 1080, min: 720 },
             height: { ideal: 1080, min: 720 },
             frameRate: { ideal: 30, min: 24 }
-          } 
-        });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          const v = videoRef.current;
-          try {
-            v.muted = true;
-            v.playsInline = true;
-            v.setAttribute('muted', '');
-            v.setAttribute('playsinline', '');
-            v.setAttribute('autoplay', '');
-          } catch (_) {}
-          v.srcObject = stream;
-          v.onloadedmetadata = () => {
-            setVideoReady(true);
-            try { v.play(); } catch (_) {}
-          };
-        }
-        setError(null);
-      }
-    } catch (err) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+          }
+        },
+        // Third attempt: Flexible facing mode
+        {
+          video: {
             facingMode: mode,
             width: { ideal: 1080, min: 720 },
             height: { ideal: 1080, min: 720 },
             frameRate: { ideal: 30 }
-          } 
-        });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          const v = videoRef.current;
-          try {
-            v.muted = true;
-            v.playsInline = true;
-            v.setAttribute('muted', '');
-            v.setAttribute('playsinline', '');
-            v.setAttribute('autoplay', '');
-          } catch (_) {}
-          v.srcObject = stream;
-          v.onloadedmetadata = () => {
-            setVideoReady(true);
-            try { v.play(); } catch (_) {}
-          };
+          }
+        },
+        // Fourth attempt: Basic constraints
+        {
+          video: {
+            facingMode: mode,
+            width: { ideal: 720 },
+            height: { ideal: 720 }
+          }
+        },
+        // Final attempt: Minimal constraints
+        {
+          video: true
         }
-        setError(null);
-      } catch (err2) {
-        console.error('📷 [MainScreen] Camera access failed:', err2);
-        setError('Camera access denied or unavailable');
+      ];
+      
+      let stream = null;
+      let lastError = null;
+      
+      for (let i = 0; i < constraintSets.length; i++) {
+        try {
+          console.log(`📷 [MainScreen] Trying constraint set ${i + 1}/${constraintSets.length}...`);
+          stream = await navigator.mediaDevices.getUserMedia(constraintSets[i]);
+          console.log(`📷 [MainScreen] Success with constraint set ${i + 1}`);
+          break;
+        } catch (err) {
+          console.warn(`📷 [MainScreen] Constraint set ${i + 1} failed:`, err.message);
+          lastError = err;
+          continue;
+        }
+      }
+      
+      if (!stream) {
+        throw lastError || new Error('All camera constraint sets failed');
+      }
+      
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        const v = videoRef.current;
+        
+        // Set up video element properties
+        try {
+          v.muted = true;
+          v.playsInline = true;
+          v.autoplay = true;
+          v.setAttribute('muted', '');
+          v.setAttribute('playsinline', '');
+          v.setAttribute('autoplay', '');
+        } catch (e) {
+          console.warn('📷 [MainScreen] Error setting video attributes:', e);
+        }
+        
+        // Set up event handlers before assigning stream
+        const handleLoadedMetadata = () => {
+          console.log('📷 [MainScreen] Video metadata loaded, starting playback...');
+          setVideoReady(true);
+          setCameraInitialized(true);
+          try {
+            v.play().catch(playError => {
+              console.warn('📷 [MainScreen] Video play failed:', playError);
+              // Try to play again after a short delay
+              setTimeout(() => {
+                try {
+                  v.play();
+                } catch (e) {
+                  console.warn('📷 [MainScreen] Second play attempt failed:', e);
+                }
+              }, 100);
+            });
+          } catch (e) {
+            console.warn('📷 [MainScreen] Error starting video playback:', e);
+          }
+        };
+        
+        const handleError = (e) => {
+          console.error('📷 [MainScreen] Video element error:', e);
+          setCameraError('Video playback failed');
+        };
+        
+        v.onloadedmetadata = handleLoadedMetadata;
+        v.onerror = handleError;
+        
+        // Assign the stream
+        v.srcObject = stream;
+      }
+      
+      setError(null);
+      setCameraError(null);
+      setIsCameraStreamActive(true);
+      console.log('📷 [MainScreen] Camera started successfully');
+      
+    } catch (err) {
+      console.error('📷 [MainScreen] Camera initialization failed:', err);
+      const errorMessage = err.name === 'NotAllowedError' 
+        ? 'Camera access denied. Please allow camera access in your browser settings.'
+        : err.name === 'NotFoundError'
+        ? 'No camera found. Please connect a camera and try again.'
+        : err.name === 'NotReadableError'
+        ? 'Camera is being used by another application.'
+        : `Camera error: ${err.message || 'Unknown error'}`;
+      
+      setError(errorMessage);
+      setCameraError(err);
+      
+      // Retry logic with exponential backoff
+      if (retryCount < 3) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Cap at 5 seconds
+        console.log(`📷 [MainScreen] Retrying camera start in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+        
+        cameraRetryTimeoutRef.current = setTimeout(() => {
+          cameraRetryTimeoutRef.current = null;
+          startCamera(mode, retryCount + 1);
+        }, delay);
+        return;
+      } else {
+        console.error('📷 [MainScreen] Camera initialization failed after all retries');
+        setCameraInitialized(false);
       }
     } finally {
+      // Always reset the starting flag
       setIsCameraStarting(false);
     }
-    
-    // Mark camera stream as active
-    setIsCameraStreamActive(true);
   };
 
   // Stop camera stream to save battery
   const stopCamera = () => {
     console.log('📷 [MainScreen] Stopping camera for battery optimization');
+    
+    // Clear any pending retry timeouts
+    if (cameraRetryTimeoutRef.current) {
+      clearTimeout(cameraRetryTimeoutRef.current);
+      cameraRetryTimeoutRef.current = null;
+    }
+    
+    // Stop all media tracks
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      try {
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (e) {
+            console.warn('📷 [MainScreen] Error stopping track:', e);
+          }
+        });
+      } catch (e) {
+        console.warn('📷 [MainScreen] Error stopping stream tracks:', e);
+      }
       streamRef.current = null;
     }
+    
     // Clear video element to avoid Android/iOS "Play" overlay
     if (videoRef.current) {
       try {
         const v = videoRef.current;
-        try { v.pause(); } catch (_) {}
+        // Remove event handlers to prevent memory leaks
+        v.onloadedmetadata = null;
+        v.onerror = null;
+        
+        try { v.pause(); } catch (e) { console.warn('📷 [MainScreen] Error pausing video:', e); }
         v.srcObject = null;
         // load() resets the media element and prevents transient overlay
-        try { v.load(); } catch (_) {}
-      } catch (_) {}
+        try { v.load(); } catch (e) { console.warn('📷 [MainScreen] Error loading video:', e); }
+      } catch (e) {
+        console.warn('📷 [MainScreen] Error clearing video element:', e);
+      }
     }
+    
     setVideoReady(false);
     setIsCameraStreamActive(false);
+    setIsCameraStarting(false); // Ensure this is reset
   };
 
   // Toggle flash/torch
@@ -545,33 +660,74 @@ const MainScreen = React.forwardRef(({
     setFlashEnabled(!flashEnabled);
   };
 
+  // Main camera control effect - simplified logic
   useEffect(() => {
-    // OPTIMIZED: Only start camera if tab is active, visible, AND no modal is open
-    if (isActive && isCameraVisible && !showModal) {
-      console.log('📷 [MainScreen] Starting camera - tab active, visible, no modal');
+    const shouldStartCamera = isActive && isCameraVisible && !showModal && !isCapturing && !capturedImage;
+    
+    if (shouldStartCamera && !isCameraStreamActive && !isCameraStarting) {
+      console.log('📷 [MainScreen] Starting camera - conditions met');
       startCamera(facingMode);
-    } else {
-      // Stop camera when tab becomes inactive, invisible, or modal is open
-      if (streamRef.current) {
-        console.log('📷 [MainScreen] Stopping camera - tab inactive, invisible, or modal open');
-        stopCamera();
-      }
+    } else if (!shouldStartCamera && isCameraStreamActive) {
+      console.log('📷 [MainScreen] Stopping camera - conditions not met');
+      stopCamera();
     }
+    
     return () => {
+      // Cleanup on unmount
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        console.log('📷 [MainScreen] Cleanup: stopping camera on unmount');
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (e) {
+            console.warn('📷 [MainScreen] Error stopping track on cleanup:', e);
+          }
+        });
+      }
+      // Clear any pending timeouts
+      if (cameraRetryTimeoutRef.current) {
+        clearTimeout(cameraRetryTimeoutRef.current);
       }
     };
-    // eslint-disable-next-line
-  }, [facingMode, flashEnabled, isActive, isCameraVisible, showModal]);
+  }, [facingMode, isActive, isCameraVisible, showModal, isCapturing, capturedImage, isCameraStreamActive, isCameraStarting]);
 
-  // Get location on component mount
+  // Get location on component mount - with error handling
   useEffect(() => {
-    getCurrentLocation();
-  }, []);
+    // Only get location if we don't have it yet
+    if (!deviceLocation) {
+      getCurrentLocation().catch(error => {
+        console.warn('🌍 [Location] Failed to get location:', error);
+        // Don't block the app if location fails
+      });
+    }
+  }, [deviceLocation]);
 
-  // Add intersection observer to detect camera visibility for battery optimization
-  // OPTIMIZED: Debounce camera operations to prevent rapid start/stop cycles
+  // Listen for camera reset events from PullToRefresh
+  useEffect(() => {
+    const handleCameraReset = () => {
+      console.log('📷 [MainScreen] Received camera reset event');
+      // Clear error states
+      setError(null);
+      setCameraError(null);
+      setCameraInitialized(false);
+      
+      // Stop and restart camera
+      stopCamera();
+      
+      // Use a timeout to ensure clean restart
+      setTimeout(() => {
+        if (isActive && isCameraVisible && !showModal) {
+          console.log('📷 [MainScreen] Restarting camera after reset event');
+          startCamera(facingMode);
+        }
+      }, 300);
+    };
+
+    window.addEventListener('feed:reset-camera', handleCameraReset);
+    return () => window.removeEventListener('feed:reset-camera', handleCameraReset);
+  }, [facingMode, isActive, isCameraVisible, showModal]);
+
+  // Simplified intersection observer for camera visibility
   useEffect(() => {
     if (!cameraContainerRef.current) return;
 
@@ -581,30 +737,16 @@ const MainScreen = React.forwardRef(({
         const [entry] = entries;
         const isVisible = entry.isIntersecting;
         
-        // For becoming visible, start immediately to avoid brief overlay
-        if (isVisible && !isCameraStreamActive && isActive && !showModal) {
-          console.log('📷 [Visibility] Immediate start (no debounce)');
-          setIsCameraVisible(true);
-          startCamera(facingMode);
-          return;
-        }
-
-        // Debounce only the stop case to prevent flicker
+        // Debounce visibility changes to prevent rapid toggling
         if (visibilityTimeout) clearTimeout(visibilityTimeout);
         visibilityTimeout = setTimeout(() => {
-          console.log('📷 [Visibility] Camera visibility changed:', isVisible, 'isActive:', isActive, 'showModal:', showModal);
+          console.log('📷 [Visibility] Camera visibility changed:', isVisible);
           setIsCameraVisible(isVisible);
-          
-          if ((!isVisible || !isActive || showModal) && isCameraStreamActive) {
-            // Camera is no longer visible OR tab is inactive OR modal is open and stream is active - stop it
-            console.log('📷 [Visibility] Camera hidden, tab inactive, or modal open - stopping stream');
-            stopCamera();
-          }
-        }, 200);
+        }, 150); // Shorter debounce for better responsiveness
       },
       {
-        threshold: 0.1, // Trigger when at least 10% of camera is visible
-        rootMargin: '100px 0px' // Increased margin to reduce sensitivity
+        threshold: 0.2, // Trigger when at least 20% of camera is visible
+        rootMargin: '50px 0px' // Reduced margin for more accurate detection
       }
     );
 
@@ -616,36 +758,30 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
-  }, [facingMode, isCameraStreamActive, isActive, showModal]);
+  }, []); // No dependencies - just set up once
 
-  // Handle app visibility changes - restart camera when app becomes visible
-  // OPTIMIZED: Reduce dependency array and add performance checks
+  // Handle app visibility changes - simplified approach
   useEffect(() => {
     let visibilityTimeout;
     
     const handleVisibilityChange = () => {
-      // Clear any pending restart
       if (visibilityTimeout) {
         clearTimeout(visibilityTimeout);
       }
       
-      // Only restart camera if app becomes visible and basic conditions are met
       if (document.visibilityState === 'visible') {
-        console.log('📷 App visible - checking camera restart conditions...');
-        
-        // Check conditions without causing re-renders
-        const shouldRestart = !showModal && 
-                             !isCapturing && 
-                             !capturedImage &&
-                             isCameraVisible &&
-                             !isGalleryPickerActiveRef.current;
-        
-        if (shouldRestart) {
-          // Longer delay to avoid conflicts with modal transitions
-          visibilityTimeout = setTimeout(() => {
-            startCamera(facingMode);
-          }, 800); // Increased delay for better stability
-        }
+        console.log('📷 [App] App became visible - will restart camera if needed');
+        // The main camera effect will handle restarting based on current conditions
+        // Just clear any error states that might prevent restart
+        visibilityTimeout = setTimeout(() => {
+          if (cameraError) {
+            console.log('📷 [App] Clearing camera error on app resume');
+            setCameraError(null);
+            setError(null);
+          }
+        }, 500);
+      } else {
+        console.log('📷 [App] App became hidden - camera will be stopped by main effect');
       }
     };
 
@@ -657,7 +793,7 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
-  }, [facingMode]); // Reduced dependencies to prevent excessive re-runs
+  }, []); // No dependencies - just set up once
 
   // Check if user is following anyone when component mounts or tab changes
   useEffect(() => {
@@ -692,18 +828,30 @@ const MainScreen = React.forwardRef(({
   // Add a function to refresh feed data (for pull-to-refresh)
   const refreshFeedData = async () => {
     console.log('🔄 MainScreen: Starting feed refresh...');
-    // Feed error state is now managed by the parent App component
     
-    // Reload camera only if no modal/capture is active to avoid picker/resume churn
-    if (showModal || isCapturing || capturedImage) {
-      console.log('📷 MainScreen: Skipping camera reload (modal/capture active)');
+    // Only reload camera if conditions are right and there's an error
+    const shouldReloadCamera = !showModal && 
+                              !isCapturing && 
+                              !capturedImage && 
+                              (cameraError || error || !cameraInitialized);
+    
+    if (shouldReloadCamera) {
+      console.log('📷 MainScreen: Reloading camera due to error state...');
+      setError(null);
+      setCameraError(null);
+      setCameraInitialized(false);
+      stopCamera();
+      
+      // Use a timeout to ensure clean restart
+      setTimeout(() => {
+        if (isActive && isCameraVisible) {
+          startCamera(facingMode);
+        }
+      }, 500);
     } else {
-      console.log('📷 MainScreen: Reloading camera...');
-      await startCamera(facingMode);
+      console.log('📷 MainScreen: Skipping camera reload (not needed or conditions not met)');
     }
     
-    // Refresh feed data
-    // await loadFeedData(); // This function is no longer needed
     console.log('✅ MainScreen: Feed refresh completed');
   };
 
@@ -716,7 +864,13 @@ const MainScreen = React.forwardRef(({
   }));
 
   const handleCapture = async () => {
+    if (!videoReady || isCapturing || !streamRef.current) {
+      console.log('📷 [MainScreen] Capture ignored - camera not ready or already capturing');
+      return;
+    }
+    
     setError(null);
+    setCameraError(null);
     setIsCapturing(true);
     
     try {
@@ -1079,6 +1233,11 @@ const MainScreen = React.forwardRef(({
   };
 
   const handleGalleryUpload = () => {
+    if (isCapturing) {
+      console.log('📷 [MainScreen] Gallery upload ignored - currently capturing');
+      return;
+    }
+    
     // Create file input for gallery selection - single file only
     const input = document.createElement('input');
     input.type = 'file';
@@ -1319,7 +1478,20 @@ const MainScreen = React.forwardRef(({
   };
 
   const handleFlipCamera = () => {
-    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+    if (isCapturing || !videoReady) {
+      console.log('📷 [MainScreen] Flip camera ignored - capturing or camera not ready');
+      return;
+    }
+    
+    console.log('📷 [MainScreen] Flipping camera...');
+    const newMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newMode);
+    
+    // Stop current stream and restart with new facing mode
+    stopCamera();
+    setTimeout(() => {
+      startCamera(newMode);
+    }, 300);
   };
 
   // No nested scroll handler; page scroll handles everything
@@ -1397,6 +1569,41 @@ const MainScreen = React.forwardRef(({
 
 
 
+  // Cleanup function for component unmount
+  useEffect(() => {
+    return () => {
+      console.log('📷 [MainScreen] Component unmounting - cleaning up...');
+      
+      // Clear all timeouts
+      if (cameraRetryTimeoutRef.current) {
+        clearTimeout(cameraRetryTimeoutRef.current);
+      }
+      if (cameraStartTimeoutRef.current) {
+        clearTimeout(cameraStartTimeoutRef.current);
+      }
+      
+      // Stop camera stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (e) {
+            console.warn('📷 [MainScreen] Error stopping track on unmount:', e);
+          }
+        });
+      }
+      
+      // Cancel any ongoing AI requests
+      if (cancelAIRequest) {
+        try {
+          cancelAIRequest();
+        } catch (e) {
+          console.warn('📷 [MainScreen] Error canceling AI request:', e);
+        }
+      }
+    };
+  }, []);
+
   return (
     <div 
       className="bg-stone-50 safe-area-inset" 
@@ -1405,10 +1612,30 @@ const MainScreen = React.forwardRef(({
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
-      {error && (
+      {(error || cameraError) && (
         <div className="px-4 py-2">
-          <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">
-            {error}
+          <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm flex items-center justify-between">
+            <div>
+              <div className="font-medium">{error || 'Camera Error'}</div>
+              {cameraError && (
+                <div className="text-xs mt-1 text-red-500">
+                  {cameraError.name}: {cameraError.message}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                console.log('📷 [MainScreen] Manual camera restart requested');
+                setError(null);
+                setCameraError(null);
+                setCameraInitialized(false);
+                stopCamera();
+                setTimeout(() => startCamera(facingMode), 500);
+              }}
+              className="ml-3 px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-medium transition-colors"
+            >
+              Retry
+            </button>
           </div>
         </div>
       )}
@@ -1417,7 +1644,11 @@ const MainScreen = React.forwardRef(({
       <div 
         ref={cameraContainerRef}
         className={`relative transition-all duration-300 ease-out`}
-        style={{ height: cameraHeightPx != null ? `${cameraHeightPx}px` : '60vh' }}
+        style={{ 
+          height: cameraHeightPx != null ? `${cameraHeightPx}px` : '60vh',
+          // Prevent layout shift during camera initialization
+          minHeight: '220px'
+        }}
       >
         {/* Camera Feed */}
         <div className="w-full h-full bg-black rounded-2xl overflow-hidden mx-4 mt-4" style={{ width: 'calc(100% - 32px)' }}>
@@ -1432,61 +1663,106 @@ const MainScreen = React.forwardRef(({
           />
           
           {/* Loading overlay */}
-          {!videoReady && (
+          {!videoReady && !error && !cameraError && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white">
-              <div className="text-sm opacity-70 animate-pulse">Starting camera...</div>
-            </div>
-          )}
-
-          {/* Camera Controls */}
-          <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center">
-            <div className="flex items-center justify-center gap-8 w-full">
-              {/* Left side - Flash Toggle or spacer */}
-              <div className="w-9 h-9 flex items-center justify-center">
-                {facingMode === 'environment' && (
-                  <button
-                    onClick={toggleFlash}
-                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                      flashEnabled 
-                        ? 'bg-yellow-400 text-gray-900' 
-                        : 'bg-black bg-opacity-30 text-white backdrop-blur-sm border border-white border-opacity-20'
-                    }`}
-                  >
-                    <Zap className="w-5 h-5" />
-                  </button>
+              <div className="text-center">
+                <div className="text-sm opacity-70 animate-pulse mb-2">
+                  {isCameraStarting ? 'Starting camera...' : 'Camera loading...'}
+                </div>
+                {!cameraInitialized && (
+                  <div className="text-xs opacity-50">
+                    This may take a moment
+                  </div>
                 )}
               </div>
-
-              {/* Center - Shutter Button */}
-              <button
-                onClick={handleCapture}
-                className="w-18 h-18 bg-white rounded-full border-4 border-white border-opacity-30 flex items-center justify-center transition-transform active:scale-95"
-                style={{ width: '72px', height: '72px' }}
-              >
-                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
-                  <Camera className="w-6 h-6 text-gray-700" />
+            </div>
+          )}
+          
+          {/* Error overlay */}
+          {(error || cameraError) && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white">
+              <div className="text-center px-4">
+                <div className="text-sm opacity-70 mb-3">
+                  Camera unavailable
                 </div>
-              </button>
-
-              {/* Right side - Gallery Upload */}
-              <div className="w-9 h-9 flex items-center justify-center">
                 <button
-                  onClick={handleGalleryUpload}
-                  className="w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all hover:bg-black hover:bg-opacity-50 border border-white border-opacity-20"
+                  onClick={() => {
+                    console.log('📷 [MainScreen] Retry button clicked');
+                    setError(null);
+                    setCameraError(null);
+                    setCameraInitialized(false);
+                    stopCamera();
+                    setTimeout(() => startCamera(facingMode), 500);
+                  }}
+                  className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-sm font-medium transition-colors"
                 >
-                  <Image className="w-5 h-5" />
+                  Try Again
                 </button>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Flip Camera Button - with proper padding */}
-          <button
-            onClick={handleFlipCamera}
-            className="absolute top-4 right-8 w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all border border-white border-opacity-20"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          {/* Camera Controls - only show when camera is ready */}
+          {(videoReady || cameraInitialized) && (
+            <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center">
+              <div className="flex items-center justify-center gap-8 w-full">
+                {/* Left side - Flash Toggle or spacer */}
+                <div className="w-9 h-9 flex items-center justify-center">
+                  {facingMode === 'environment' && (
+                    <button
+                      onClick={toggleFlash}
+                      disabled={!videoReady}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-50 ${
+                        flashEnabled 
+                          ? 'bg-yellow-400 text-gray-900' 
+                          : 'bg-black bg-opacity-30 text-white backdrop-blur-sm border border-white border-opacity-20'
+                      }`}
+                    >
+                      <Zap className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Center - Shutter Button */}
+                <button
+                  onClick={handleCapture}
+                  disabled={!videoReady || isCapturing}
+                  className="w-18 h-18 bg-white rounded-full border-4 border-white border-opacity-30 flex items-center justify-center transition-transform active:scale-95 disabled:opacity-50 disabled:scale-100"
+                  style={{ width: '72px', height: '72px' }}
+                >
+                  <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+                    {isCapturing ? (
+                      <div className="w-6 h-6 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Camera className="w-6 h-6 text-gray-700" />
+                    )}
+                  </div>
+                </button>
+
+                {/* Right side - Gallery Upload */}
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <button
+                    onClick={handleGalleryUpload}
+                    disabled={isCapturing}
+                    className="w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all hover:bg-black hover:bg-opacity-50 border border-white border-opacity-20 disabled:opacity-50"
+                  >
+                    <Image className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Flip Camera Button - only show when camera is ready */}
+          {(videoReady || cameraInitialized) && (
+            <button
+              onClick={handleFlipCamera}
+              disabled={!videoReady || isCapturing}
+              className="absolute top-4 right-8 w-9 h-9 bg-black bg-opacity-30 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all border border-white border-opacity-20 disabled:opacity-50"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
 

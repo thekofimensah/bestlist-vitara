@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import SuggestionButton from './SuggestionButton';
 
-const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect }) => {
+const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect, rating = 3 }) => {
   const [showMore, setShowMore] = useState(false);
   
   // Split suggestions between rows based on showMore state
@@ -10,7 +10,9 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
       // When collapsed, all suggestions in first row
       return [suggestions, []];
     }
-    // When expanded, split evenly between rows
+    // When expanded, split between rows
+    // Always try to split if showMore is true, even with few suggestions
+    // This maintains the expanded state the user requested
     const midpoint = Math.ceil(suggestions.length / 2);
     return [
       suggestions.slice(0, midpoint),
@@ -25,10 +27,11 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
       <div 
         className="overflow-x-auto no-scrollbar" 
         style={{ 
-          touchAction: 'pan-x',
+          touchAction: 'manipulation', // Allow all touch gestures to pass through
           WebkitOverflowScrolling: 'touch',
           scrollBehavior: 'smooth',
-          overscrollBehaviorX: 'contain'
+          pointerEvents: 'auto', // Ensure we still get pointer events for buttons
+          userSelect: 'none' // Prevent text selection during scrolling
         }}
       >
         <div className="inline-block min-w-full">
@@ -40,6 +43,7 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
               <SuggestionButton
                 key={suggestion.id}
                 suggestion={suggestion}
+                rating={rating}
                 onTap={(tappedSuggestion, buttonRect, isDoubleTap = false) => {
                   onTap(tappedSuggestion, buttonRect, isDoubleTap);
                 }}
@@ -54,6 +58,7 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
                   <SuggestionButton
                     key={suggestion.id}
                     suggestion={suggestion}
+                    rating={rating}
                     onTap={(tappedSuggestion, buttonRect, isDoubleTap = false) => {
                       onTap(tappedSuggestion, buttonRect, isDoubleTap);
                     }}
@@ -66,7 +71,7 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect 
       </div>
 
       {/* Show more/less button */}
-      {suggestions.length > 4 && (
+      {(suggestions.length > 4 || showMore) && (
         <div className="flex justify-end mt-2">
           <button
             onClick={() => setShowMore(!showMore)}

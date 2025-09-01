@@ -123,47 +123,7 @@ const extractEXIFData = async (file) => {
 
 // Note: formatPostForDisplay is now handled in App.jsx
 
-const StarRating = ({ rating, size = 'sm' }) => {
-  const starSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
-  
-  return (
-    <div className="flex items-center gap-0.5 leading-none h-4">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <div
-          key={star}
-          className={`${starSize} ${
-            star <= rating ? 'text-yellow-500' : 'text-gray-300'
-          }`}
-        >
-          ★
-        </div>
-      ))}
-    </div>
-  );
-};
 
-const VerdictBadge = ({ verdict, size = 'sm' }) => {
-  const getVerdictStyle = () => {
-    switch (verdict) {
-      case 'AVOID':
-        return 'bg-red-50 text-red-700 border-red-100';
-      case 'KEEP':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-100';
-    }
-  };
-
-  const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
-  const padding = size === 'sm' ? 'px-2' : 'px-3 py-1';
-  const heightClass = size === 'sm' ? 'h-4' : 'h-5';
-
-  return (
-    <span className={`${padding} ${heightClass} rounded-full ${textSize} font-medium border inline-flex items-center justify-center leading-none ${getVerdictStyle()}`}>
-      {verdict}
-    </span>
-  );
-};
 
 // Old PostCard component removed - now using OptimizedPostCard
 

@@ -1,21 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { Plus, MoreHorizontal, Star, X, ArrowLeft, Share, Trash2, Check, Search, Bell, MoreVertical } from 'lucide-react';
+import { Plus, MoreHorizontal, Star as StarIcon, X, ArrowLeft, Share, Trash2, Check, Search, Bell, MoreVertical } from 'lucide-react';
 import ShareModal from './secondary/ShareModal';
 import { NotificationsDropdown } from './secondary/NotificationsDropdown';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import SmartImage from './secondary/SmartImage';
+import AddItemModal from './AddItemModal';
 import { deleteItemAndRelated } from '../lib/supabase';
 import { removeProfilePostsByItemIds } from '../hooks/useOptimizedFeed';
 import { removeCachedImage } from '../lib/localImageCache';
 import { supabase } from '../lib/supabase';
+import { useAI } from '../hooks/useAI';
+import imageCompression from 'browser-image-compression';
+import { uploadImageToStorage, dataURLtoFile } from '../lib/imageStorage';
+import { cacheRemoteImage } from '../lib/localImageCache';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 // FirstInWorldBadge intentionally not shown in ListsView per design
 
 
 const StarRating = ({ rating }) => {
   return (
-    <div className="absolute bottom-1 left-1 flex items-center gap-0.5 bg-white bg-opacity-90 backdrop-blur-sm rounded-full px-1.5 py-0.5">
-      <span className="text-yellow-500 text-xs">★</span>
+    <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-white bg-opacity-90 backdrop-blur-sm rounded-full px-1.5 py-0.5">
+      <StarIcon className="w-3 h-3 text-yellow-500 fill-current" />
       <span className="text-xs font-medium text-gray-700">{rating}</span>
     </div>
   );
@@ -284,6 +292,9 @@ const ListRow = ({
 };
 
 const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onReorderModeChange }) => {
+  // AI processing hook
+  const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
+
   const [showNewListDialog, setShowNewListDialog] = useState(false);
   const [isCreatingList, setIsCreatingList] = useState(false);
   // New list composer state (Best only)
@@ -303,6 +314,64 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   const [selectionEnabled, setSelectionEnabled] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState({ isOpen: false });
+
+  // AddItemModal state for AI processing
+  const [editingItem, setEditingItem] = useState(null);
+
+  // Location state for AI context
+  const [deviceLocation, setDeviceLocation] = useState(null);
+
+  // Get device location for AI context
+  const getCurrentLocation = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      // Web fallback
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+              const geo = await resp.json();
+              if (geo.address) {
+                const city = geo.address.city || geo.address.town || geo.address.village || '';
+                const country = geo.address.country || '';
+                const location = [city, country].filter(Boolean).join(', ');
+                setDeviceLocation(location);
+              }
+            } catch (error) {
+              console.warn('🌍 [ListsView Location] Failed to get location:', error);
+            }
+          },
+          (error) => {
+            console.warn('🌍 [ListsView Location] Geolocation error:', error);
+          }
+        );
+      }
+      return;
+    }
+
+    try {
+      const position = await Geolocation.getCurrentPosition();
+      const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+      const geo = await resp.json();
+      if (geo.address) {
+        const city = geo.address.city || geo.address.town || geo.address.village || '';
+        const country = geo.address.country || '';
+        const location = [city, country].filter(Boolean).join(', ');
+        setDeviceLocation(location);
+      }
+    } catch (error) {
+      console.warn('🌍 [ListsView Location] Failed to get location:', error);
+    }
+  };
+
+  // Get location on component mount
+  useEffect(() => {
+    if (!deviceLocation) {
+      getCurrentLocation().catch(error => {
+        console.warn('🌍 [ListsView Location] Failed to get location:', error);
+      });
+    }
+  }, [deviceLocation]);
 
   // Notify parent when reorder mode changes
   useEffect(() => {
@@ -465,48 +534,137 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
-  const handleGalleryUpload = (listId) => {
+  const handleGalleryUpload = async (listId) => {
     // Create file input for gallery selection - single file only
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
     input.multiple = false;
-    
+
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
-      if (file && onEditItem) {
-        // Show immediate feedback - processing starts
-        console.log('📸 [Gallery] Photo selected, processing...');
-        
-        // Find the target list
-        const targetList = lists?.find(list => list.id === listId);
-        if (targetList) {
-          // Create blob URL immediately for instant display
-          const imageUrl = URL.createObjectURL(file);
-          
-          // Create a mock item with the selected image for editing
+      if (file) {
+        try {
+          console.log('📸 [ListsView Gallery] Original file size:', file.size, 'bytes');
+
+          // Single compression: compress once and use the same file for preview and upload
+          let compressedFile = await imageCompression(file, {
+            maxSizeMB: 0.5,
+            maxWidthOrHeight: 1280,
+            useWebWorker: true,
+            fileType: 'image/webp',
+            initialQuality: 0.8
+          });
+
+          // Convert compressed file to base64 for immediate display
+          const compressedBase64 = await imageCompression.getDataUrlFromFile(compressedFile);
+
+          console.log('📸 [ListsView Gallery] Compressed image size:', compressedFile.size, 'bytes');
+
+          const tempFilename = `upload_${Date.now()}.webp`;
           const mockItem = {
-            id: `temp_${Date.now()}`,
-            name: '',
-            image: imageUrl,
-            imageFile: file, // Store the actual file for upload
-            listId: listId,
+            url: compressedBase64,           // Base64 for immediate display
+            filename: tempFilename,
+            uploading: true,
+            aiProcessing: true,
             isNewItem: true,
             showRatingFirst: true // Show rating immediately for gallery uploads
           };
-          
-          // Open the AddItemModal immediately for rating
-          console.log('🌟 [Gallery] Opening rating screen...');
-          onEditItem(mockItem, targetList);
+
+          // Find the target list
+          const targetList = lists?.find(list => list.id === listId);
+          if (targetList) {
+            // Set the editing item to open AddItemModal
+            setEditingItem(mockItem);
+          }
+
+          // Upload to Supabase Storage in background
+          setTimeout(async () => {
+            try {
+              // Get current user for storage organization
+              const user = (await supabase.auth.getUser()).data.user;
+              if (!user) {
+                throw new Error('User not authenticated');
+              }
+
+              // Upload to Supabase Storage
+              const uploadResult = await uploadImageToStorage(compressedFile, user.id);
+
+              if (uploadResult.error) {
+                throw new Error(`Image upload failed: ${uploadResult.error.message}`);
+              }
+
+              console.log('✅ [ListsView Gallery] Image uploaded successfully');
+
+              // Immediately cache the uploaded image for offline access
+              try {
+                // Cache in background - don't wait for this to complete
+                cacheRemoteImage(uploadResult.url, user.id).then(() => {
+                  console.log('📦 [ListsView Gallery] Image cached locally for offline access');
+                }).catch(cacheError => {
+                  console.warn('⚠️ [ListsView Gallery] Failed to cache image locally:', cacheError);
+                });
+              } catch (importError) {
+                console.warn('⚠️ [ListsView Gallery] Failed to import cache functions:', importError);
+              }
+
+              // Update the editing item with storage URLs
+              setEditingItem(prev => prev ? ({
+                ...prev,
+                url: uploadResult.url,
+                thumbnailUrl: uploadResult.thumbnailUrl,
+                uploading: false,
+                storagePath: uploadResult.storagePath // Track the actual storage path
+              }) : null);
+            } catch (error) {
+              console.error('❌ [ListsView Gallery] Background upload failed:', error);
+              // Keep the base64 version if upload fails
+              setEditingItem(prev => prev ? ({
+                ...prev,
+                uploading: false
+              }) : null);
+            }
+          }, 100);
+
+          // Start AI processing in background
+          setTimeout(async () => {
+            try {
+              console.log('🤖 [ListsView AI] Starting AI analysis with location:', deviceLocation);
+              const aiResult = await analyzeImage(compressedFile, deviceLocation);
+
+              console.log('✅ [ListsView AI] Analysis completed');
+
+              // Update the editing item with AI results
+              setEditingItem(prev => prev ? ({
+                ...prev,
+                uploading: false,
+                aiProcessing: false,
+                aiMetadata: aiResult
+              }) : null);
+
+            } catch (error) {
+              console.error('❌ [ListsView AI] Background processing failed:', error);
+
+              // Update with error state
+              setEditingItem(prev => prev ? ({
+                ...prev,
+                uploading: false,
+                aiProcessing: false,
+                aiError: error.message
+              }) : null);
+            }
+          }, 100);
+        } catch (error) {
+          console.error('📸 [ListsView Gallery] Processing error:', error);
         }
       }
     };
-    
+
     // Haptic feedback on file picker open (iOS/Android)
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
-    
+
     input.click();
   };
 
@@ -1015,6 +1173,27 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             </div>
           </div>
         </div>
+      )}
+
+      {/* AddItemModal with AI processing support */}
+      {editingItem && (
+        <AddItemModal
+          image={editingItem.url}
+          lists={lists}
+          onClose={() => setEditingItem(null)}
+          onSave={(selectedListIds, item, isStayAway) => {
+            // Use the provided onAddItem prop
+            if (onAddItem) {
+              return onAddItem(selectedListIds, item, isStayAway);
+            }
+          }}
+          item={editingItem}
+          onCreateList={onCreateList}
+          showRatingFirst={editingItem.showRatingFirst || false}
+          aiMetadata={editingItem.aiMetadata}
+          isAIProcessing={editingItem.aiProcessing}
+          aiError={editingItem.aiError}
+        />
       )}
 
       {/* Finite bottom spacer to provide a natural end to scrolling */}

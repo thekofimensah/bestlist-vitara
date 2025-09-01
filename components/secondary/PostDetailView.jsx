@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Share, Edit3, Star, MapPin, User, X } from 'lucide-react';
 import { supabase, likePost, unlikePost, getPostComments, commentOnPost, deleteComment } from '../../lib/supabase';
 import { getInstagramClassicFilter } from '../../lib/imageUtils';
 import SmartImage from './SmartImage';
@@ -24,6 +24,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
   const containerRef = useRef(null);
   const commentsRef = useRef(null);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showFirstInWorldPopup, setShowFirstInWorldPopup] = useState(false);
 
   // Auto-scroll to comments when opened from a comment notification
   useEffect(() => {
@@ -418,7 +419,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
             {/* First in World Badge - positioned all the way to the right */}
             {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
               <div className="flex-shrink-0">
-                <FirstInWorldBadge 
+                <FirstInWorldBadge
                   achievement={{
                     id: post.items.first_in_world_achievement_id || 'first_in_world',
                     name: 'First in World',
@@ -428,6 +429,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
                   size="medium"
                   variant="default"
                   animate={true}
+                  onClick={() => setShowFirstInWorldPopup(true)}
                 />
               </div>
             )}
@@ -682,6 +684,34 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           snippet: post?.items?.notes
         }}
       />
+
+      {/* First in World Achievement Popup */}
+      {showFirstInWorldPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl p-8 max-w-xs mx-auto relative text-center">
+            {/* Close button */}
+            <button
+              onClick={() => setShowFirstInWorldPopup(false)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-5xl mb-4">🏆</div>
+
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              A Historic First!
+            </h3>
+
+            <p className="text-sm text-gray-600 leading-relaxed">
+              You just made history!
+              <br />
+              <br />
+              You're the very first person to find and rate this product, and that's yours forever.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

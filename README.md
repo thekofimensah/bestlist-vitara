@@ -79,6 +79,7 @@ Remember:
 
 npm run build && npx cap sync android
 npm run build && npx cap sync ios
+npm run build && npx cap run android --livereload
 
 To do:
 

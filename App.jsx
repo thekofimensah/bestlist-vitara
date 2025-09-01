@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, List, User, Search, Bell, X } from 'lucide-react';
+import { Home, List, User, Search, Bell, X, Star } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import MainScreen from './components/MainScreen';
@@ -2179,15 +2179,16 @@ const App = () => {
                                   >
                                     <div className="flex items-center gap-3">
                                       <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-100 text-yellow-700">
-                                        <span className="text-xs font-bold">★</span>
+                                        <Star className="w-4 h-4 fill-current" />
                                       </div>
                                       <div className="flex-1">
                                         <div className="font-medium text-gray-900">{result.name}</div>
                                         <div className="text-sm text-gray-500">
                                           in {result.list}
                                           {result.rating && (
-                                            <span className="ml-2">
-                                              ★ {Math.abs(result.rating)}
+                                            <span className="ml-2 flex items-center gap-1">
+                                              <Star className="w-3 h-3 text-yellow-500 fill-current" />
+                                              <span>{Math.abs(result.rating)}</span>
                                             </span>
                                           )}
                                         </div>

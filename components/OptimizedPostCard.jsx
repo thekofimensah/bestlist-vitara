@@ -1,51 +1,29 @@
 import React, { useState, memo } from 'react';
 import { motion } from 'framer-motion';
-import { Star, Heart, MessageCircle, Share } from 'lucide-react';
+import { Star, Heart, MessageCircle, Share, X } from 'lucide-react';
 import ProgressiveImage from './ui/ProgressiveImage';
 import { likePost, unlikePost } from '../lib/supabase';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
 
-const StarRating = memo(({ rating, size = 'sm' }) => {
-  const starSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
-  
+// Enhanced StarRating component using Lucide icons
+const StarRating = memo(({ rating, size = 'lg' }) => {
+  const starSize = size === 'sm' ? 'w-3 h-3' : size === 'md' ? 'w-4 h-4' : 'w-4 h-4'; // lg is twice the original size
+
   return (
-    <div className="flex items-center gap-0.5 leading-none h-4">
+    <div className="flex items-center gap-0.5 leading-none h-6">
       {[1, 2, 3, 4, 5].map((star) => (
-        <div
+        <Star
           key={star}
           className={`${starSize} ${
-            star <= rating ? 'text-yellow-500' : 'text-gray-300'
+            star <= rating ? 'text-yellow-500 fill-current' : 'text-gray-300'
           }`}
-        >
-          ★
-        </div>
+        />
       ))}
     </div>
   );
 });
 
-const VerdictBadge = memo(({ verdict, size = 'sm' }) => {
-  const getVerdictStyle = () => {
-    switch (verdict) {
-      case 'AVOID':
-        return 'bg-red-50 text-red-700 border-red-100';
-      case 'KEEP':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-100';
-    }
-  };
 
-  const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
-  const padding = size === 'sm' ? 'px-2' : 'px-3 py-1';
-  const heightClass = size === 'sm' ? 'h-4' : 'h-5';
-
-  return (
-    <span className={`${padding} ${heightClass} rounded-full ${textSize} font-medium border inline-flex items-center justify-center leading-none ${getVerdictStyle()}`}>
-      {verdict}
-    </span>
-  );
-});
 
 const PostCardSkeleton = memo(() => (
   <div className="bg-white mb-4 shadow-sm overflow-hidden animate-pulse">
@@ -81,15 +59,15 @@ const PostCardSkeleton = memo(() => (
   </div>
 ));
 
-const OptimizedPostCard = memo(({ 
-  post, 
+const OptimizedPostCard = memo(({
+  post,
   priority = 'normal',
   imageLoadState,
-  onTap, 
-  onLikeChange, 
-  onUserTap, 
-  onCommentTap, 
-  onShareTap, 
+  onTap,
+  onLikeChange,
+  onUserTap,
+  onCommentTap,
+  onShareTap,
   onImageTap,
   updateImageLoadState,
   skeletonOnly = false
@@ -97,6 +75,7 @@ const OptimizedPostCard = memo(({
   const [liked, setLiked] = useState(post?.user_liked || false);
   const [likeCount, setLikeCount] = useState(post?.likes || 0);
   const [isLiking, setIsLiking] = useState(false);
+  const [showFirstInWorldPopup, setShowFirstInWorldPopup] = useState(false);
 
   // // Debug: Log post data to understand image URLs (only for first few posts)
   // if (Math.random() < 0.1) { // Only log 10% of posts to reduce noise
@@ -193,23 +172,16 @@ const OptimizedPostCard = memo(({
           <div className="text-xs text-gray-500">{post.timestamp}</div>
         </div>
         
-        <div className="flex items-center gap-2 h-4">
-          <StarRating rating={post.rating} />
-          <VerdictBadge verdict={post.verdict} />
-          
-          {/* First in World Badge - right aligned in header */}
-          {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
-            <FirstInWorldBadge 
-              achievement={{
-                id: post.items.first_in_world_achievement_id || 'first_in_world',
-                name: 'First in World',
-                rarity: 'legendary',
-                icon: '🌍'
-              }}
-              size="small"
-              variant="default"
-              animate={true}
-            />
+        <div className="flex flex-col items-end ml-auto">
+          {/* Right-aligned larger stars */}
+          <div className="flex items-center gap-2 h-6">
+            <StarRating rating={post.rating} size="lg" />
+          </div>
+          {/* List name under stars */}
+          {post.list_name && (
+            <div className="text-xs text-gray-500 text-right max-w-50 truncate">
+              {post.list_name}
+            </div>
           )}
         </div>
       </div>
@@ -237,21 +209,38 @@ const OptimizedPostCard = memo(({
         />
       </div>
 
-      {/* Title + Share (loads immediately) */}
+      {/* Title + Badge + Share (loads immediately) */}
       <div className="px-4 mt-2 flex items-start justify-between">
         <div className="text-base font-semibold text-gray-900 mr-3">
           {post.item_name}
         </div>
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onShareTap?.(post);
-          }}
-          className="text-gray-500 hover:text-gray-700 transition-colors"
-          aria-label="Share"
-        >
-          <Share className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2 ml-auto">
+          {/* First in World Badge - positioned next to share button */}
+          {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
+            <FirstInWorldBadge
+              achievement={{
+                id: post.items.first_in_world_achievement_id || 'first_in_world',
+                name: 'First in World',
+                rarity: 'legendary',
+                icon: '🌍'
+              }}
+              size="small"
+              variant="default"
+              animate={true}
+              onClick={() => setShowFirstInWorldPopup(true)}
+            />
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onShareTap?.(post);
+            }}
+            className="text-gray-500 hover:text-gray-700 transition-colors"
+            aria-label="Share"
+          >
+            <Share className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Description + Location (loads immediately) */}
@@ -323,6 +312,34 @@ const OptimizedPostCard = memo(({
           {post.timestamp}
         </div>
       </div>
+
+      {/* First in World Achievement Popup */}
+      {showFirstInWorldPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl p-8 max-w-xs mx-auto relative text-center">
+            {/* Close button */}
+            <button
+              onClick={() => setShowFirstInWorldPopup(false)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-5xl mb-4">🏆</div>
+
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              A Historic First!
+            </h3>
+
+            <p className="text-sm text-gray-600 leading-relaxed">
+              You just made history!
+              <br />
+              <br />
+              You're the very first person to find and rate this product, and that's yours forever.
+            </p>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 });

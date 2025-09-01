@@ -712,12 +712,12 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                     )}
                     {/* First in World Badge for profile photos */}
                     {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
-                      <FirstInWorldBadge 
+                      <FirstInWorldBadge
                         achievement={{
                           id: post.items.first_in_world_achievement_id || 'first_in_world',
                           name: 'First in World',
                           rarity: 'legendary',
-                          icon: '🌍'
+                          icon: '🏆'
                         }}
                         size="small"
                         variant="floating"
@@ -735,11 +735,11 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                     {/* Rating + List badge */}
                     <div className="mt-1 flex items-center justify-between">
                       <div className="flex items-center gap-1 text-[12px] text-gray-700">
-                        <Star className="w-3.5 h-3.5 text-yellow-500 fill-current" />
-                        <span>{post.items?.rating ? Math.abs(post.items.rating) : '—'}</span>
+                        <Star className="w-4 h-4 text-yellow-500 fill-current" />
+                        <span className="text-sm font-medium">{post.items?.rating ? Math.abs(post.items.rating) : '—'}</span>
                       </div>
                       {post.lists?.name && (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-600 truncate max-w-[70%]">
+                        <span className="text-[11px] px-2 py-0.5 text-gray-600 truncate max-w-[70%]">
                           {post.lists.name}
                         </span>
                       )}

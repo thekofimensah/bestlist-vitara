@@ -1,8 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import SuggestionButton from './SuggestionButton';
 
-const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect, rating = 3 }) => {
-  const [showMore, setShowMore] = useState(false);
+const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect, rating = 3, showMore: externalShowMore, setShowMore: externalSetShowMore, removingSuggestions = new Set() }) => {
+  const [internalShowMore, setInternalShowMore] = useState(false);
+  
+  // Use external state if provided, otherwise use internal state
+  const showMore = externalShowMore !== undefined ? externalShowMore : internalShowMore;
+  const setShowMore = externalSetShowMore || setInternalShowMore;
   
   // Split suggestions between rows based on showMore state
   const [firstRow, secondRow] = useMemo(() => {
@@ -11,21 +15,12 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect,
       return [suggestions, []];
     }
     // When expanded, split between rows
-    // Always try to split if showMore is true, even with few suggestions
-    // This maintains the expanded state the user requested
     const midpoint = Math.ceil(suggestions.length / 2);
     return [
       suggestions.slice(0, midpoint),
       suggestions.slice(midpoint)
     ];
   }, [suggestions, showMore]);
-
-  // Auto-collapse when second row becomes empty (but only if we were expanded)
-  useEffect(() => {
-    if (showMore && secondRow.length === 0) {
-      setShowMore(false);
-    }
-  }, [showMore, secondRow.length]);
 
   return (
     <div className="w-full">
@@ -43,14 +38,18 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect,
       >
         <div className="inline-block min-w-full">
           {/* Rows container with fixed width to ensure synchronized scrolling */}
-          <div className="space-y-3">
+          <div className="space-y-3" style={{ transition: 'all 0.25s ease-out' }}>
             {/* First row - always visible */}
-            <div className="flex gap-2 pb-1">
+            <div className="flex gap-2 pb-1" style={{ 
+              transition: 'all 0.25s ease-out',
+              minHeight: '32px' // Reserve minimum height to prevent layout shift
+            }}>
                           {firstRow.map((suggestion) => (
               <SuggestionButton
                 key={suggestion.id}
                 suggestion={suggestion}
                 rating={rating}
+                isRemoving={removingSuggestions.has(suggestion.id)}
                 onTap={(tappedSuggestion, buttonRect, isDoubleTap = false) => {
                   onTap(tappedSuggestion, buttonRect, isDoubleTap);
                 }}
@@ -60,12 +59,16 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect,
 
             {/* Second row - shown when expanded */}
             {showMore && secondRow.length > 0 && (
-              <div className="flex gap-2 pb-1">
+              <div className="flex gap-2 pb-1" style={{ 
+                transition: 'all 0.25s ease-out',
+                minHeight: '32px' // Reserve minimum height to prevent layout shift
+              }}>
                 {secondRow.map((suggestion) => (
                   <SuggestionButton
                     key={suggestion.id}
                     suggestion={suggestion}
                     rating={rating}
+                    isRemoving={removingSuggestions.has(suggestion.id)}
                     onTap={(tappedSuggestion, buttonRect, isDoubleTap = false) => {
                       onTap(tappedSuggestion, buttonRect, isDoubleTap);
                     }}

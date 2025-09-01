@@ -580,7 +580,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     if (!subject || !onCreateList) return;
     setIsCreatingList(true);
     const location = newListLocation.trim();
-    const prefix = 'The best';
+    const prefix = 'Best';
     const name = location ? `${prefix} ${subject} in ${location}` : `${prefix} ${subject}`;
     try {
       await onCreateList(name, '#1F6D5A');
@@ -821,7 +821,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Create List</h3>
             <div className="space-y-4">
               <div className="flex items-baseline whitespace-nowrap border-2 border-teal-100 rounded-2xl focus-within:border-teal-400 focus-within:bg-teal-50/30 transition-all duration-200">
-                <span className="pl-4 pr-1 text-base text-gray-700">The best</span>
+                <span className="pl-4 pr-1 text-base text-gray-700">Best</span>
                 <input
                   type="text"
                   value={newListSubject}

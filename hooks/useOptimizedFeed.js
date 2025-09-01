@@ -710,7 +710,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   };
 };
 
-export const useProfilePosts = (userId) => {
+export const useProfilePosts = (userId, includePrivate = false) => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -747,7 +747,7 @@ export const useProfilePosts = (userId) => {
         trackFeedRequest(
           'profile',
           'revalidate',
-          () => getOptimizedUserPosts(userId, batchSize, 0),
+          () => getOptimizedUserPosts(userId, batchSize, 0, includePrivate),
           batchSize,
           0
         ).then(({ data }) => {
@@ -793,7 +793,7 @@ export const useProfilePosts = (userId) => {
         trackFeedRequest(
           'profile',
           'revalidate',
-          () => getOptimizedUserPosts(userId, batchSize, 0),
+          () => getOptimizedUserPosts(userId, batchSize, 0, includePrivate),
           batchSize,
           0
         ).then(({ data }) => {
@@ -846,7 +846,7 @@ export const useProfilePosts = (userId) => {
       const result = await trackFeedRequest(
         'profile',
         'initial_load',
-        () => getOptimizedUserPosts(userId, batchSize, 0),
+        () => getOptimizedUserPosts(userId, batchSize, 0, includePrivate),
         batchSize,
         0
       );
@@ -898,7 +898,7 @@ export const useProfilePosts = (userId) => {
       const result = await trackFeedRequest(
         'profile',
         'load_more',
-        () => getOptimizedUserPosts(userId, batchSize, offset),
+        () => getOptimizedUserPosts(userId, batchSize, offset, includePrivate),
         batchSize,
         offset
       );
@@ -952,7 +952,7 @@ export const useProfilePosts = (userId) => {
       const result = await trackFeedRequest(
         'profile',
         'refresh',
-        () => getOptimizedUserPosts(userId, batchSize, 0),
+        () => getOptimizedUserPosts(userId, batchSize, 0, includePrivate),
         batchSize,
         0
       );

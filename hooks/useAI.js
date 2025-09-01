@@ -125,7 +125,7 @@ Generate these pairs for these **4 categories**:
    - Positive set: How it feels during use, how it interacts with you, immediate sensations, lasting effects
    - Negative set: Difficulties during use, unpleasant interactions, unwanted sensations, problematic effects
 
-2. **Intensity ("Too...")** (3-4 pairs) → Common "too" phrases used in both positive and negative reviews. Examples:
+2. **Intensity ("Too...")** (2 pairs) → Common "too" phrases used in both positive and negative reviews. Examples:
    - Positive set: {"not too strong" ↔ "too strong"}, {"not too heavy" ↔ "too heavy"}
    - Negative set: {"not too strong" ↔ "too strong"}, {"not too heavy" ↔ "too heavy"}
    Note: Use the EXACT SAME "too" words for both positive and negative reviews - people use "too X" vs "not too X" regardless of review sentiment
@@ -146,7 +146,7 @@ FORMAT (MUST follow exactly):
 Word suggestion keys (each is a single comma-separated list of **pairs** in the form "A:B"):
 - ps_pos (Product-Specific, positive set): 6–8 pairs, "positive:negative" (e.g., "fresh:not fresh, flavorful:bland")
 - ps_neg (Product-Specific, negative set): 6–8 pairs, "negative:positive" (e.g., "stale:fresh, bland:flavorful")
-- intensity_pairs: 3–4 pairs, SAME list for both sentiments; each pair as "not too X:too X" (e.g., "not too strong:too strong, not too sweet:too sweet")`;
+- intensity_pairs: 2 pairs, SAME list for both sentiments; each pair as "not too X:too X" (e.g., "not too strong:too strong, not too sweet:too sweet")`;
 
         const requestBody = {
           contents: [{
@@ -205,7 +205,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
                 },
                 intensity_pairs: {
                   type: 'STRING',
-                  description: 'Intensity pairs: 3-4 pairs as "not too X:too X" (e.g., "not too strong:too strong,not too sweet:too sweet")'
+                  description: 'Intensity pairs: 2 pairs as "not too X:too X" (e.g., "not too strong:too strong,not too sweet:too sweet")'
                 }
               },
               required: ['name', 'brand', 'category', 'confidence', 'description', 'tags', 'ps_pos', 'ps_neg', 'intensity_pairs']
@@ -374,7 +374,10 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
           },
           intensity: {
             positiveReviewWords: parseWordPairs(aiData.intensity_pairs),
-            negativeReviewWords: parseWordPairs(aiData.intensity_pairs) // Same for both as per requirements
+            negativeReviewWords: parseWordPairs(aiData.intensity_pairs).map(pair => ({
+              main: pair.opposite,
+              opposite: pair.main
+            })) // Swap for negative reviews: "too X" first
           }
         };
 

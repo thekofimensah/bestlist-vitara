@@ -75,16 +75,16 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
   const [cachedProfile, setCachedProfile] = useState(null);
   const [primaryName, setPrimaryName] = useState(null);
 
-  // Optimized posts loading
-  const { 
-    posts, 
-    loading: postsLoading, 
-    loadingMore, 
-    hasMore, 
+  // Optimized posts loading - show all posts (including private) for own profile
+  const {
+    posts,
+    loading: postsLoading,
+    loadingMore,
+    hasMore,
     totalCount,
-    loadMore, 
-    refresh: refreshPosts 
-  } = useProfilePosts(user?.id);
+    loadMore,
+    refresh: refreshPosts
+  } = useProfilePosts(user?.id, true); // true = includePrivate
   
   // Use the optimized stats hook for posts count (from profile_stats table)
   const { stats: userStats, loading: statsLoading, refreshStats } = useUserStats(user?.id);

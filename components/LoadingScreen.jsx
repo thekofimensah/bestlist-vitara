@@ -13,9 +13,9 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
   const safeLoadingProgress = loadingProgress || {};
   
   // Calculate loading progress (condensed into 3 buckets for UX)
-  const coreReady = safeLoadingProgress.auth && safeLoadingProgress.userTracking;
+  const coreReady = safeLoadingProgress.auth && safeLoadingProgress.userTracking && safeLoadingProgress.profile;
   const contentReady = safeLoadingProgress.lists && safeLoadingProgress.feed && safeLoadingProgress.stats;
-  const extrasReady = safeLoadingProgress.achievements;
+  const extrasReady = safeLoadingProgress.achievements && safeLoadingProgress.camera;
   const displaySteps = [
     { key: 'core', label: 'Core setup', done: coreReady },
     { key: 'content', label: 'Content', done: contentReady },

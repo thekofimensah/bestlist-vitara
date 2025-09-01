@@ -126,6 +126,15 @@ const App = () => {
   const [hasShownInitialUI, setHasShownInitialUI] = useState(false);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+
+  // Camera ready callback
+  const handleCameraReady = () => {
+    console.log('📷 [App] Camera is ready');
+    setCameraReady(true);
+    setLoadingProgress(prev => ({ ...prev, camera: true }));
+  };
   
   // TODO: Critical image loading states for each tab (simplified for now)
   // Will be implemented after confirming basic logic works
@@ -137,7 +146,9 @@ const App = () => {
     feed: false,
     stats: false,
     achievements: false,
-    userTracking: false
+    userTracking: false,
+    camera: false,
+    profile: false
   });
   
   
@@ -736,11 +747,43 @@ const App = () => {
             console.log('✅ [App] User tracking completed');
           });
 
+          // Step 2.5: Profile loading (in parallel)
+          console.log('👤 [App] Loading user profile...');
+          setLoadingProgress(prev => ({ ...prev, profile: false }));
+          
           // Step 3: Load all data in parallel with proper progress tracking
           console.log('📊 [App] Loading all app data in parallel...');
           
           // Start all loading operations
           const promises = [];
+          
+          // Profile loading - wait for profile to be available
+          promises.push(
+            new Promise(async (resolve) => {
+              try {
+                const { data, error } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', existingUser.id)
+                  .single();
+                
+                if (!error && data) {
+                  console.log('✅ [App] Profile loaded successfully');
+                  setLoadingProgress(prev => ({ ...prev, profile: true }));
+                  setProfileReady(true);
+                } else {
+                  console.log('⚠️ [App] Profile not found or error, continuing without profile');
+                  setLoadingProgress(prev => ({ ...prev, profile: true }));
+                  setProfileReady(true);
+                }
+              } catch (error) {
+                console.error('❌ [App] Profile loading failed:', error);
+                setLoadingProgress(prev => ({ ...prev, profile: true }));
+                setProfileReady(true);
+              }
+              resolve();
+            })
+          );
           
           // Lists loading - wait for lists to be available
           promises.push(
@@ -883,8 +926,12 @@ const App = () => {
             feed: true,
             stats: true,
             achievements: true,
-            userTracking: true
+            userTracking: true,
+            camera: true,
+            profile: true
           });
+          setCameraReady(true);
+          setProfileReady(true);
         }
 
       } catch (error) {
@@ -906,8 +953,12 @@ const App = () => {
             feed: true,
             stats: true,
             achievements: true,
-            userTracking: true
+            userTracking: true,
+            camera: true,
+            profile: true
           }));
+          setCameraReady(true);
+          setProfileReady(true);
         }
       } finally {
         // Only stop app loading when everything is done
@@ -1620,6 +1671,7 @@ const App = () => {
                 textLoaded={textLoaded}
                 imagesLoaded={imagesLoaded}
                 onUpdateFeedPosts={handleUpdateFeedPosts}
+                onCameraReady={handleCameraReady}
                 isActive={currentScreen === 'home' && !appLoading} // Pass active state, but not during app loading
               />
             </PullToRefresh>
@@ -1723,9 +1775,9 @@ const App = () => {
   };
 
   // Calculate loading progress (condensed into 3 buckets for UX)
-  const coreReady = loadingProgress.auth && loadingProgress.userTracking;
+  const coreReady = loadingProgress.auth && loadingProgress.userTracking && loadingProgress.profile;
   const contentReady = loadingProgress.lists && loadingProgress.feed && loadingProgress.stats;
-  const extrasReady = loadingProgress.achievements; // achievements/notifications/etc.
+  const extrasReady = loadingProgress.achievements && loadingProgress.camera; // achievements/notifications/camera
   const displaySteps = [
     { key: 'core', label: 'Core setup', icon: '🔐', done: coreReady },
     { key: 'content', label: 'Content', icon: '🍽️', done: contentReady },
@@ -1745,7 +1797,7 @@ const App = () => {
   // TODO: Add proper critical image tracking for progressive loading
   const criticalImagesReady = true; // Temporarily disabled
   
-  const allTabsReady = (!listsLoading || hasListsData) && !isLoadingFeed && !statsLoading && !achievementsLoading;
+  const allTabsReady = (!listsLoading || hasListsData) && !isLoadingFeed && !statsLoading && !achievementsLoading && cameraReady && profileReady;
   
   // OPTIMIZED: Reduce debug logging frequency
   const debugLogCountRef = useRef(0);

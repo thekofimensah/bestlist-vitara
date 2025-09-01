@@ -188,6 +188,7 @@ const MainScreen = React.forwardRef(({
   textLoaded,
   imagesLoaded,
   onUpdateFeedPosts,
+  onCameraReady, // Callback when camera is ready
   isActive = true // New prop to control heavy operations
 }, ref) => {
   const videoRef = useRef(null);
@@ -528,6 +529,12 @@ const MainScreen = React.forwardRef(({
           console.log('📷 [MainScreen] Video metadata loaded, starting playback...');
           setVideoReady(true);
           setCameraInitialized(true);
+          
+          // Notify parent that camera is ready
+          if (onCameraReady) {
+            onCameraReady();
+          }
+          
           try {
             v.play().catch(playError => {
               console.warn('📷 [MainScreen] Video play failed:', playError);

@@ -474,87 +474,7 @@ const AddItemModal = ({
     }
   });
   
-  // Debounced location search
-  useEffect(() => {
-    if (locationSearch.length < 2) {
-      setLocationResults([]);
-      return;
-    }
 
-    const searchTimeout = setTimeout(async () => {
-      setIsSearchingLocation(true);
-      try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5&addressdetails=1&extratags=1`
-        );
-        const results = await response.json();
-        // Sort by: prefix match > population (desc) > importance (desc)
-        const query = locationSearch.trim().toLowerCase();
-        const sorted = [...results].sort((a, b) => {
-          const aName = (a.name || a.display_name || '').toLowerCase();
-          const bName = (b.name || b.display_name || '').toLowerCase();
-          const aPrefix = aName.startsWith(query) ? 1 : 0;
-          const bPrefix = bName.startsWith(query) ? 1 : 0;
-          if (aPrefix !== bPrefix) return bPrefix - aPrefix;
-          // Prefer city/town/village
-          const rankClass = (r) => {
-            const t = r.type || r.addresstype || '';
-            if (['city', 'town'].includes(t)) return 2;
-            if (t === 'village') return 1;
-            return 0;
-          };
-          const aRank = rankClass(a);
-          const bRank = rankClass(b);
-          if (aRank !== bRank) return bRank - aRank;
-          // Earlier substring match index is better
-          const aIdx = aName.indexOf(query);
-          const bIdx = bName.indexOf(query);
-          if (aIdx !== bIdx) return (aIdx === -1 ? 9999 : aIdx) - (bIdx === -1 ? 9999 : bIdx);
-          const aPop = Number(a.extratags?.population) || 0;
-          const bPop = Number(b.extratags?.population) || 0;
-          if (aPop !== bPop) return bPop - aPop;
-          const aImp = Number(a.importance) || 0;
-          const bImp = Number(b.importance) || 0;
-          return bImp - aImp;
-        });
-        setLocationResults(sorted.map(r => {
-          // Extract city from various possible fields
-          const city = r.address?.city || r.address?.town || r.address?.village || r.name || r.display_name.split(',')[0];
-          
-          // Extract country from address or fallback to parsing display_name
-          let country = r.address?.country;
-          if (!country && r.display_name) {
-            // Try to extract country from the end of display_name
-            const parts = r.display_name.split(',').map(p => p.trim());
-            country = parts[parts.length - 1]; // Last part is usually the country
-          }
-          
-          return {
-            display: r.display_name,
-            name: r.name || r.display_name.split(',')[0],
-            city: city,
-            country: country || '',
-            lat: r.lat,
-            lon: r.lon
-          };
-        }));
-      } catch (error) {
-        console.error('Location search error:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-        setLocationResults([]);
-      } finally {
-        setIsSearchingLocation(false);
-      }
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(searchTimeout);
-  }, [locationSearch]);
   const [place, setPlace] = useState('');
   
   // Debug place state changes
@@ -572,6 +492,7 @@ const AddItemModal = ({
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [currentCoords, setCurrentCoords] = useState(null);
+  const [locationFetchAttempted, setLocationFetchAttempted] = useState(false);
   // Rarity is now hardcoded to Common (1) - removed UI for now
   const [showListDropdown, setShowListDropdown] = useState(false);
   const listDropdownRef = useRef(null);
@@ -608,6 +529,9 @@ const AddItemModal = ({
     if (!showLocationSearch) return;
     const handleClickAway = (e) => {
       if (!locationDropdownRef.current) return;
+      // Ignore clicks inside the bottom sheet
+      const sheet = document.getElementById('location-bottom-sheet');
+      if (sheet && sheet.contains(e.target)) return;
       if (!locationDropdownRef.current.contains(e.target)) {
         setShowLocationSearch(false);
         setLocationSearch('');
@@ -631,124 +555,199 @@ const AddItemModal = ({
     return 2 * R * Math.asin(Math.sqrt(a));
   };
 
-  // Debounced place search using Google Places API
+  // Unified search for both places and locations
   useEffect(() => {
-    console.log('🔍 [Places useEffect] Called with:', { place, showPlaceSearch, currentCoords });
-    if (!showPlaceSearch) {
-      console.log('🔍 [Places useEffect] Exiting - showPlaceSearch is false');
-      return;
-    }
-    const q = (place || '').trim();
-    console.log('🔍 [Places Search] Starting search for:', q);
-    
-    if (q.length < 2) {
-      console.log('🔍 [Places Search] Query too short, clearing results');
+    const query = locationSearch.trim();
+    console.log('🔍 [Unified Search] Starting search for:', query);
+
+    if (query.length < 2) {
+      console.log('🔍 [Unified Search] Query too short, clearing results');
       setPlaceResults([]);
+      setLocationResults([]);
       return;
     }
 
-    console.log('🔍 [Places Search] Setting timeout for query:', q);
-    const t = setTimeout(async () => {
-      console.log('🔍 [Places Search] Executing search after timeout for:', q);
+    const searchTimeout = setTimeout(async () => {
+      console.log('🔍 [Unified Search] Executing search after timeout for:', query);
       setIsSearchingPlaces(true);
-      try {
-        const apiKey = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
-        console.log('🔍 [Places Search] API Key check:', apiKey ? 'Found' : 'Missing');
-        
-        if (!apiKey) {
-          console.error('⚠️ Google Places API key not found in VITE_GOOGLE_PLACES_API_KEY');
-          setPlaceResults([]);
-          return;
-        }
+      setIsSearchingLocation(true);
 
-        // Use Google Places API Text Search (New) for food establishments
-        const url = `https://places.googleapis.com/v1/places:searchText`;
-        
-        const requestBody = {
-          textQuery: q,
-          maxResultCount: 8,
-          locationBias: currentCoords ? {
-            circle: {
-              center: {
-                latitude: currentCoords.lat,
-                longitude: currentCoords.lon
-              },
-              radius: 50000 // 50km radius
+      // Search places (Google Places API)
+      const searchPlaces = async () => {
+        try {
+          const apiKey = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
+          console.log('🔍 [Places Search] API Key check:', apiKey ? 'Found' : 'Missing');
+
+          if (!apiKey) {
+            console.error('⚠️ Google Places API key not found in VITE_GOOGLE_PLACES_API_KEY');
+            setPlaceResults([]);
+            return;
+          }
+
+          // Use Google Places API Text Search (New) for food establishments
+          const url = `https://places.googleapis.com/v1/places:searchText`;
+
+          const requestBody = {
+            textQuery: query,
+            maxResultCount: 6,
+            locationBias: currentCoords ? {
+              circle: {
+                center: {
+                  latitude: currentCoords.lat,
+                  longitude: currentCoords.lon
+                },
+                radius: 50000 // 50km radius
+              }
+            } : undefined
+          };
+
+          console.log('🔍 [Places Search] Request URL:', url);
+          console.log('🔍 [Places Search] Request body:', JSON.stringify(requestBody, null, 2));
+          console.log('🔍 [Places Search] Using coords:', currentCoords);
+
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': apiKey,
+              'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types,places.primaryType'
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          console.log('🔍 [Places Search] Response status:', response.status, response.statusText);
+
+          if (!response.ok) {
+            console.log('🔍 [Places Search] New API failed, trying fallback...');
+            // Fallback to legacy Text Search if new API fails
+            const types = 'restaurant|cafe|bakery|supermarket|grocery_or_supermarket|meal_takeaway|food';
+            const legacyUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&type=${types}&key=${apiKey}`;
+            console.log('🔍 [Places Search] Fallback URL:', legacyUrl);
+            const legacyResponse = await fetch(legacyUrl);
+            const legacyData = await legacyResponse.json();
+            console.log('🔍 [Places Search] Fallback response:', legacyData);
+
+            if (legacyData.status === 'OK' && legacyData.results) {
+              const results = legacyData.results.slice(0, 6).map(result => ({
+                name: result.name,
+                display: result.formatted_address,
+                lat: result.geometry?.location?.lat,
+                lon: result.geometry?.location?.lng,
+                types: result.types || [],
+                rating: result.rating
+              })).filter(r => r.lat && r.lon);
+
+              setPlaceResults(results);
+            } else {
+              setPlaceResults([]);
             }
-          } : undefined
-        };
-
-        console.log('🔍 [Places Search] Request URL:', url);
-        console.log('🔍 [Places Search] Request body:', JSON.stringify(requestBody, null, 2));
-        console.log('🔍 [Places Search] Using coords:', currentCoords);
-
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': apiKey,
-            'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types,places.primaryType'
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        console.log('🔍 [Places Search] Response status:', response.status, response.statusText);
-        
-        if (!response.ok) {
-          console.log('🔍 [Places Search] New API failed, trying fallback...');
-          // Fallback to legacy Text Search if new API fails
-          const types = 'restaurant|cafe|bakery|supermarket|grocery_or_supermarket|meal_takeaway|food';
-          const legacyUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q)}&type=${types}&key=${apiKey}`;
-          console.log('🔍 [Places Search] Fallback URL:', legacyUrl);
-          const legacyResponse = await fetch(legacyUrl);
-          const legacyData = await legacyResponse.json();
-          console.log('🔍 [Places Search] Fallback response:', legacyData);
-          
-          if (legacyData.status === 'OK' && legacyData.results) {
-            const results = legacyData.results.slice(0, 8).map(result => ({
-              name: result.name,
-              display: result.formatted_address,
-              lat: result.geometry?.location?.lat,
-              lon: result.geometry?.location?.lng,
-              types: result.types || [],
-              rating: result.rating
-            })).filter(r => r.lat && r.lon);
-            
-            setPlaceResults(results);
           } else {
-            setPlaceResults([]);
+            const data = await response.json();
+            console.log('🔍 [Places Search] Main API response:', data);
+
+            if (data.places && data.places.length > 0) {
+              const results = data.places.map(place => ({
+                name: place.displayName?.text || 'Unknown Place',
+                display: place.formattedAddress || 'Address not available',
+                lat: place.location?.latitude,
+                lon: place.location?.longitude,
+                types: place.types || [],
+                primaryType: place.primaryType
+              })).filter(r => r.lat && r.lon);
+
+              console.log('🔍 [Places Search] Final results:', results);
+              setPlaceResults(results);
+            } else {
+              console.log('🔍 [Places Search] No places found in response');
+              setPlaceResults([]);
+            }
           }
-        } else {
-          const data = await response.json();
-          console.log('🔍 [Places Search] Main API response:', data);
-          
-          if (data.places && data.places.length > 0) {
-            const results = data.places.map(place => ({
-              name: place.displayName?.text || 'Unknown Place',
-              display: place.formattedAddress || 'Address not available',
-              lat: place.location?.latitude,
-              lon: place.location?.longitude,
-              types: place.types || [],
-              primaryType: place.primaryType
-            })).filter(r => r.lat && r.lon);
-            
-            console.log('🔍 [Places Search] Final results:', results);
-            setPlaceResults(results);
-          } else {
-            console.log('🔍 [Places Search] No places found in response');
-            setPlaceResults([]);
-          }
+        } catch (error) {
+          console.error('🔍 [Places Search] Error:', error);
+          console.error('🔍 [Places Search] Error details:', error.message, error.stack);
+          setPlaceResults([]);
+        } finally {
+          setIsSearchingPlaces(false);
         }
-      } catch (error) {
-        console.error('🔍 [Places Search] Error:', error);
-        console.error('🔍 [Places Search] Error details:', error.message, error.stack);
-        setPlaceResults([]);
-      } finally {
-        setIsSearchingPlaces(false);
-      }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [place, showPlaceSearch, currentCoords]);
+      };
+
+      // Search locations (Nominatim)
+      const searchLocations = async () => {
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1&extratags=1`
+          );
+          const results = await response.json();
+          // Sort by: prefix match > population (desc) > importance (desc)
+          const sorted = [...results].sort((a, b) => {
+            const aName = (a.name || a.display_name || '').toLowerCase();
+            const bName = (b.name || b.display_name || '').toLowerCase();
+            const aPrefix = aName.startsWith(query.toLowerCase()) ? 1 : 0;
+            const bPrefix = bName.startsWith(query.toLowerCase()) ? 1 : 0;
+            if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+            // Prefer city/town/village
+            const rankClass = (r) => {
+              const t = r.type || r.addresstype || '';
+              if (['city', 'town'].includes(t)) return 2;
+              if (t === 'village') return 1;
+              return 0;
+            };
+            const aRank = rankClass(a);
+            const bRank = rankClass(b);
+            if (aRank !== bRank) return bRank - aRank;
+            // Earlier substring match index is better
+            const aIdx = aName.indexOf(query.toLowerCase());
+            const bIdx = bName.indexOf(query.toLowerCase());
+            if (aIdx !== bIdx) return (aIdx === -1 ? 9999 : aIdx) - (bIdx === -1 ? 9999 : bIdx);
+            const aPop = Number(a.extratags?.population) || 0;
+            const bPop = Number(b.extratags?.population) || 0;
+            if (aPop !== bPop) return bPop - aPop;
+            const aImp = Number(a.importance) || 0;
+            const bImp = Number(b.importance) || 0;
+            return bImp - aImp;
+          });
+          setLocationResults(sorted.map(r => {
+            // Extract city from various possible fields
+            const city = r.address?.city || r.address?.town || r.address?.village || r.name || r.display_name.split(',')[0];
+
+            // Extract country from address or fallback to parsing display_name
+            let country = r.address?.country;
+            if (!country && r.display_name) {
+              // Try to extract country from the end of display_name
+              const parts = r.display_name.split(',').map(p => p.trim());
+              country = parts[parts.length - 1]; // Last part is usually the country
+            }
+
+            return {
+              display: r.display_name,
+              name: r.name || r.display_name.split(',')[0],
+              city: city,
+              country: country || '',
+              lat: r.lat,
+              lon: r.lon
+            };
+          }));
+        } catch (error) {
+          console.error('Location search error:', JSON.stringify({
+            message: error.message,
+            name: error.name,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+            fullError: error
+          }, null, 2));
+          setLocationResults([]);
+        } finally {
+          setIsSearchingLocation(false);
+        }
+      };
+
+      // Execute both searches in parallel
+      await Promise.all([searchPlaces(), searchLocations()]);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(searchTimeout);
+  }, [locationSearch, currentCoords]);
 
   // Close place dropdown on click-away
   useEffect(() => {
@@ -1410,7 +1409,7 @@ const AddItemModal = ({
       console.log('📍 [Location] Source: Manual (user entered)');
       return 'manual';
     }
-    
+
     // If we used device location during capture
     if (photoMetadata?.location || location === 'Current Location') {
       console.log('📍 [Location] Source: Device (current GPS)');
@@ -1509,8 +1508,15 @@ const AddItemModal = ({
 
   // Get device location with improved error handling
   const getCurrentLocation = async () => {
+    if (isLoadingLocation) return; // Prevent concurrent location requests
     setIsLoadingLocation(true);
-    
+
+    // Safety timeout to prevent loading state from getting stuck
+    const loadingTimeout = setTimeout(() => {
+      console.log('🌍 Location loading timeout - resetting loading state');
+      setIsLoadingLocation(false);
+    }, 8000); // 8 seconds total timeout
+
     try {
       let position;
       
@@ -1519,7 +1525,7 @@ const AddItemModal = ({
         try {
           position = await Geolocation.getCurrentPosition({
             enableHighAccuracy: false, // Use less battery
-            timeout: 10000, // 10 second timeout
+            timeout: 5000, // 5 second timeout (reduced from 10s)
             maximumAge: 300000 // Accept 5-minute old position
           });
         } catch (nativeError) {
@@ -1536,7 +1542,7 @@ const AddItemModal = ({
             position = await new Promise((resolve, reject) => {
               navigator.geolocation.getCurrentPosition(resolve, reject, {
                 enableHighAccuracy: false,
-                timeout: 10000,
+                timeout: 5000, // Reduced from 10s
                 maximumAge: 300000
               });
             });
@@ -1550,7 +1556,7 @@ const AddItemModal = ({
           position = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: false,
-              timeout: 10000,
+              timeout: 5000, // Reduced from 10s
               maximumAge: 300000
             });
           });
@@ -1593,20 +1599,25 @@ const AddItemModal = ({
         throw new Error('No position data received');
       }
       
-    } catch (error) {
+        } catch (error) {
       console.log('All location methods failed:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
-      // Don't change location if it's already set from EXIF or other source
-      if (location === 'Current Location') {
-        setLocation('Location not available');
+        message: error.message,
+        name: error.name,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: error
+      }, null, 2));
+      // Only set location unavailable if we don't have any location data at all
+      // and avoid setting it if it would cause UI issues
+      if (location === 'Current Location' && !photoMetadata?.location && !initialState?.location && !item?.location) {
+        // Use setTimeout to avoid blocking the UI during error handling
+        setTimeout(() => {
+          setLocation('Location not available');
+        }, 100);
       }
     } finally {
+      clearTimeout(loadingTimeout);
       setIsLoadingLocation(false);
     }
   };
@@ -1620,11 +1631,13 @@ const AddItemModal = ({
   // Auto-fetch location on mount (only if no location available and not manually set)
   useEffect(() => {
     // Don't fetch current location if we already have location from other sources or it was manually set
-    if (!photoMetadata?.location && !initialState?.location && !item?.location && !locationManuallySet && location === 'Current Location') {
+    // or if we've already attempted to fetch location
+    if (!photoMetadata?.location && !initialState?.location && !item?.location && !locationManuallySet && location === 'Current Location' && !locationFetchAttempted) {
       console.log('🌍 Triggering location fetch...');
+      setLocationFetchAttempted(true);
       getCurrentLocation();
     }
-  }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet]);
+  }, [photoMetadata?.location, initialState?.location, item?.location, locationManuallySet, location, locationFetchAttempted]);
 
   // Removed Google Places default dropdown; using custom popup + Nominatim
 
@@ -1722,6 +1735,8 @@ const AddItemModal = ({
   const [usedSuggestionWords, setUsedSuggestionWords] = useState([]);
   const [hasSuggestions, setHasSuggestions] = useState(false);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [showMoreSuggestions, setShowMoreSuggestions] = useState(false);
+  const [removingSuggestions, setRemovingSuggestions] = useState(new Set());
   const activeTouchRef = useRef(null);
   const [flyingAnimations, setFlyingAnimations] = useState([]);
 
@@ -1937,10 +1952,18 @@ const AddItemModal = ({
         createFlyingAnimation(buttonRect, wordToAdd, isDoubleTap);
       }
       
-      // Remove the selected suggestion with a small delay to prevent accidental taps on the next word
+      // Mark suggestion as removing immediately for smooth fade-out
+      setRemovingSuggestions(prev => new Set([...prev, s.id]));
+      
+      // Remove the selected suggestion with a shorter delay to match animation
       setTimeout(() => {
         setAvailableSuggestions((prev) => prev.filter((x) => x.id !== s.id));
-      }, 300);
+        setRemovingSuggestions(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(s.id);
+          return newSet;
+        });
+      }, 250); // Reduced from 300ms to 250ms to match animation timing
     }
     
     if (navigator.vibrate) navigator.vibrate(isDoubleTap ? 20 : 5); // Stronger vibration for double tap
@@ -2434,6 +2457,9 @@ const AddItemModal = ({
                         suggestions={availableSuggestions}
                         onTap={handleSuggestionTap}
                         rating={rating}
+                        showMore={showMoreSuggestions}
+                        setShowMore={setShowMoreSuggestions}
+                        removingSuggestions={removingSuggestions}
                       />
                     )}
                   </div>
@@ -2584,267 +2610,34 @@ const AddItemModal = ({
 
             {/* Flavor Notes section removed per latest design */}
 
-            {/* Location */}
+                        {/* Location */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-medium text-gray-900">Location</h3>
                 </div>
               </div>
-              <div className="flex gap-3">
-                {/* Place name (left) */}
-                <div className="flex-1 relative" ref={placeDropdownRef}>
-                  <input
-                    ref={placeInputRef}
-                    type="text"
-                    value={place}
-                    onChange={(e) => {
-                      console.log('🔍 [Places Input] onChange triggered with value:', e.target.value);
-                      setPlace(e.target.value);
-                    }}
-                    onFocus={() => setShowPlaceSearch(true)}
-                    placeholder="Place name.."
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700"
-                    autoComplete="off"
-                    autoCorrect="on"
-                    autoCapitalize="words"
-                    spellCheck="true"
-                  />
-                  {showPlaceSearch && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-50">
-                      <div className="bg-white rounded-lg shadow-xl border border-gray-200 min-w-[320px] max-w-[400px]">
-                        {/* Header */}
-                        <div className="p-3 border-b border-gray-100 flex items-center">
-                          <span className="text-sm font-medium text-gray-700">Search places</span>
-                          {isSearchingPlaces && (
-                            <div className="ml-auto w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
-                          )}
-                        </div>
-                        
-                        {/* Results */}
-                        <div className="max-h-64 overflow-y-auto">
-                          {placeResults.length > 0 ? (
-                            placeResults.map((result, idx) => (
-                              <button
-                                key={`place-${idx}`}
-                                onClick={() => {
-                                  setPlace(result.name);
-                                  setSelectedPlaceCoords({ lat: result.lat, lng: result.lon });
-                                  
-                                  // Extract city and country from formatted address
-                                  const addressParts = result.display.split(',').map(p => p.trim());
-                                  let city = '';
-                                  let country = '';
-                                  
-                                  if (addressParts.length >= 2) {
-                                    // Try to extract city and country from address
-                                    // Usually format is: Place Name, Street, City, State/Province, Country
-                                    country = addressParts[addressParts.length - 1]; // Last part is usually country
-                                    // City is usually 2nd or 3rd from the end
-                                    if (addressParts.length >= 3) {
-                                      city = addressParts[addressParts.length - 3] || addressParts[addressParts.length - 2];
-                                    } else {
-                                      city = addressParts[0]; // Fallback to first part
-                                    }
-                                  }
-                                  
-                                  const newLocation = [city, country].filter(Boolean).join(', ');
-                                  if (newLocation && newLocation !== ', ') {
-                                    setLocation(newLocation);
-                                    setLocationManuallySet(true);
-                                  }
-                                  
-                                  setShowPlaceSearch(false);
-                                }}
-                                className="w-full p-3 text-left hover:bg-gray-50 flex items-start gap-3"
-                              >
-                                <div className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0">
-                                  {(() => {
-                                    const types = result.types || [];
-                                    const primaryType = result.primaryType || '';
-                                    
-                                    if (types.includes('restaurant') || primaryType === 'restaurant') return '🍽️';
-                                    if (types.includes('cafe') || primaryType === 'cafe') return '☕';
-                                    if (types.includes('bakery') || primaryType === 'bakery') return '🥖';
-                                    if (types.includes('supermarket') || types.includes('grocery_store') || primaryType === 'supermarket') return '🛒';
-                                    if (types.includes('meal_takeaway') || primaryType === 'meal_takeaway') return '🥡';
-                                    return '📍'; // Default location icon
-                                  })()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 leading-tight break-words">
-                                    {result.name}
-                                  </div>
-                                  <div className="text-xs text-gray-500 leading-tight break-words mt-1">
-                                    {result.display}
-                                  </div>
-                                  {result.rating && (
-                                    <div className="text-xs text-yellow-600 mt-1">
-                                      ⭐ {result.rating}
-                                    </div>
-                                  )}
-                                </div>
-                              </button>
-                            ))
-                          ) : (
-                            <div className="p-4 text-center text-sm text-gray-500">
-                              {(place || '').trim().length < 2 ? 'Type to search places' : 'No places found'}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Footer */}
-                        <div className="p-3 border-t border-gray-100">
-                          <button
-                            onClick={() => setShowPlaceSearch(false)}
-                            className="w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
+
+              {/* Single unified search bar */}
+              <button
+                onClick={() => setShowLocationSearch(true)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="text-xs text-gray-900 truncate">
+                    {place || 'Add place..'}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {location && location !== 'Current Location' && (
+                    <div className="text-xs text-gray-500 truncate max-w-[120px]">
+                      {location}
                     </div>
                   )}
-                </div>
-                
-                {/* Location with search (right) */}
-                <div className="relative min-w-[200px]" ref={locationDropdownRef}>
-                  {showLocationSearch ? (
-                                          <div className="absolute right-0 top-0 w-full z-50">
-                      <div className="bg-white rounded-lg shadow-xl border border-gray-200">
-                        {/* Search input */}
-                        <div className="p-2 border-b border-gray-100">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={locationSearch}
-                              onChange={(e) => setLocationSearch(e.target.value)}
-                              placeholder="Search location..."
-                              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
-                              autoFocus
-                              autoComplete="on"
-                              autoCorrect="on"
-                              autoCapitalize="words"
-                              spellCheck="true"
-                            />
-                            <MapPin className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
-                            {isSearchingLocation && (
-                              <div className="absolute right-2 top-2.5">
-                                <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        
-                                                  {/* Results */}
-                          <div className="max-h-48 overflow-y-auto">
-                            {/* Recently selected */}
-                            {recentLocations.length > 0 && locationSearch.length < 2 && (
-                              <>
-                                <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                                  Recently selected
-                                </div>
-                                {recentLocations.map((recentLocation, index) => (
-                                  <button
-                                    key={`recent-${index}`}
-                                    onClick={() => {
-                                      setLocation(recentLocation);
-                                      setLocationManuallySet(true);
-                                      setShowLocationSearch(false);
-                                      setLocationSearch('');
-                                    }}
-                                    className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
-                                  >
-                                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                      <div className="text-sm font-medium text-gray-900">
-                                        {recentLocation}
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                                {locationResults.length > 0 && (
-                                  <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                                    Search results
-                                  </div>
-                                )}
-                              </>
-                            )}
-                            
-                            {locationResults.length > 0 ? (
-                              locationResults.map((result, index) => (
-                              <button
-                                key={index}
-                                                                  onClick={() => {
-                                    // Format as city + country
-                                    const city = result.city;
-                                    const country = result.country;
-                                    const newLocation = [city, country].filter(Boolean).join(', ');
-                                    
 
-                                    setLocation(newLocation);
-                                    setLocationManuallySet(true); // Prevent auto-location from overriding
-                                    
-                                    // Save to recent locations
-                                    const updatedRecent = [
-                                      newLocation,
-                                      ...recentLocations.filter(loc => loc !== newLocation)
-                                    ].slice(0, 5); // Keep only 5 recent
-                                    setRecentLocations(updatedRecent);
-                                    localStorage.setItem('recentLocations', JSON.stringify(updatedRecent));
-                                    
-                                    setShowLocationSearch(false);
-                                    setLocationSearch('');
-                                  }}
-                                className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
-                              >
-                                <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {[result.city, result.country].filter(Boolean).join(', ')}
-                                  </div>
-                                  <div className="text-xs text-gray-500 truncate">
-                                    {result.display}
-                                  </div>
-                                </div>
-                              </button>
-                            ))
-                          ) : locationSearch.length >= 2 ? (
-                            <div className="p-3 text-center text-sm text-gray-500">
-                              No locations found
-                            </div>
-                          ) : (
-                            <div className="p-3 text-center text-sm text-gray-500">
-                              Type to search locations
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Close button */}
-                        <div className="p-2 border-t border-gray-100">
-                          <button
-                            onClick={() => {
-                              setShowLocationSearch(false);
-                              setLocationSearch('');
-                            }}
-                            className="w-full px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowLocationSearch(true)}
-                      className="w-full flex items-center justify-end gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors text-right"
-                    >
-                      <span className="truncate">{location}</span>
-                      <MapPin className="w-4 h-4 flex-shrink-0" />
-                    </button>
-                                      )}
-                  </div>
-              </div>
+                </div>
+              </button>
             </div>
 
             {/* List Selection */}
@@ -3284,7 +3077,7 @@ const AddItemModal = ({
             {/* Clean input design with inline prefixes to ensure perfect spacing */}
             <div className="space-y-4">
               <div className="flex items-baseline whitespace-nowrap border-2 border-teal-100 rounded-2xl focus-within:border-teal-400 focus-within:bg-teal-50/30 transition-all duration-200">
-                <span className="pl-4 pr-1 text-base text-gray-700">The best</span>
+                <span className="pl-4 pr-1 text-base text-gray-700">Best</span>
                 <input
                   type="text"
                   value={newListSubject}
@@ -3592,6 +3385,221 @@ const AddItemModal = ({
         )}
       </AnimatePresence>
       
+      {/* Unified Location Search Bottom Sheet */}
+      <AnimatePresence>
+        {showLocationSearch && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50"
+          >
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/30"
+              onClick={() => {
+                setShowLocationSearch(false);
+                setLocationSearch('');
+              }}
+            />
+
+            {/* Sheet */}
+            <motion.div
+              id="location-bottom-sheet"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="absolute inset-x-0 bottom-0 top-0 bg-white rounded-t-2xl shadow-xl flex flex-col"
+            >
+              {/* Grip + Search */}
+              <div className="p-3 border-b border-gray-100">
+                <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-200" />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={locationSearch}
+                    onChange={(e) => setLocationSearch(e.target.value)}
+                    placeholder="Search places and locations..."
+                    className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
+                    autoFocus
+                    autoComplete="on"
+                    autoCorrect="on"
+                    autoCapitalize="words"
+                    spellCheck="true"
+                  />
+                  <MapPin className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                  {(isSearchingLocation || isSearchingPlaces) && (
+                    <div className="absolute right-2 top-2.5">
+                      <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Results */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Recently selected */}
+                {recentLocations.length > 0 && locationSearch.length < 2 && (
+                  <>
+                    <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                      Recently selected
+                    </div>
+                    {recentLocations.map((recentLocation, index) => (
+                      <button
+                        key={`recent-${index}`}
+                        onClick={() => {
+                          setLocation(recentLocation);
+                          setLocationManuallySet(true);
+                          setShowLocationSearch(false);
+                          setLocationSearch('');
+                        }}
+                        className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
+                      >
+
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {recentLocation}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                    {(locationResults.length > 0 || placeResults.length > 0) && (
+                      <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                        Search results
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Places results */}
+                {placeResults.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                      Places
+                    </div>
+                    {placeResults.map((result, idx) => (
+                      <button
+                        key={`place-${idx}`}
+                        onClick={() => {
+                          setPlace(result.name);
+                          setSelectedPlaceCoords({ lat: result.lat, lng: result.lon });
+
+                          // Extract city and country from formatted address
+                          const addressParts = result.display.split(',').map(p => p.trim());
+                          let city = '';
+                          let country = '';
+
+                          if (addressParts.length >= 2) {
+                            country = addressParts[addressParts.length - 1];
+                            if (addressParts.length >= 3) {
+                              city = addressParts[addressParts.length - 3] || addressParts[addressParts.length - 2];
+                            } else {
+                              city = addressParts[0];
+                            }
+                          }
+
+                          const newLocation = [city, country].filter(Boolean).join(', ');
+                          if (newLocation && newLocation !== ', ') {
+                            setLocation(newLocation);
+                            setLocationManuallySet(true);
+                          }
+
+                          setShowLocationSearch(false);
+                          setLocationSearch('');
+                        }}
+                        className="w-full p-3 text-left hover:bg-gray-50 flex items-start gap-3"
+                      >
+                                                
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 leading-tight break-words">
+                            {result.name}
+                          </div>
+                          <div className="text-xs text-gray-500 leading-tight break-words mt-1">
+                            {result.display}
+                          </div>
+                          {result.rating && (
+                            <div className="text-xs text-yellow-600 mt-1">
+                              ⭐ {result.rating}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Location results */}
+                {locationResults.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                      Locations
+                    </div>
+                    {locationResults.map((result, index) => (
+                      <button
+                        key={`location-${index}`}
+                        onClick={() => {
+                          const city = result.city;
+                          const country = result.country;
+                          const newLocation = [city, country].filter(Boolean).join(', ');
+                          setLocation(newLocation);
+                          setLocationManuallySet(true);
+                          const updatedRecent = [
+                            newLocation,
+                            ...recentLocations.filter((loc) => loc !== newLocation)
+                          ].slice(0, 5);
+                          setRecentLocations(updatedRecent);
+                          localStorage.setItem('recentLocations', JSON.stringify(updatedRecent));
+                          setShowLocationSearch(false);
+                          setLocationSearch('');
+                        }}
+                        className="w-full p-2 text-left hover:bg-gray-50 flex items-start gap-2"
+                      >
+
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {[result.city, result.country].filter(Boolean).join(', ')}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {result.display}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Empty states */}
+                {locationSearch.length >= 2 && placeResults.length === 0 && locationResults.length === 0 && (
+                  <div className="p-3 text-center text-sm text-gray-500">
+                    No places or locations found
+                  </div>
+                )}
+
+                {locationSearch.length < 2 && recentLocations.length === 0 && (
+                  <div className="p-3 text-center text-sm text-gray-500">
+                    Type to search places and locations...
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-3 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setShowLocationSearch(false);
+                    setLocationSearch('');
+                  }}
+                  className="w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Share Modal */}
       <ShareModal
         isOpen={showShareModal}

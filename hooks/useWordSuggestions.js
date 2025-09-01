@@ -19,11 +19,12 @@ export const useWordSuggestions = () => {
     // Rating 1-2: negative review words, Rating 3+: positive review words
     const useNegativeWords = rating !== null && rating <= 2;
     
-    const categories = ['productSpecific', 'valueQuality', 'wouldI'];
+    const categories = ['productSpecific', 'valueQuality', 'wouldI', 'intensity'];
     const categoryLabels = {
       productSpecific: 'Product-Specific',
-      valueQuality: 'Value & Quality', 
-      wouldI: 'Would I...?'
+      valueQuality: 'Value & Quality',
+      wouldI: 'Would I...?',
+      intensity: 'Intensity'
     };
 
     categories.forEach(categoryKey => {

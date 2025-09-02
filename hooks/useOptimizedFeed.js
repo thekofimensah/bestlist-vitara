@@ -20,6 +20,8 @@ const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE_
 
 // Persistent cache functions for profile posts (similar to useUserStats pattern)
 const PROFILE_POSTS_CACHE_KEY = (userId) => `profile_posts_${userId}`;
+// Persistent cache functions for feed posts
+const FEED_POSTS_CACHE_KEY = (feedType) => `feed_posts_${feedType}`;
 
 const saveProfilePostsLocal = async (userId, cacheData) => {
   if (!userId || !cacheData) return;
@@ -45,6 +47,35 @@ const getProfilePostsLocal = async (userId) => {
     }
   } catch (error) {
     console.warn('⚠️ [ProfileCache] Failed to load from persistent storage:', error);
+  }
+  return null;
+};
+
+// Feed posts persistent storage functions
+const saveFeedPostsLocal = async (feedType, cacheData) => {
+  if (!feedType || !cacheData) return;
+  try {
+    await Preferences.set({ 
+      key: FEED_POSTS_CACHE_KEY(feedType), 
+      value: JSON.stringify(cacheData) 
+    });
+    console.log('💾 [FeedCache] Saved feed posts to persistent storage for feedType:', feedType);
+  } catch (error) {
+    console.warn('⚠️ [FeedCache] Failed to save to persistent storage:', error);
+  }
+};
+
+const getFeedPostsLocal = async (feedType) => {
+  if (!feedType) return null;
+  try {
+    const { value } = await Preferences.get({ key: FEED_POSTS_CACHE_KEY(feedType) });
+    if (value) {
+      const parsed = JSON.parse(value);
+      console.log('📦 [FeedCache] Loaded feed posts from persistent storage:', parsed.posts?.length || 0, 'posts for feedType:', feedType);
+      return parsed;
+    }
+  } catch (error) {
+    console.warn('⚠️ [FeedCache] Failed to load from persistent storage:', error);
   }
   return null;
 };
@@ -246,7 +277,8 @@ export const removeUserPostsFromFeedCache = (feedType, userId) => {
   
   // Filter out posts from the unfollowed user
   const filteredPosts = cached.posts.filter(post => {
-    const postUserId = post.profiles?.id || post.user_id;
+    // Try multiple possible fields where user ID might be stored
+    const postUserId = post.profiles?.id || post.user_id || post.users?.id;
     const shouldKeep = postUserId !== userId;
     
     if (!shouldKeep) {
@@ -266,6 +298,8 @@ export const removeUserPostsFromFeedCache = (feedType, userId) => {
   };
   
   feedPostsCache.set(feedType, newCache);
+  // Save to persistent storage
+  saveFeedPostsLocal(feedType, newCache);
   
   // Notify listeners that cache changed
   try { 
@@ -424,8 +458,18 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
 
   // Load initial feed
   const loadInitialFeed = useCallback(async () => {
-    if (loadingRef.current) return;
-    if (!isAppActive()) return; // avoid background fetch spam
+    console.log('🔄 [useOptimizedFeed] loadInitialFeed called for feedType:', feedType);
+    if (loadingRef.current) {
+      console.log('🔄 [useOptimizedFeed] loadInitialFeed skipped - already loading');
+      return;
+    }
+    const appActive = isAppActive();
+    console.log('🔄 [useOptimizedFeed] App active check:', appActive, 'window.__APP_ACTIVE__:', typeof window !== 'undefined' ? window.__APP_ACTIVE__ : 'undefined');
+    
+    if (!appActive) {
+      console.log('🔄 [useOptimizedFeed] loadInitialFeed skipped - app not active');
+      return; // avoid background fetch spam
+    }
     
     try {
       loadingRef.current = true;
@@ -433,9 +477,24 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       // Check if we're in offline-first mode
       const cacheOnlyMode = shouldLoadFromCacheOnly();
       
-      // Serve from cache first if present
-      const cached = feedPostsCache.get(feedType);
+      // STEP 1: Check in-memory cache first
+      let cached = feedPostsCache.get(feedType);
+      console.log('📦 [useOptimizedFeed] In-memory cache check for feedType:', feedType, 'found:', !!cached, 'posts:', cached?.posts?.length || 0);
+      
+      // STEP 2: If no in-memory cache, check persistent storage
+      if (!cached || !cached.posts || cached.posts.length === 0) {
+        console.log('📦 [useOptimizedFeed] Checking persistent storage for feedType:', feedType);
+        const persistentCache = await getFeedPostsLocal(feedType);
+        if (persistentCache && persistentCache.posts && persistentCache.posts.length > 0) {
+          console.log('📦 [useOptimizedFeed] Found persistent cache for feedType:', feedType, 'posts:', persistentCache.posts.length);
+          // Load persistent cache into in-memory cache
+          feedPostsCache.set(feedType, persistentCache);
+          cached = persistentCache;
+        }
+      }
+      
       if (cached && cached.posts && cached.posts.length > 0) {
+        console.log('📦 [useOptimizedFeed] Serving from cache:', cached.posts.length, 'posts for feedType:', feedType);
         setPosts(cached.posts);
         setOffset(cached.offset || cached.posts.length);
         setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
@@ -455,12 +514,15 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
           if (!feedError && Array.isArray(data)) {
             setPosts(prev => {
               const merged = dedupeById([...data, ...prev]).slice(0, FEED_CACHE_MAX_POSTS);
-              feedPostsCache.set(feedType, {
+              const revalidateCache = {
                 posts: merged,
                 hasMore: merged.length === batchSize || prev.length > batchSize,
                 offset: merged.length,
                 lastUpdated: Date.now()
-              });
+              };
+              feedPostsCache.set(feedType, revalidateCache);
+              // Save to persistent storage
+              saveFeedPostsLocal(feedType, revalidateCache);
               setOffset(merged.length);
               setHasMore(merged.length === batchSize || prev.length > batchSize);
               return merged;
@@ -472,7 +534,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
 
       // If in cache-only mode and no cache, just set empty state
       if (cacheOnlyMode) {
-        console.log('📦 [useOptimizedFeed] Cache-only mode with no cache - setting empty state');
+        console.log('📦 [useOptimizedFeed] Cache-only mode with no cache for feedType:', feedType, '- setting empty state');
         setPosts([]);
         setLoading(false);
         setTextLoaded(true);
@@ -510,6 +572,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       }
       
       const newPosts = data || [];
+      console.log('🔄 [useOptimizedFeed] Initial load got', newPosts.length, 'posts for feedType:', feedType);
       
       // 🎯 TEXT PHASE: Data is loaded, text can be displayed immediately
       trackFeedPhase('feed', 'text_loaded', { 
@@ -526,12 +589,15 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       setTextLoaded(true);
 
       // Update feed cache
-      feedPostsCache.set(feedType, {
+      const newCache = {
         posts: capped,
         hasMore: capped.length === 0 ? true : capped.length === batchSize,
         offset: capped.length,
         lastUpdated: Date.now()
-      });
+      };
+      feedPostsCache.set(feedType, newCache);
+      // Save to persistent storage
+      saveFeedPostsLocal(feedType, newCache);
 
       // Initialize image load states and start image loading phase
       const initialImageStates = {};
@@ -603,12 +669,15 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
         const existingIds = new Set(prev.map(p => p.id));
         const uniqueNewPosts = newPosts.filter(p => !existingIds.has(p.id));
         const merged = dedupeById([...prev, ...uniqueNewPosts]).slice(0, FEED_CACHE_MAX_POSTS);
-        feedPostsCache.set(feedType, {
+        const loadMoreCache = {
           posts: merged,
           hasMore: newPosts.length === batchSize,
           offset: offset + newPosts.length,
           lastUpdated: Date.now()
-        });
+        };
+        feedPostsCache.set(feedType, loadMoreCache);
+        // Save to persistent storage
+        saveFeedPostsLocal(feedType, loadMoreCache);
         return merged;
       });
       
@@ -634,8 +703,17 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
 
   // Refresh feed (separate from initial load for proper tracking)
   const refresh = useCallback(async (silent = false) => {
-    if (loadingRef.current) return;
-    if (isOffline() || !isAppActive()) {
+    console.log('🔄 [useOptimizedFeed] Refresh called for feedType:', feedType, 'silent:', silent);
+    if (loadingRef.current) {
+      console.log('🔄 [useOptimizedFeed] Refresh skipped - already loading');
+      return;
+    }
+    const offline = isOffline();
+    const appActive = isAppActive();
+    console.log('🔄 [useOptimizedFeed] Checking conditions - offline:', offline, 'appActive:', appActive, 'window.__APP_ACTIVE__:', typeof window !== 'undefined' ? window.__APP_ACTIVE__ : 'undefined');
+    
+    if (offline || !appActive) {
+      console.log('🔄 [useOptimizedFeed] Refresh skipped - offline:', offline, 'or app not active:', !appActive);
       try { window.dispatchEvent(new CustomEvent('feed:offline-required', { detail: { reason: 'refresh' } })); } catch (_) {}
       setLoading(false);
       return;
@@ -673,6 +751,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       }
       
       const newPosts = data || [];
+      console.log('🔄 [useOptimizedFeed] Refresh loaded', newPosts.length, 'posts for feedType:', feedType);
       
       // TEXT PHASE: Data is loaded
       trackFeedPhase('feed', 'text_loaded', { 
@@ -681,15 +760,19 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       });
       
       const capped = newPosts.slice(0, FEED_CACHE_MAX_POSTS);
-      setPosts(prev => dedupeById([...capped, ...prev]).slice(0, FEED_CACHE_MAX_POSTS));
+      // For refresh, replace the posts completely instead of merging
+      setPosts(capped);
       setOffset(capped.length);
       setHasMore(capped.length === batchSize);
-      feedPostsCache.set(feedType, {
-        posts: dedupeById([...(feedPostsCache.get(feedType)?.posts || []), ...capped]).slice(0, FEED_CACHE_MAX_POSTS),
+      const refreshCache = {
+        posts: capped,
         hasMore: capped.length === batchSize,
         offset: capped.length,
         lastUpdated: Date.now()
-      });
+      };
+      feedPostsCache.set(feedType, refreshCache);
+      // Save to persistent storage
+      saveFeedPostsLocal(feedType, refreshCache);
       setTextLoaded(true);
       
       // Initialize image load states
@@ -728,6 +811,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   useEffect(() => {
     mountedRef.current = true;
     console.log('🔄 [useOptimizedFeed] Feed type changed to:', feedType, '- loading initial feed');
+    console.log('🔄 [useOptimizedFeed] Current posts before reset:', posts.length);
 
     // Clear current posts and reset state when feed type changes
     setPosts([]);
@@ -738,6 +822,7 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
     setImagesLoaded(false);
     setImageLoadStates({});
 
+    console.log('🔄 [useOptimizedFeed] State reset complete, calling loadInitialFeed');
     loadInitialFeed();
 
     // Listen for feed cache updates (e.g., comment count changes)
@@ -757,14 +842,46 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       }
     };
 
+    // Listen for unfollow events to force refresh of following feed cache only
+    const handleUnfollowEvent = (event) => {
+      console.log('🔄 [useOptimizedFeed] Received user:unfollowed event for current feedType:', feedType, 'event:', event?.detail);
+      
+      // Always refresh the "following" feed cache when someone is unfollowed
+      // This ensures the following feed is updated even if we're currently viewing "for_you"
+      const followingCache = feedPostsCache.get('following');
+      if (followingCache) {
+        console.log('🔄 [useOptimizedFeed] Clearing following feed cache after unfollow');
+        // Clear the following feed cache to force a fresh load next time
+        feedPostsCache.delete('following');
+        // Also clear persistent storage
+        try {
+          saveFeedPostsLocal('following', { posts: [], hasMore: true, offset: 0, lastUpdated: Date.now() });
+        } catch (e) {
+          console.warn('Failed to clear following feed persistent cache:', e);
+        }
+      }
+      
+      // Only refresh the current feed if it's the following feed
+      if (feedType === 'following') {
+        console.log('🔄 [useOptimizedFeed] Current feed is following - forcing refresh');
+        setTimeout(() => {
+          refresh(true); // Silent refresh
+        }, 200);
+      } else {
+        console.log('🔄 [useOptimizedFeed] Current feed is', feedType, '- not refreshing, only cleared following cache');
+      }
+    };
+
     try {
       window.addEventListener('feed:posts-updated', handleFeedUpdate);
+      window.addEventListener('user:unfollowed', handleUnfollowEvent);
     } catch (_) {}
 
     return () => {
       mountedRef.current = false;
       try {
         window.removeEventListener('feed:posts-updated', handleFeedUpdate);
+        window.removeEventListener('user:unfollowed', handleUnfollowEvent);
       } catch (_) {}
     };
   }, [loadInitialFeed, feedType]);
@@ -1106,4 +1223,4 @@ export const useProfilePosts = (userId, includePrivate = false) => {
 };
 
 // Export cache functions for external use (e.g., App.jsx offline loading)
-export { getProfilePostsLocal };
+export { getProfilePostsLocal, getFeedPostsLocal };

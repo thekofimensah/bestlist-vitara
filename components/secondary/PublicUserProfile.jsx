@@ -186,6 +186,18 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
           console.log(`🔄 About to remove posts from user ${userProfile.id} (${userProfile.username}) from following feed cache`);
           removeUserPostsFromFeedCache('following', userProfile.id);
           
+          // Force a small delay and then trigger a custom event to ensure UI updates
+          setTimeout(() => {
+            try {
+              console.log('🔄 Dispatching custom unfollow event to force UI refresh');
+              window.dispatchEvent(new CustomEvent('user:unfollowed', { 
+                detail: { userId: userProfile.id, username: userProfile.username } 
+              }));
+            } catch (e) {
+              console.error('Error dispatching unfollow event:', e);
+            }
+          }, 100);
+          
           console.log(`✅ Unfollowed ${userProfile.username} and removed their posts from following feed`);
         } else {
           console.error('❌ Error unfollowing user:', error);

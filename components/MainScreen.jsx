@@ -177,8 +177,9 @@ const MainScreen = React.forwardRef(({
   const [error, setError] = useState(null);
   const [wasSaved, setWasSaved] = useState(false);
   const wasSavedRef = useRef(false); // Immediate reference that doesn't wait for state updates
+  const modalClosedRef = useRef(false); // Track if modal was closed to prevent background updates
   // Removed nested scroll orchestration – use a single page scroll
-  const [selectedTab, setSelectedTab] = useState('For You'); // Commented out - using Following only for now
+  const [selectedTab, setSelectedTab] = useState('Community'); // Commented out - using Following only for now
   // const [selectedTab, setSelectedTab] = useState('Following');
   const [showModal, setShowModal] = useState(false);
   const [isTabTransitioning, setIsTabTransitioning] = useState(false);
@@ -269,7 +270,7 @@ const MainScreen = React.forwardRef(({
 
   // No post-load resizing; height remains fixed per mount/orientation
 
-  const tabs = ['For You', 'Following'];
+  const tabs = ['Community', 'Following'];
 
   // Get device location for AI context
   const getCurrentLocation = async () => {
@@ -703,6 +704,17 @@ const MainScreen = React.forwardRef(({
         cameraStartTimeoutRef.current = null;
       }
       startCamera(facingMode);
+    } else {
+      // NEW: Log why not starting
+      console.log('📷 [MainScreen] Camera start conditions not met:', JSON.stringify({
+        isActive,
+        isCameraStreamActive: !isCameraStreamActive,
+        isCameraStarting: !isCameraStarting,
+        isCameraVisible,
+        showModal: !showModal,
+        isCapturing: !isCapturing,
+        capturedImage: !capturedImage
+      }, null, 2));
     }
   }, [isActive, isCameraStreamActive, isCameraStarting, isCameraVisible, showModal, isCapturing, capturedImage, facingMode]);
 
@@ -755,14 +767,8 @@ const MainScreen = React.forwardRef(({
     return () => window.removeEventListener('feed:reset-camera', handleCameraReset);
   }, [facingMode, isActive, isCameraVisible, showModal]);
 
-  // Simplified intersection observer for camera visibility - DISABLED for debugging
+  // Camera visibility detection using intersection observer
   useEffect(() => {
-    // Temporarily disable intersection observer to debug camera stopping issue
-    console.log('📷 [Visibility] Intersection observer disabled - camera always visible');
-    setIsCameraVisible(true);
-    
-    // TODO: Re-enable intersection observer after fixing camera stopping issue
-    /*
     if (!cameraContainerRef.current) return;
 
     let visibilityTimeout;
@@ -776,11 +782,17 @@ const MainScreen = React.forwardRef(({
         visibilityTimeout = setTimeout(() => {
           console.log('📷 [Visibility] Camera visibility changed:', isVisible);
           setIsCameraVisible(isVisible);
-        }, 150); // Shorter debounce for better responsiveness
+          
+          // If camera becomes invisible and is currently active, stop it for battery optimization
+          if (!isVisible && isCameraStreamActive) {
+            console.log('📷 [Visibility] Camera scrolled out of view, stopping for battery optimization');
+            stopCamera();
+          }
+        }, 200); // Debounce to prevent rapid toggling
       },
       {
-        threshold: 0.2, // Trigger when at least 20% of camera is visible
-        rootMargin: '50px 0px' // Reduced margin for more accurate detection
+        threshold: 0.1, // Trigger when at least 10% of camera is visible
+        rootMargin: '0px 0px -50px 0px' // Stop camera when it's 50px from being out of view
       }
     );
 
@@ -792,8 +804,7 @@ const MainScreen = React.forwardRef(({
         clearTimeout(visibilityTimeout);
       }
     };
-    */
-  }, []); // No dependencies - just set up once
+  }, [isCameraStreamActive]); // Re-run when camera stream state changes
 
   // Handle app visibility changes - simplified approach
   useEffect(() => {
@@ -947,6 +958,7 @@ const MainScreen = React.forwardRef(({
       console.log('📸 [Fast] Opening modal immediately with original image');
       setCapturedImage(capturedImageData);
       setShowModal(true); // Open modal immediately - no waiting!
+      modalClosedRef.current = false; // Reset flag when opening modal
       setIsCapturing(false);
       
       // Compress image in background and update when ready
@@ -1097,10 +1109,13 @@ const MainScreen = React.forwardRef(({
               }
               
               // Store the achievement info to be used for glow effect
-              setCapturedImage(prev => ({ 
-                ...prev, 
-                aiTriggeredAchievements: newAchievements
-              }));
+              // Only update if modal hasn't been closed
+              if (!modalClosedRef.current) {
+                setCapturedImage(prev => ({ 
+                  ...prev, 
+                  aiTriggeredAchievements: newAchievements
+                }));
+              }
             } else {
               console.log('🏆 [First in World] No achievements detected for this product');
             }
@@ -1121,13 +1136,16 @@ const MainScreen = React.forwardRef(({
           
           console.log('📷 [Photo] Photo metadata created:', JSON.stringify(photoMetadata, null, 2));
 
-          setCapturedImage(prev => ({ 
-            ...prev, 
-            uploading: false,
-            aiProcessing: false,
-            aiMetadata: aiResult,
-            photoMetadata
-          }));
+          // Only update if modal hasn't been closed
+          if (!modalClosedRef.current) {
+            setCapturedImage(prev => ({ 
+              ...prev, 
+              uploading: false,
+              aiProcessing: false,
+              aiMetadata: aiResult,
+              photoMetadata
+            }));
+          }
 
 
         } catch (error) {
@@ -1175,12 +1193,15 @@ const MainScreen = React.forwardRef(({
             }, 4000);
           } else {
             // Regular error handling for other issues (network, API failures, etc.)
-            setCapturedImage(prev => ({ 
-              ...prev, 
-              uploading: false, 
-              aiProcessing: false,
-              aiError: error.message 
-            }));
+            // Only update if modal hasn't been closed
+            if (!modalClosedRef.current) {
+              setCapturedImage(prev => ({ 
+                ...prev, 
+                uploading: false, 
+                aiProcessing: false,
+                aiError: error.message 
+              }));
+            }
           }
         }
       }, 100);
@@ -1240,11 +1261,23 @@ const MainScreen = React.forwardRef(({
     
 
     
+    // NEW: Set flag to prevent background updates after modal close
+    modalClosedRef.current = true;
+    
+    // NEW: Reset ALL camera-related states immediately
     setShowModal(false);
     setCapturedImage(null);
+    setIsCapturing(false);
+    setIsCameraStarting(false);
+    
     // Cancel any ongoing AI request when closing modal
     if (cancelAIRequest) {
-      cancelAIRequest();
+      try {
+        cancelAIRequest();
+        console.log('📷 [Modal] AI request cancelled successfully');
+      } catch (e) {
+        console.warn('📷 [Modal] Error cancelling AI request:', e);
+      }
     }
     // Reset both state and ref AFTER cleanup decisions are made
     setWasSaved(false);
@@ -1261,6 +1294,28 @@ const MainScreen = React.forwardRef(({
       setTimeout(() => {
         setInvalidImageNotification(null);
       }, 4000);
+    }
+
+    // NEW: Explicitly restart camera after modal close if not saved (with longer timeout for state to settle)
+    if (!actualWasSaved) {
+      setTimeout(() => {
+        console.log('📷 [MainScreen] Checking restart conditions after modal close...');
+        if (isActive && isCameraVisible && !showModal && !isCapturing && !capturedImage && !isCameraStreamActive && !isCameraStarting) {
+          console.log('📷 [MainScreen] Explicitly restarting camera after unsaved modal close');
+          startCamera(facingMode);
+        } else {
+          // NEW: Log why explicit restart not triggered
+          console.log('📷 [MainScreen] Explicit restart conditions not met after modal close: ' + JSON.stringify({
+            isActive,
+            isCameraVisible,
+            showModal: !showModal,
+            isCapturing: !isCapturing,
+            capturedImage: !capturedImage,
+            isCameraStreamActive: !isCameraStreamActive,
+            isCameraStarting: !isCameraStarting
+          }, null, 2));
+        }
+      }, 1000); // Increased to 1000ms to ensure all state updates have propagated
     }
   };
 
@@ -1320,6 +1375,7 @@ const MainScreen = React.forwardRef(({
           };
           setCapturedImage(uploadImageData);
           setShowModal(true); // Open modal immediately
+          modalClosedRef.current = false; // Reset flag when opening modal
           
           // Upload to Supabase Storage in background
           setTimeout(async () => {
@@ -1884,7 +1940,7 @@ const MainScreen = React.forwardRef(({
                   {selectedTab === 'Following' && userFollowingAnyone === false && (
                     <button
                       onClick={handleInviteFriends}
-                      className="px-6 py-3 bg-teal-700 text-white rounded-xl text-sm font-medium hover:bg-teal-800 transition-colors"
+                      className="px-4 py-2 bg-teal-700 text-white rounded-lg text-xs font-medium hover:bg-teal-800 transition-colors"
                       style={{ backgroundColor: '#1F6D5A' }}
                     >
                       Invite Friends

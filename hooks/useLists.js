@@ -1157,6 +1157,32 @@ export const useLists = (userId) => {
     });
   };
 
+  // Function to add offline list to local cache
+  const addOfflineListToCache = (listData) => {
+    if (!listData || !listData.name) return null;
+    
+    console.log('📱 [useLists] Adding offline list to local cache:', listData.name);
+    
+    // Create the list with a temporary ID and offline flag
+    const offlineList = {
+      id: `offline_list_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      user_id: userId,
+      name: listData.name,
+      color: listData.color || '#1F6D5A',
+      items: [],
+      stayAways: [],
+      pending_sync: true,
+      offline: true,
+      created_at: new Date().toISOString()
+    };
+    
+    // Add to lists state
+    setLists(prevLists => [offlineList, ...prevLists]);
+    
+    console.log('📱 [useLists] Offline list added to cache:', offlineList.id);
+    return offlineList;
+  };
+
   return {
     lists,
     loading,
@@ -1173,6 +1199,7 @@ export const useLists = (userId) => {
     // Offline cache functions
     addOfflineItemToCache,
     updateOfflineItemInCache,
+    addOfflineListToCache,
     // Retry state for UI feedback
     retryCount,
     connectionError,

@@ -717,7 +717,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                           id: post.items.first_in_world_achievement_id || 'first_in_world',
                           name: 'First in World',
                           rarity: 'legendary',
-                          icon: '🏆'
+                          icon: '🌍'
                         }}
                         size="small"
                         variant="floating"

@@ -2266,6 +2266,7 @@ const AddItemModal = ({
                   )}
                 </div>
                 <div className="flex items-center gap-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
+                  {/* AI Status/Retry Button */}
                   {!isAIProcessing && aiMetadata && (
                     <button 
                       onClick={() => setShowAISparkle(!showAISparkle)}
@@ -2276,6 +2277,24 @@ const AddItemModal = ({
                       <Sparkles className={`w-2.5 h-2.5 transition-colors ${showAISparkle ? 'text-yellow-500' : 'text-gray-400'}`} />
                       <span className="text-xs text-gray-400">AI</span>
                       <span className="text-xs text-gray-400 whitespace-nowrap">{certainty > 0 ? `${Math.round(certainty)}%` : 'N/A'}</span>
+                    </button>
+                  )}
+                  
+                  {/* AI Retry Button - show when AI failed */}
+                  {!isAIProcessing && (aiError || aiCancelled) && onRetryAI && (
+                    <button 
+                      onClick={() => {
+                        setAiCancelled(false);
+                        // Use the current image (which may be cropped) for retry
+                        onRetryAI(currentImage);
+                      }}
+                      className="flex items-center gap-1 bg-red-50 hover:bg-red-100 rounded-full px-2 py-0.5 transition-colors border border-red-200" 
+                      title="Retry AI analysis"
+                    >
+                      <svg className="w-2.5 h-2.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span className="text-xs text-red-600 font-medium">Retry</span>
                     </button>
                   )}
                   

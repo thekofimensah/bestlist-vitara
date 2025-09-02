@@ -102,6 +102,21 @@ export const useOfflineQueue = () => {
     }
   }, [updateStatus]);
 
+  // Queue a create list operation
+  const queueCreateList = useCallback(async (listData) => {
+    try {
+      const queueId = await addToOfflineQueue({
+        type: QUEUE_TYPES.CREATE_LIST,
+        data: listData
+      });
+      await updateStatus();
+      return queueId;
+    } catch (error) {
+      console.error('Failed to queue create list:', error);
+      throw error;
+    }
+  }, [updateStatus]);
+
   // Manually trigger sync
   const triggerSync = useCallback(async () => {
     try {
@@ -205,6 +220,7 @@ export const useOfflineQueue = () => {
     queueDeleteItem,
     queueCreatePost,
     queueUpdateProfile,
+    queueCreateList,
     
     // Management
     triggerSync,

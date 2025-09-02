@@ -8,6 +8,9 @@ const PullToRefresh = ({
   disabled = false,
   className = '',
 }) => {
+  // Check if device is offline and disable pull-to-refresh
+  const isOffline = !navigator.onLine;
+  const isDisabled = disabled || isOffline;
   const [pullDistance, setPullDistance] = useState(0);
   const [isPulling, setIsPulling] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -79,7 +82,7 @@ const PullToRefresh = ({
       
       // Allow pull-to-refresh when at or very close to the top (more forgiving)
       const isAtTop = scrollTop <= 5; // Allow 5px tolerance
-      if (!isAtTop || isRefreshing || disabled) return;
+      if (!isAtTop || isRefreshing || isDisabled) return;
 
       startY.current = e.touches[0].clientY;
       startX.current = e.touches[0].clientX;
@@ -97,7 +100,7 @@ const PullToRefresh = ({
         return;
       }
       
-      if (!pullStarted.current || isRefreshing || disabled) return;
+      if (!pullStarted.current || isRefreshing || isDisabled) return;
       
       // Get current scroll position from the correct container
       let currentScrollTop = 0;
@@ -200,7 +203,7 @@ const PullToRefresh = ({
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [threshold, onRefresh, isRefreshing, disabled]);
+  }, [threshold, onRefresh, isRefreshing, isDisabled]);
 
   // Calculate spinner properties with smooth easing - optimized for performance
   const spinnerHeight = isRefreshing ? 60 : Math.max(pullDistance, 0);

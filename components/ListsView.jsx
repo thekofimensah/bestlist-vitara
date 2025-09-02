@@ -12,7 +12,7 @@ import { removeCachedImage } from '../lib/localImageCache';
 import { supabase } from '../lib/supabase';
 import { useAI } from '../hooks/useAI';
 import imageCompression from 'browser-image-compression';
-import { uploadImageToStorage, dataURLtoFile } from '../lib/imageStorage';
+import { uploadImageToStorage, dataURLtoFile, deleteImageFromStorage } from '../lib/imageStorage';
 import { cacheRemoteImage } from '../lib/localImageCache';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Geolocation } from '@capacitor/geolocation';
@@ -55,12 +55,56 @@ const ItemTile = ({
   const verdict = item.is_stay_away ? 'AVOID' : 'LOVE';
 
   const longPressTimerRef = useRef(null);
+  const hasLongPressedRef = useRef(false);
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+  };
+
+  const handlePointerDown = (e) => {
+    clearLongPressTimer();
+    hasLongPressedRef.current = false;
+    
+    longPressTimerRef.current = setTimeout(() => {
+      hasLongPressedRef.current = true;
+      
+      // Trigger vibration first
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+      
+      // Prevent the default click behavior
+      e.preventDefault();
+      
+      // Trigger long press
+      onLongPress?.(item, e);
+    }, 350);
+  };
+
+  const handlePointerUp = () => {
+    clearLongPressTimer();
+  };
+
+  const handlePointerCancel = () => {
+    clearLongPressTimer();
+  };
+
+  const handlePointerMove = () => {
+    clearLongPressTimer();
+  };
+
+  const handleClick = (e) => {
+    // If we just did a long press, prevent the click
+    if (hasLongPressedRef.current) {
+      hasLongPressedRef.current = false;
+      return;
+    }
+    
+    e.stopPropagation();
+    onTap?.();
   };
 
   return (
@@ -71,34 +115,19 @@ const ItemTile = ({
         e.preventDefault();
         onLongPress?.(item, e);
       }}
-      onTouchStart={(e) => {
-        clearLongPressTimer();
-        longPressTimerRef.current = setTimeout(() => {
-          // Trigger vibration first
-          if (navigator.vibrate) {
-            navigator.vibrate(50);
-          }
-          // Then immediately trigger long press with selection
-          onLongPress?.(item, e);
-        }, 350);
-      }}
-      onTouchEnd={clearLongPressTimer}
-      onTouchCancel={clearLongPressTimer}
-      onTouchMove={clearLongPressTimer}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onPointerMove={handlePointerMove}
       onDragStart={(e) => {
-        // Prevent drag ghost image
         e.preventDefault();
         return false;
       }}
       onSelectStart={(e) => {
-        // Prevent text selection on long press
         e.preventDefault();
         return false;
       }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onTap?.();
-      }}
+      onClick={handleClick}
     >
       <div className="relative">
         <SmartImage
@@ -111,6 +140,10 @@ const ItemTile = ({
           lazyLoad={true}
           draggable={false}
           onClick={(e) => {
+            if (hasLongPressedRef.current) {
+              hasLongPressedRef.current = false;
+              return;
+            }
             e.stopPropagation();
             if (showSelection) {
               onTap?.();
@@ -129,7 +162,17 @@ const ItemTile = ({
         )}
         {/* First in World Badge removed in ListsView */}
       </div>
-      <div className="mt-2" onClick={(e) => { e.stopPropagation(); onTap?.(); }}>
+      <div 
+        className="mt-2" 
+        onClick={(e) => { 
+          if (hasLongPressedRef.current) {
+            hasLongPressedRef.current = false;
+            return;
+          }
+          e.stopPropagation(); 
+          onTap?.(); 
+        }}
+      >
         <p className="text-xs text-gray-700 font-medium truncate pl-2">{item.name}</p>
       </div>
     </div>
@@ -241,8 +284,16 @@ const ListRow = ({
           className="flex-1 text-left"
           disabled={isReorderMode}
         >
-          <h3 className="text-base font-medium text-gray-900 pl-2">{list.name}</h3>
-          <p className="text-xs text-gray-500 pl-2">{allItems.length} items</p>
+          <div className="flex items-center gap-2 pl-2">
+            <div>
+              <h3 className="text-base font-medium text-gray-900">{list.name}</h3>
+              <p className="text-xs text-gray-500">{allItems.length} items</p>
+            </div>
+            {/* Pending sync indicator for offline lists */}
+            {list.pending_sync && (
+              <div className="w-2 h-2 bg-orange-500 rounded-full border border-white flex-shrink-0" title="Pending sync" />
+            )}
+          </div>
         </button>
         
 
@@ -291,7 +342,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange, onAddItem }) => {
   // AI processing hook
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
@@ -490,8 +541,14 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
             // Remove locally cached image for this item if present
             try {
               const item = lists?.flatMap(l => [...(l.items||[]), ...(l.stayAways||[])]).find(it => it.id === id);
-              if (item?.image_url) await removeCachedImage(item.image_url);
-            } catch (_) {}
+              if (item?.image_url) {
+                await removeCachedImage(item.image_url);
+                // Also delete from Supabase Storage
+                await deleteImageFromStorage(item.image_url);
+              }
+            } catch (storageError) {
+              console.warn('⚠️ [ListsView] Failed to delete image from storage:', storageError);
+            }
           }
         } catch (deleteError) {
           errors.push({ id, error: deleteError });

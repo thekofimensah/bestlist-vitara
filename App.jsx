@@ -163,6 +163,7 @@ const App = () => {
     queueStatus, 
     queueCreateItem, 
     queueUpdateItem,
+    queueCreateList,
     triggerSync: syncOfflineQueue,
     clearQueueData: clearQueue
   } = useOfflineQueue();
@@ -198,6 +199,7 @@ const App = () => {
     updateList,
     addOfflineItemToCache,
     updateOfflineItemInCache,
+    addOfflineListToCache,
     retryCount,
     connectionError,
     isRetrying 
@@ -249,8 +251,8 @@ const App = () => {
 
 
 
-  // Current feed type state
-  const [currentFeedType, setCurrentFeedType] = useState('following');
+  // Current feed type state - match MainScreen default tab
+  const [currentFeedType, setCurrentFeedType] = useState('for_you');
 
   // Use optimized feed hook with dynamic feed type
   const {
@@ -1069,6 +1071,23 @@ const App = () => {
     return () => subscription?.unsubscribe();
   }, []);
 
+  // Listen for lists refresh events after successful sync
+  useEffect(() => {
+    const handleListsRefreshNeeded = (event) => {
+      if (event.detail?.userId === user?.id) {
+        console.log('🔄 [App] Lists refresh needed after sync, refreshing...');
+        refreshLists(false).catch(error => {
+          console.error('❌ [App] Failed to refresh lists after sync:', error);
+        });
+      }
+    };
+
+    window.addEventListener('lists:refresh-needed', handleListsRefreshNeeded);
+    return () => {
+      window.removeEventListener('lists:refresh-needed', handleListsRefreshNeeded);
+    };
+  }, [user?.id, refreshLists]);
+
   // Retry wrapper for network requests that might fail on app resume
   const retryNetworkRequest = async (requestFn, maxRetries = 2) => {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -1286,8 +1305,8 @@ const App = () => {
         is_stay_away: isStayAway
       };
       
-      // Check if we're offline
-      if (!queueStatus.isOnline) {
+      // Check if we're offline (check both sources for reliability)
+      if (!queueStatus.isOnline || !navigator.onLine) {
         console.log('📱 [Offline] Queueing item for later sync:', itemData.name);
         
         // Add to offline queue
@@ -1319,10 +1338,12 @@ const App = () => {
       }
       
       console.log('🔧 Calling addItemToList with selectedListIds array:', selectedListIds);
-      // Start DB work without keeping the spinner on
-      const dbStartTime = performance.now();
-      console.log('⏱️ [TIMING] Starting addItemToList database operation...');
-      const resultPromise = addItemToList(selectedListIds, itemData, isStayAway);
+      // Online mode - create item normally, but handle network failures
+      try {
+        // Start DB work without keeping the spinner on
+        const dbStartTime = performance.now();
+        console.log('⏱️ [TIMING] Starting addItemToList database operation...');
+        const resultPromise = addItemToList(selectedListIds, itemData, isStayAway);
       
       // Add timing when promise resolves
       resultPromise.then((result) => {
@@ -1342,6 +1363,41 @@ const App = () => {
         // Avoid heavy list refresh; optimistic update already applied
       });
       return resultPromise;
+      } catch (networkError) {
+        // If network request fails, treat as offline and queue the operation
+        console.log('📱 [Network Failed] Treating as offline, queueing item for later sync:', itemData.name);
+        console.log('📱 [Network Error]:', networkError.message);
+        
+        // Add to offline queue
+        const queueId = await queueCreateItem({
+          selectedListIds,
+          itemData,
+          isStayAway
+        });
+        
+        console.log('📱 [Network Failed] Item queued with ID:', queueId);
+        
+        // Add to local cache so it appears immediately in lists
+        const offlineId = addOfflineItemToCache(selectedListIds, itemData, isStayAway);
+        
+        // Also add to profile posts cache for immediate display in recent photos
+        const listName = lists.find(l => l.id === selectedListIds[0])?.name || 'Unknown List';
+        addOfflineProfilePost(user?.id, itemData, selectedListIds[0], listName);
+        
+        // Stop loading
+        setImagesLoading(false);
+        
+        // Return a mock result for offline mode
+        return {
+          data: {
+            id: offlineId,
+            ...itemData,
+            pending_sync: true
+          },
+          achievements: [], // No achievements when offline
+          error: null
+        };
+      }
     } catch (error) {
       console.error('❌ Error in handleAddItem:', JSON.stringify({
           message: error.message || 'Unknown error',
@@ -1401,8 +1457,8 @@ const App = () => {
     setEditingItem(null); // Close modal immediately for instant feedback
     
     try {
-      // Check if we're offline
-      if (!queueStatus.isOnline) {
+      // Check if we're offline (check both sources for reliability)
+      if (!queueStatus.isOnline || !navigator.onLine) {
         console.log('📱 [Offline] Queueing item update for later sync:', item.name);
         
         // Queue the update for offline sync
@@ -1508,20 +1564,73 @@ const App = () => {
   const handleCreateList = async (name, color) => {
     try {
       console.log('🔧 App: handleCreateList called with:', { name, color });
-      const newList = await createList(name, color);
-      console.log('🔧 App: createList returned:', newList);
       
-      // Stats will update automatically via database triggers
+      // Check if we're offline (check both sources for reliability)
+      if (!queueStatus.isOnline || !navigator.onLine) {
+        console.log('📱 [Offline] Queueing list for later sync:', name);
+        
+        // Add to offline queue
+        const queueId = await queueCreateList({
+          userId: user?.id,
+          name: name,
+          color: color || '#1F6D5A'
+        });
+        
+        console.log('📱 [Offline] List queued with ID:', queueId);
+        
+        // Add to local cache so it appears immediately in lists
+        const offlineList = addOfflineListToCache({
+          name: name,
+          color: color || '#1F6D5A'
+        });
+        
+        console.log('📱 [Offline] List added to cache:', offlineList?.id);
+        
+        // Return the offline list
+        return offlineList;
+      }
       
-      return newList;
+      // Online mode - create list normally, but handle network failures
+      try {
+        const newList = await createList(name, color);
+        console.log('🔧 App: createList returned:', newList);
+        
+        // Stats will update automatically via database triggers
+        
+        return newList;
+      } catch (networkError) {
+        // If network request fails, treat as offline and queue the operation
+        console.log('📱 [Network Failed] Treating as offline, queueing list for later sync:', name);
+        console.log('📱 [Network Error]:', networkError.message);
+        
+        // Add to offline queue
+        const queueId = await queueCreateList({
+          userId: user?.id,
+          name: name,
+          color: color || '#1F6D5A'
+        });
+        
+        console.log('📱 [Network Failed] List queued with ID:', queueId);
+        
+        // Add to local cache so it appears immediately in lists
+        const offlineList = addOfflineListToCache({
+          name: name,
+          color: color || '#1F6D5A'
+        });
+        
+        console.log('📱 [Network Failed] List added to cache:', offlineList?.id);
+        
+        // Return the offline list
+        return offlineList;
+      }
     } catch (error) {
       console.error('❌ App: Error in handleCreateList:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
       throw error; // Re-throw so AddItemModal can handle it
     }
@@ -1540,12 +1649,12 @@ const App = () => {
       
     } catch (error) {
       console.error('❌ Home refresh error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
     } finally {
       // This ensures the spinner disappears only after all data is loaded
@@ -1788,6 +1897,7 @@ const App = () => {
               onNavigateToPost={handleNavigateToPost}
               onNavigateToUser={handleNavigateToUser}
               onReorderModeChange={handleReorderModeChange}
+              onAddItem={handleAddItem}
               isActive={currentScreen === 'lists'} // Pass active state
             />
           </PullToRefresh>
@@ -1955,7 +2065,7 @@ const App = () => {
               {!queueStatus.isOnline && (
                 <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 rounded-full">
                   <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                  <span className="text-xs font-medium text-orange-700">Offline</span>
+                  <span className="text-[9px] font-medium text-orange-700">Offline</span>
                 </div>
               )}
               
@@ -1979,12 +2089,12 @@ const App = () => {
                   {queueStatus.isSyncing ? (
                     <>
                       <div className="w-2 h-2 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs font-medium text-blue-700">Syncing</span>
+                      <span className="text-[9px] font-medium text-blue-700">Syncing</span>
                     </>
                   ) : (
                     <>
                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-xs font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
+                      <span className="text-[9px] font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
                     </>
                   )}
                 </button>

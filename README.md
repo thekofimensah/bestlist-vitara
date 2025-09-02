@@ -247,3 +247,5 @@ Sign on when slow inernet, it does loading screen then login then it logs in and
 Change api keys to extend trials
 
 flagging innappropriate
+
+Test deletion, icons for first in world, investigate camera failure

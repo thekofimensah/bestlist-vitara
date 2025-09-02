@@ -176,14 +176,14 @@ const SmartImage = ({
   }, [onLoad]);
 
   const handleError = useCallback(async () => {
-    console.warn('❌ [SmartImage] Image load failed:', src?.substring(0, 50) + '...');
+    console.warn('❌ [SmartImage] Image load failed:', src);
     
     // Try to fall back to local cache if remote fails
     if (useLocalCache && src && !src.startsWith('data:') && !src.startsWith('file:') && !localOverrideSrc) {
       try {
         const cached = await getCachedLocalUrl(src);
         if (cached) {
-          console.log('🔌 [SmartImage] Falling back to cached version:', src.substring(0, 50) + '...');
+          console.log('🔌 [SmartImage] Falling back to cached version:', src);
           setLocalOverrideSrc(cached);
           setImageError(false);
           return;

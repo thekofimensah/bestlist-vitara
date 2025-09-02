@@ -56,7 +56,7 @@ const AchievementCard = ({ achievement, userAchievement, isLocked = false }) => 
     >
       <div className="flex items-center gap-3 mb-3">
         <div className={`w-12 h-12 ${styles.bg} rounded-full flex items-center justify-center relative`}>
-          <span className="text-2xl">{achievement.icon || '🏆'}</span>
+          <span className="text-2xl" style={{ lineHeight: '1', fontFamily: 'system-ui, -apple-system, sans-serif' }}>{achievement.icon || '🏆'}</span>
           {achievement.rarity === 'legendary' && (
             <motion.div
               animate={{ rotate: 360 }}

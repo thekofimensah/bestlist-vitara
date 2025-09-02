@@ -178,9 +178,10 @@ const MainScreen = React.forwardRef(({
   const [wasSaved, setWasSaved] = useState(false);
   const wasSavedRef = useRef(false); // Immediate reference that doesn't wait for state updates
   // Removed nested scroll orchestration – use a single page scroll
-  // const [selectedTab, setSelectedTab] = useState('For You'); // Commented out - using Following only for now
-  const [selectedTab, setSelectedTab] = useState('Following');
+  const [selectedTab, setSelectedTab] = useState('For You'); // Commented out - using Following only for now
+  // const [selectedTab, setSelectedTab] = useState('Following');
   const [showModal, setShowModal] = useState(false);
+  const [isTabTransitioning, setIsTabTransitioning] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   const [feedInlineNotice, setFeedInlineNotice] = useState(null);
   const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
@@ -268,8 +269,7 @@ const MainScreen = React.forwardRef(({
 
   // No post-load resizing; height remains fixed per mount/orientation
 
-  // const tabs = ['For You', 'Following']; // Commented out - using Following only for now
-  const tabs = ['Following']; // Only Following tab for now
+  const tabs = ['For You', 'Following'];
 
   // Get device location for AI context
   const getCurrentLocation = async () => {
@@ -288,7 +288,7 @@ const MainScreen = React.forwardRef(({
                 setDeviceLocation(location);
               }
             } catch (error) {
-              console.error('Error getting location:', JSON.stringify({
+              console.error('Error getting location1:', JSON.stringify({
           message: error.message,
           name: error.name,
           details: error.details,
@@ -299,7 +299,7 @@ const MainScreen = React.forwardRef(({
             }
           },
           (error) => {
-            console.error('Error getting location:', JSON.stringify({
+            console.error('Error getting location2:', JSON.stringify({
           message: error.message,
           name: error.name,
           details: error.details,
@@ -324,7 +324,7 @@ const MainScreen = React.forwardRef(({
         setDeviceLocation(location);
       }
     } catch (error) {
-      console.error('Error getting location:', JSON.stringify({
+      console.error('Error getting location3:', JSON.stringify({
           message: error.message,
           name: error.name,
           details: error.details,
@@ -839,12 +839,12 @@ const MainScreen = React.forwardRef(({
           setUserFollowingAnyone(isFollowing);
         } catch (error) {
           console.error('Error checking following status:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
           setUserFollowingAnyone(false);
         }
@@ -853,6 +853,14 @@ const MainScreen = React.forwardRef(({
     
     checkFollowingStatus();
   }, [selectedTab]);
+
+  // Clear transition state when feed loading completes
+  useEffect(() => {
+    if (isTabTransitioning && textLoaded && !isLoadingFeed) {
+      console.log('🔄 [MainScreen] Feed loaded, clearing transition state');
+      setIsTabTransitioning(false);
+    }
+  }, [isTabTransitioning, textLoaded, isLoadingFeed]);
 
   // Load feed data only once - never reload on navigation
   useEffect(() => {
@@ -1785,12 +1793,16 @@ const MainScreen = React.forwardRef(({
               <button
                 key={tab}
                 onClick={() => {
-                  setSelectedTab(tab);
-                  // Notify parent component of tab change
-                  if (onTabChange) {
-                    // const feedType = tab === 'Following' ? 'following' : 'for_you'; // Commented out - always following for now
-                    const feedType = 'following'; // Always use following for now
-                    onTabChange(feedType);
+                  if (selectedTab !== tab) {
+                    setIsTabTransitioning(true);
+                    setSelectedTab(tab);
+                    // Notify parent component of tab change
+                    if (onTabChange) {
+                      const feedType = tab === 'Following' ? 'following' : 'for_you';
+                      onTabChange(feedType);
+                    }
+                    // Clear transition state after the hook has had time to load new data
+                    setTimeout(() => setIsTabTransitioning(false), 600);
                   }
                 }}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
@@ -1808,60 +1820,81 @@ const MainScreen = React.forwardRef(({
 
         {/* Feed Content - Real social feed */}
         <div>
-          <div className="space-y-4">
-            {feedInlineNotice && (
-              <div className="px-6">
-                {/* empty holder to keep notice at bottom */}
-              </div>
-            )}
-            {/* Loading State */}
-            {isLoadingFeed && !textLoaded && (
-              <FeedSkeleton />
-            )}
-
-            {/* Error State */}
-            {feedError && !isLoadingFeed && (
-              <div className="text-center py-8 px-6">
-                <div className="text-gray-500 mb-4">Failed to load feed</div>
-                <button
-                  onClick={() => handleFeedRefresh()}
-                  className="px-4 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium"
-                  style={{ backgroundColor: '#1F6D5A' }}
-                >
-                  Try Again
-                </button>
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!isLoadingFeed && !feedError && feedPosts.length === 0 && (
-              <div className="text-center py-8 px-6">
-                <div className="text-gray-500 mb-2">
-                  {selectedTab === 'Following' ? 'No posts from followed users' : 'No posts yet'}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedTab}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="space-y-4"
+            >
+              {feedInlineNotice && (
+                <div className="px-6">
+                  {/* empty holder to keep notice at bottom */}
                 </div>
-                <div className="text-gray-400 text-sm mb-4">
-                  {selectedTab === 'Following' 
-                    ? (userFollowingAnyone === false 
-                        ? 'Invite friends to see their finds in your feed!' 
-                        : 'Users you follow haven\'t posted anything yet'
-                      )
-                    : 'Be the first to share something amazing!'
-                  }
+              )}
+              
+              {/* Tab Transition Loading State */}
+              {isTabTransitioning && (
+                <div className="px-6 py-8 text-center">
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="text-gray-500 text-sm">
+                      Loading {selectedTab.toLowerCase()} feed...
+                    </div>
+                  </div>
                 </div>
-                {selectedTab === 'Following' && userFollowingAnyone === false && (
+              )}
+              
+              {/* Loading State */}
+              {!isTabTransitioning && isLoadingFeed && !textLoaded && (
+                <FeedSkeleton />
+              )}
+
+              {/* Error State */}
+              {!isTabTransitioning && feedError && !isLoadingFeed && (
+                <div className="text-center py-8 px-6">
+                  <div className="text-gray-500 mb-4">Failed to load feed</div>
                   <button
-                    onClick={handleInviteFriends}
-                    className="px-6 py-3 bg-teal-700 text-white rounded-xl text-sm font-medium hover:bg-teal-800 transition-colors"
+                    onClick={() => handleFeedRefresh()}
+                    className="px-4 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium"
                     style={{ backgroundColor: '#1F6D5A' }}
                   >
-                    Invite Friends
+                    Try Again
                   </button>
-                )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* Real Feed Posts - Show text immediately, load images progressively */}
-            {textLoaded && feedPosts.map((post, index) => {
+              {/* Empty State */}
+              {!isTabTransitioning && !isLoadingFeed && !feedError && feedPosts.length === 0 && (
+                <div className="text-center py-8 px-6">
+                  <div className="text-gray-500 mb-2">
+                    {selectedTab === 'Following' ? 'No posts from followed users' : 'No posts yet'}
+                  </div>
+                  <div className="text-gray-400 text-sm mb-4">
+                    {selectedTab === 'Following' 
+                      ? (userFollowingAnyone === false 
+                          ? 'Invite friends to see their finds in your feed!' 
+                          : 'Users you follow haven\'t posted anything yet'
+                        )
+                      : 'Be the first to share something amazing!'
+                    }
+                  </div>
+                  {selectedTab === 'Following' && userFollowingAnyone === false && (
+                    <button
+                      onClick={handleInviteFriends}
+                      className="px-6 py-3 bg-teal-700 text-white rounded-xl text-sm font-medium hover:bg-teal-800 transition-colors"
+                      style={{ backgroundColor: '#1F6D5A' }}
+                    >
+                      Invite Friends
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Real Feed Posts - Show text immediately, load images progressively */}
+              {!isTabTransitioning && textLoaded && feedPosts.map((post, index) => {
               // Normalize post data for OptimizedPostCard (prefer HTTPS storage URL over Base64)
               const preferredUrl =
                 (post.items?.image_url && post.items.image_url.startsWith('http'))
@@ -1894,34 +1927,37 @@ const MainScreen = React.forwardRef(({
                 />
               );
             })}
-            
-            {/* Loading more skeleton posts */}
-            {isLoadingMore && (
-              <div className="space-y-4">
-                <FeedSkeleton count={3} />
-              </div>
-            )}
-            
-            {/* Infinite scroll trigger */}
-            {/* Bottom area containing load trigger and any inline offline notice */}
-            <div className="px-6">
-              {feedInlineNotice && (
-                <div className="mb-2 text-center">
-                  <div className="inline-block px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs">
-                    {feedInlineNotice}
-                  </div>
+              
+              {/* Loading more skeleton posts */}
+              {!isTabTransitioning && isLoadingMore && (
+                <div className="space-y-4">
+                  <FeedSkeleton count={3} />
                 </div>
               )}
-              <InfiniteScrollTrigger
-                onLoadMore={onLoadMore}
-                loading={isLoadingMore}
-                hasMore={hasMore}
-              />
-            </div>
-            
-            {/* Bottom padding for last post - extra space for bottom navigation */}
-            <div className="pb-20"></div>
-          </div>
+              
+              {/* Infinite scroll trigger */}
+              {/* Bottom area containing load trigger and any inline offline notice */}
+              {!isTabTransitioning && feedPosts.length > 0 && (
+                <div className="px-6">
+                  {feedInlineNotice && (
+                    <div className="mb-2 text-center">
+                      <div className="inline-block px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs">
+                        {feedInlineNotice}
+                      </div>
+                    </div>
+                  )}
+                  <InfiniteScrollTrigger
+                    onLoadMore={onLoadMore}
+                    loading={isLoadingMore}
+                    hasMore={hasMore}
+                  />
+                </div>
+              )}
+              
+              {/* Bottom padding for last post - extra space for bottom navigation */}
+              <div className="pb-20"></div>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 

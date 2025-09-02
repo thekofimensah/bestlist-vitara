@@ -76,7 +76,7 @@ const AchievementToast = ({ achievement, onClose, isVisible = true }) => {
             <div className="flex items-center gap-3 p-4">
               {/* Icon Container */}
               <div className={`relative flex-shrink-0 w-12 h-12 ${styles.iconBg} rounded-xl flex items-center justify-center shadow-sm`}>
-                <div className="text-xl text-white">
+                <div className="text-xl text-white" style={{ lineHeight: '1', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
                   {achievement.icon || '🏆'}
                 </div>
                 

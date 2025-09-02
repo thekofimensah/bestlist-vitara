@@ -291,7 +291,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onReorderModeChange }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange }) => {
   // AI processing hook
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
@@ -860,6 +860,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         onMarkRead={onMarkRead}
                         onMarkAllRead={onMarkAllRead}
                         onNavigateToPost={onNavigateToPost}
+                        onNavigateToUser={onNavigateToUser}
                       />
                     </div>
                   </div>

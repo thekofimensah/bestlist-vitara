@@ -644,7 +644,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       onClick={() => { setSelectedAchievement(ua); setShowAchievementModal(true); }}
                       className="flex flex-col items-center"
                     >
-                      <div className="w-14 h-14 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-xl relative">
+                      <div className="w-14 h-14 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-xl relative" style={{ lineHeight: '1', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
                         {ua.achievements?.icon || '🏆'}
                         {ua.count > 1 && (
                           <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[10px] bg-teal-600 text-white">x{ua.count}</span>
@@ -773,7 +773,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         <div className="fixed inset-0 z-30 bg-black/40 flex items-center justify-center px-6" onClick={() => setShowAchievementModal(false)}>
           <div className="w-full max-w-sm bg-white rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-16 h-16 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-3xl relative">
+              <div className="w-16 h-16 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-3xl relative" style={{ lineHeight: '1', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
                 {selectedAchievement.achievements?.icon || '🏆'}
                 {selectedAchievement.count > 1 && (
                   <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[10px] bg-teal-600 text-white">x{selectedAchievement.count}</span>

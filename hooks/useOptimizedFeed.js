@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getOptimizedFeedPosts, getOptimizedFeedPostsLoadMore, getOptimizedUserPosts } from '../lib/supabase';
 import { trackFeedRequest, trackFeedPhase, trackImageLoadingPhase } from '../lib/performanceTracking';
 import { Preferences } from '@capacitor/preferences';
+import { shouldLoadFromCacheOnly } from '../lib/onlineDetection';
 
 // Simple in-memory cache for profile posts to avoid refetching on navigation
 // Map<userId, { posts: any[], hasMore: boolean, offset: number, lastUpdated: number }>
@@ -230,6 +231,55 @@ export const updateFeedPosts = (feedType, updatedPosts) => {
   }
 };
 
+// Public API to remove posts from a specific user from feed cache (used when unfollowing)
+export const removeUserPostsFromFeedCache = (feedType, userId) => {
+  if (!feedType || !userId) return;
+  
+  const cached = feedPostsCache.get(feedType);
+  if (!cached || !cached.posts) {
+    console.log('🗑️ [Feed Cache] No cache found for feedType:', feedType);
+    return;
+  }
+  
+  console.log('🗑️ [Feed Cache] Before filtering - total posts:', cached.posts.length);
+  console.log('🗑️ [Feed Cache] Looking to remove posts from userId:', userId);
+  
+  // Filter out posts from the unfollowed user
+  const filteredPosts = cached.posts.filter(post => {
+    const postUserId = post.profiles?.id || post.user_id;
+    const shouldKeep = postUserId !== userId;
+    
+    if (!shouldKeep) {
+      console.log('🗑️ [Feed Cache] Removing post:', post.id, 'from user:', postUserId);
+    }
+    
+    return shouldKeep;
+  });
+  
+  console.log('🗑️ [Feed Cache] After filtering - remaining posts:', filteredPosts.length);
+  
+  const newCache = {
+    ...cached,
+    posts: filteredPosts,
+    offset: Math.min(cached.offset, filteredPosts.length),
+    lastUpdated: Date.now()
+  };
+  
+  feedPostsCache.set(feedType, newCache);
+  
+  // Notify listeners that cache changed
+  try { 
+    console.log('🗑️ [Feed Cache] Dispatching feed:posts-updated event for feedType:', feedType);
+    window.dispatchEvent(new CustomEvent('feed:posts-updated', { 
+      detail: { feedType, posts: filteredPosts } 
+    })); 
+  } catch (e) {
+    console.error('🗑️ [Feed Cache] Error dispatching event:', e);
+  }
+  
+  console.log('🗑️ [Feed Cache] Removed posts from user', userId, 'from', feedType, 'feed. Remaining posts:', filteredPosts.length);
+};
+
 // Remove posts from cache by item IDs (used on deletion)
 export const removeProfilePostsByItemIds = (userId, itemIds = []) => {
   if (!userId || !Array.isArray(itemIds) || itemIds.length === 0) return;
@@ -379,6 +429,10 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
     
     try {
       loadingRef.current = true;
+      
+      // Check if we're in offline-first mode
+      const cacheOnlyMode = shouldLoadFromCacheOnly();
+      
       // Serve from cache first if present
       const cached = feedPostsCache.get(feedType);
       if (cached && cached.posts && cached.posts.length > 0) {
@@ -387,8 +441,8 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
         setHasMore(typeof cached.hasMore === 'boolean' ? cached.hasMore : true);
         setTextLoaded(true);
         setLoading(false);
-        // Revalidate in background when online
-        if (!isOffline() && isAppActive()) {
+        // Skip revalidation if we're in cache-only mode
+        if (!cacheOnlyMode && !isOffline() && isAppActive()) {
           const result = await trackFeedRequest(
             'feed',
             'revalidate',
@@ -413,6 +467,17 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
             });
           }
         }
+        return;
+      }
+
+      // If in cache-only mode and no cache, just set empty state
+      if (cacheOnlyMode) {
+        console.log('📦 [useOptimizedFeed] Cache-only mode with no cache - setting empty state');
+        setPosts([]);
+        setLoading(false);
+        setTextLoaded(true);
+        setHasMore(false);
+        loadingRef.current = false;
         return;
       }
 
@@ -455,13 +520,15 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
       const capped = newPosts.slice(0, FEED_CACHE_MAX_POSTS);
       setPosts(capped);
       setOffset(capped.length);
-      setHasMore(capped.length === batchSize);
+      // Only set hasMore to false if we got fewer posts than requested AND we got some posts
+      // If we got 0 posts initially, keep hasMore as true to avoid showing "no more posts" message
+      setHasMore(capped.length === 0 ? true : capped.length === batchSize);
       setTextLoaded(true);
 
       // Update feed cache
       feedPostsCache.set(feedType, {
         posts: capped,
-        hasMore: capped.length === batchSize,
+        hasMore: capped.length === 0 ? true : capped.length === batchSize,
         offset: capped.length,
         lastUpdated: Date.now()
       });
@@ -660,24 +727,44 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
   // Load initial feed on mount and type change
   useEffect(() => {
     mountedRef.current = true;
+    console.log('🔄 [useOptimizedFeed] Feed type changed to:', feedType, '- loading initial feed');
+
+    // Clear current posts and reset state when feed type changes
+    setPosts([]);
+    setOffset(0);
+    setHasMore(true);
+    setError(null);
+    setTextLoaded(false);
+    setImagesLoaded(false);
+    setImageLoadStates({});
+
     loadInitialFeed();
-    
+
     // Listen for feed cache updates (e.g., comment count changes)
     const handleFeedUpdate = (event) => {
+      console.log('🔄 [useOptimizedFeed] Received feed:posts-updated event:', {
+        eventFeedType: event?.detail?.feedType,
+        currentFeedType: feedType,
+        postsCount: event?.detail?.posts?.length,
+        eventDetail: event?.detail
+      });
+      
       if (event?.detail?.feedType === feedType && Array.isArray(event.detail.posts)) {
+        console.log('💬 [useOptimizedFeed] Updating feed posts via cache - new count:', event.detail.posts.length);
         setPosts(event.detail.posts);
-        console.log('💬 [useOptimizedFeed] Feed posts updated via cache:', event.detail.posts.length);
+      } else {
+        console.log('🚫 [useOptimizedFeed] Event ignored - feedType mismatch or invalid posts array');
       }
     };
-    
-    try { 
-      window.addEventListener('feed:posts-updated', handleFeedUpdate); 
+
+    try {
+      window.addEventListener('feed:posts-updated', handleFeedUpdate);
     } catch (_) {}
-    
+
     return () => {
       mountedRef.current = false;
-      try { 
-        window.removeEventListener('feed:posts-updated', handleFeedUpdate); 
+      try {
+        window.removeEventListener('feed:posts-updated', handleFeedUpdate);
       } catch (_) {}
     };
   }, [loadInitialFeed, feedType]);
@@ -1017,3 +1104,6 @@ export const useProfilePosts = (userId, includePrivate = false) => {
     refresh
   };
 };
+
+// Export cache functions for external use (e.g., App.jsx offline loading)
+export { getProfilePostsLocal };

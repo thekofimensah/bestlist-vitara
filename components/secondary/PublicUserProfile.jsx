@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Calendar, Heart, MessageCircle, UserPlus, UserMinus, Star, User } from 'lucide-react';
 import { getUserProfile, getUserPosts, followUser, unfollowUser, getUserFollowers, getUserFollowing, supabase } from '../../lib/supabase';
+import { removeUserPostsFromFeedCache } from '../../hooks/useOptimizedFeed';
 import { useAuth } from '../../hooks/useAuth';
 import SmartImage from './SmartImage';
 import CommentsModal from './CommentsModal';
@@ -180,6 +181,12 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
         if (!error) {
           setIsFollowing(false);
           setFollowersCount(prev => Math.max(0, prev - 1));
+          
+          // Remove the unfollowed user's posts from the following feed cache
+          console.log(`🔄 About to remove posts from user ${userProfile.id} (${userProfile.username}) from following feed cache`);
+          removeUserPostsFromFeedCache('following', userProfile.id);
+          
+          console.log(`✅ Unfollowed ${userProfile.username} and removed their posts from following feed`);
         } else {
           console.error('❌ Error unfollowing user:', error);
         }

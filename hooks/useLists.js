@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import useAchievements from './useAchievements';
 import { Preferences } from '@capacitor/preferences';
+import { shouldLoadFromCacheOnly } from '../lib/onlineDetection';
 
 export const useLists = (userId) => {
   const [lists, setLists] = useState([]);
@@ -89,7 +90,8 @@ export const useLists = (userId) => {
     
     if (userId) {
       console.log('🔍 [useLists] User authenticated, fetching lists...');
-      fetchLists(false);
+      const offlineFirst = shouldLoadFromCacheOnly();
+      fetchLists(false, 0, offlineFirst);
     } else {
       console.log('🔍 [useLists] No user ID, resetting lists state');
       // When userId is null (user signed out), reset state
@@ -100,8 +102,28 @@ export const useLists = (userId) => {
 
 
 
-  const fetchLists = async (background = false, attemptNumber = 0) => {
+  const fetchLists = async (background = false, attemptNumber = 0, offlineFirst = false) => {
     if (!userId) return;
+    
+    // STEP 0: If offline-first mode, load from cache only and skip network
+    if (offlineFirst) {
+      console.log('📦 [useLists] Offline-first mode - loading from cache only');
+      const cachedLists = await getListsLocal();
+      if (cachedLists && cachedLists.length >= 0) {
+        console.log('📦 [useLists] Loaded from cache:', cachedLists.length, 'lists');
+        const orderedLists = applyCustomOrder(cachedLists);
+        setLists(orderedLists);
+        setLoading(false);
+        setIsFetching(false);
+        return { success: true, fromCache: true };
+      } else {
+        console.log('📦 [useLists] No cache found in offline mode, setting empty state');
+        setLists([]);
+        setLoading(false);
+        setIsFetching(false);
+        return { success: true, fromCache: false };
+      }
+    }
     
     // STEP 1: Check persistent cache first (only on initial load, not background refresh)
     if (!background && attemptNumber === 0) {
@@ -1157,3 +1179,6 @@ export const useLists = (userId) => {
     isRetrying
   };
 };
+
+// Export cache functions for external use (e.g., App.jsx offline loading)
+export { getListsLocal };

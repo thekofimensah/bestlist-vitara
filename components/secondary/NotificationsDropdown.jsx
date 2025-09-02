@@ -13,7 +13,7 @@ const logToAndroid = (message, data = null) => {
   }
 };
 
-const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
+const NotificationItem = ({ notification, onMarkRead, onNavigateToPost, onNavigateToUser }) => {
   const controls = useAnimation();
   const getIcon = () => {
     switch (notification.type) {
@@ -46,9 +46,12 @@ const NotificationItem = ({ notification, onMarkRead, onNavigateToPost }) => {
     // Mark as read first
     onMarkRead(notification.id);
     
-    // Navigate to post if it's a like or comment notification
+    // Navigate based on notification type
     if (notification.type === 'like' || notification.type === 'comment') {
       onNavigateToPost(notification.reference_id, notification.type);
+    } else if (notification.type === 'follow' && notification.profiles?.username) {
+      // Navigate to the follower's profile
+      onNavigateToUser(notification.profiles.username);
     }
   };
 
@@ -127,7 +130,8 @@ export const NotificationsDropdown = ({
   onClose,
   onMarkRead,
   onMarkAllRead,
-  onNavigateToPost
+  onNavigateToPost,
+  onNavigateToUser
 }) => {
   // Debug logging
   logToAndroid('🔔 NotificationsDropdown rendered with:', {
@@ -203,6 +207,7 @@ export const NotificationsDropdown = ({
                         notification={notification}
                         onMarkRead={onMarkRead}
                         onNavigateToPost={onNavigateToPost}
+                        onNavigateToUser={onNavigateToUser}
                       />
                     </motion.div>
                   ))}

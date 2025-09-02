@@ -29,9 +29,10 @@ import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
 import useUserTracking from './hooks/useUserTracking';
 import usePendingAchievements from './hooks/usePendingAchievements';
 import useUserStats from './hooks/useUserStats';
-import { updateFeedPosts, addOfflineProfilePost } from './hooks/useOptimizedFeed';
+import { updateFeedPosts, addOfflineProfilePost, getProfilePostsLocal, removeUserPostsFromFeedCache } from './hooks/useOptimizedFeed';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 import LoadingScreen from './components/LoadingScreen';
+import { shouldLoadFromCacheOnly } from './lib/onlineDetection';
 import iconUrl from './assets/icon.svg';
 
 // Helper function to format post data from database (moved from MainScreen)
@@ -248,7 +249,10 @@ const App = () => {
 
 
 
-  // Use optimized feed hook
+  // Current feed type state
+  const [currentFeedType, setCurrentFeedType] = useState('following');
+
+  // Use optimized feed hook with dynamic feed type
   const {
     posts: feedPosts,
     loading: isLoadingFeed,
@@ -261,7 +265,7 @@ const App = () => {
     updateImageLoadState,
     textLoaded,
     imagesLoaded
-  } = useOptimizedFeed('following');
+  } = useOptimizedFeed(currentFeedType);
 
   // Log only critical changes
   useEffect(() => {
@@ -443,15 +447,19 @@ const App = () => {
         newSet.delete(userId);
         return newSet;
       });
-      console.log(`Unfollowed ${username}`);
+      
+      // Remove the unfollowed user's posts from the following feed cache
+      removeUserPostsFromFeedCache('following', userId);
+      
+      console.log(`Unfollowed ${username} and removed their posts from following feed`);
     } catch (error) {
       console.error('Unfollow error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
+          message: error.message,
+          name: error.name,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
         }, null, 2));
     }
   };
@@ -722,6 +730,64 @@ const App = () => {
     return () => { try { window.removeEventListener('popstate', onPopState); } catch (_) {} };
   }, [currentScreen, editingItem]);
 
+  // Cache-only loading function for offline mode
+  const loadFromCacheOnly = async (existingUser) => {
+    console.log('📦 [App] Loading from cache only - offline mode');
+
+    try {
+      // Import cache functions directly from hooks
+      const { getListsLocal } = await import('./hooks/useLists');
+      // getProfilePostsLocal is now statically imported above
+
+      // Load cached lists
+      const cachedLists = await getListsLocal(existingUser?.id);
+      if (cachedLists && cachedLists.length >= 0) {
+        console.log('📦 [App] Loaded cached lists:', cachedLists.length);
+        // Lists will be loaded by useLists hook naturally
+      }
+
+      // Load cached feed posts
+      const cachedFeed = await getProfilePostsLocal(existingUser?.id);
+      if (cachedFeed?.posts) {
+        console.log('📦 [App] Loaded cached feed posts:', cachedFeed.posts.length);
+        // Feed will be loaded by useOptimizedFeed hook naturally
+      }
+
+      // Mark all loading states as complete for offline mode
+      setLoadingProgress({
+        auth: true,
+        lists: true,
+        feed: true,
+        stats: true,
+        achievements: true,
+        userTracking: true,
+        camera: true,
+        profile: true
+      });
+
+      setCameraReady(true);
+      setProfileReady(true);
+
+      console.log('✅ [App] Cache-only loading completed');
+
+    } catch (error) {
+      console.error('❌ [App] Cache loading error:', error);
+      // Fallback to empty states
+      setLoadingProgress({
+        auth: true,
+        lists: true,
+        feed: true,
+        stats: true,
+        achievements: true,
+        userTracking: true,
+        camera: true,
+        profile: true
+      });
+      setCameraReady(true);
+      setProfileReady(true);
+    }
+  };
+
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
@@ -737,6 +803,15 @@ const App = () => {
         setUser(existingUser);
         setLoadingProgress(prev => ({ ...prev, auth: true }));
         console.log('✅ [App] Authentication loaded');
+
+        // Step 1.5: Check if we should load from cache only (offline mode)
+        const cacheOnlyMode = shouldLoadFromCacheOnly();
+        
+        if (cacheOnlyMode && existingUser) {
+          console.log('📱 [App] OFFLINE MODE - Loading from cache only');
+          await loadFromCacheOnly(existingUser);
+          return;
+        }
 
         if (existingUser) {
           // Step 2: User tracking (can run in parallel)
@@ -1016,8 +1091,15 @@ const App = () => {
 
   // Handle tab change - optimized feed hook handles the data
   const handleTabChange = async (feedType) => {
-    console.log('🔄 Tab changed to:', feedType);
-    // Feed data is now managed by the optimized hook
+    console.log('🔄 [App] Tab changed to:', feedType, '(previous:', currentFeedType, ')');
+    console.log('🔄 [App] Current feed state:', {
+      isLoadingFeed,
+      feedPosts: feedPosts?.length || 0,
+      hasShownInitialUI,
+      appLoading
+    });
+    setCurrentFeedType(feedType);
+    // Feed data will be reloaded automatically when feedType changes by useOptimizedFeed hook
   };
 
   // Feed refresh is now handled by the optimized hook
@@ -1029,10 +1111,10 @@ const App = () => {
 
   // Update feed posts (used by MainScreen to update comment counts immediately)
   const handleUpdateFeedPosts = (updatedPosts) => {
-    // Update the feed posts cache directly for immediate UI updates
+    // Update the current feed type's posts cache directly for immediate UI updates
     if (updatedPosts && Array.isArray(updatedPosts)) {
-      updateFeedPosts('following', updatedPosts);
-      console.log('💬 [App] Updated feed posts cache with comment count changes');
+      updateFeedPosts(currentFeedType, updatedPosts);
+      console.log('💬 [App] Updated feed posts cache with comment count changes for:', currentFeedType);
     }
   };
 
@@ -1704,6 +1786,7 @@ const App = () => {
               onMarkRead={markAsRead}
               onMarkAllRead={markAllAsRead}
               onNavigateToPost={handleNavigateToPost}
+              onNavigateToUser={handleNavigateToUser}
               onReorderModeChange={handleReorderModeChange}
               isActive={currentScreen === 'lists'} // Pass active state
             />
@@ -1797,7 +1880,10 @@ const App = () => {
   // TODO: Add proper critical image tracking for progressive loading
   const criticalImagesReady = true; // Temporarily disabled
   
-  const allTabsReady = (!listsLoading || hasListsData) && !isLoadingFeed && !statsLoading && !achievementsLoading && cameraReady && profileReady;
+  // Don't let tab switching affect initial loading screen
+  // Once we've shown initial UI, feed loading from tab switches shouldn't block the app
+  const feedReadyForInitialLoad = hasShownInitialUI ? true : !isLoadingFeed;
+  const allTabsReady = (!listsLoading || hasListsData) && feedReadyForInitialLoad && !statsLoading && !achievementsLoading && cameraReady && profileReady;
   
   // OPTIMIZED: Reduce debug logging frequency
   const debugLogCountRef = useRef(0);
@@ -1933,6 +2019,7 @@ const App = () => {
                     onMarkRead={markAsRead}
                     onMarkAllRead={markAllAsRead}
                     onNavigateToPost={handleNavigateToPost}
+                    onNavigateToUser={handleNavigateToUser}
                   />
                 </div>
               </div>

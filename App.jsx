@@ -211,6 +211,7 @@ const App = () => {
   const [isListsReorderMode, setIsListsReorderMode] = useState(false);
   const mainScreenRef = useRef(null);
   const hasInitialized = useRef(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Mark achievements as seen when user navigates to Profile; clear badge when leaving
   useEffect(() => {
@@ -227,7 +228,49 @@ const App = () => {
     }
   }, [currentScreen, pendingAchievements, markAsNotified]);
 
-  // We no longer need to track scroll positions since we always reset to top
+  // Scroll position management - save/restore scroll positions per screen
+  const scrollPositions = useRef({});
+  
+  const saveScrollPosition = React.useCallback((screenName) => {
+    if (typeof window !== 'undefined') {
+      const position = {
+        window: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0,
+        containers: {}
+      };
+      
+      // Save scroll positions of all scrollable containers
+      const containers = document.querySelectorAll('.overflow-auto, .overflow-y-auto');
+      containers.forEach((container, index) => {
+        position.containers[index] = container.scrollTop;
+      });
+      
+      scrollPositions.current[screenName] = position;
+      console.log('📜 [Scroll] Saved scroll position for', screenName, ':', position.window);
+    }
+  }, []);
+
+  const restoreScrollPosition = React.useCallback((screenName) => {
+    if (typeof window !== 'undefined' && scrollPositions.current[screenName]) {
+      const position = scrollPositions.current[screenName];
+      
+      requestAnimationFrame(() => {
+        // Restore window scroll position
+        window.scrollTo({ top: position.window, behavior: 'instant' });
+        document.documentElement.scrollTop = position.window;
+        document.body.scrollTop = position.window;
+        
+        // Restore container scroll positions
+        const containers = document.querySelectorAll('.overflow-auto, .overflow-y-auto');
+        containers.forEach((container, index) => {
+          if (position.containers[index] !== undefined) {
+            container.scrollTop = position.containers[index];
+          }
+        });
+        
+        console.log('📜 [Scroll] Restored scroll position for', screenName, ':', position.window);
+      });
+    }
+  }, []);
 
   // OPTIMIZED: Efficient scroll reset with reduced DOM queries
   const resetScrollToTop = React.useCallback(() => {
@@ -490,7 +533,7 @@ const App = () => {
     setSearchResults([]);
   };
 
-  // OPTIMIZED: Memoized navigation with reduced operations
+  // OPTIMIZED: Memoized navigation with scroll position management
   const navigateToScreen = React.useCallback((screen) => {
     console.log('🔧 [App] navigateToScreen called with screen:', screen, 'from currentScreen:', currentScreen);
     // Skip navigation if already on the target screen
@@ -498,6 +541,12 @@ const App = () => {
       console.log('🔧 [App] Already on target screen, skipping navigation');
       return;
     }
+    
+    // Set navigation state to prevent camera from starting immediately
+    setIsNavigating(true);
+    
+    // Save scroll position of current screen before navigating away
+    saveScrollPosition(currentScreen);
     
     setPreviousScreen(currentScreen);
     setCurrentScreen(screen);
@@ -509,9 +558,20 @@ const App = () => {
     
     console.log('🔧 [App] Navigation state updated, new screen:', screen);
     
-    // Defer scroll reset to avoid blocking UI
+    // Handle scroll position based on target screen
     requestAnimationFrame(() => {
-      resetScrollToTop();
+      if (screen === 'home') {
+        // Restore scroll position for home screen to prevent camera activation
+        restoreScrollPosition('home');
+      } else {
+        // Reset scroll for other screens
+        resetScrollToTop();
+      }
+      
+      // Clear navigation state after a delay to allow UI to settle
+      setTimeout(() => {
+        setIsNavigating(false);
+      }, 1000); // Give enough time for scroll restoration and UI settling
     });
     
     try {
@@ -523,7 +583,7 @@ const App = () => {
     if (screen === 'user-profile') {
       setUserProfileKey((k) => k + 1);
     }
-  }, [currentScreen]);
+  }, [currentScreen, saveScrollPosition, restoreScrollPosition]);
 
   const handleNavigateToUser = (username) => {
     setSelectedUsername(username);
@@ -532,13 +592,27 @@ const App = () => {
     navigateToScreen('user-profile');
   };
 
-  const handleBackFromUserProfile = () => {
+  const handleBackFromUserProfile = React.useCallback(() => {
     setSelectedUsername(null);
     const target = userProfileOrigin || (previousScreen && previousScreen !== 'user-profile' ? previousScreen : 'home');
+    
+    // Save current screen position before navigating back
+    saveScrollPosition('user-profile');
+    
     setCurrentScreen(target);
     setUserProfileOrigin(null);
-    resetScrollToTop();
-  };
+    
+    // Handle scroll position based on target screen
+    requestAnimationFrame(() => {
+      if (target === 'home') {
+        // Restore scroll position for home screen to prevent camera activation
+        restoreScrollPosition('home');
+      } else {
+        // Reset scroll for other screens
+        resetScrollToTop();
+      }
+    });
+  }, [userProfileOrigin, previousScreen, saveScrollPosition, restoreScrollPosition]);
 
   const handleSearch = () => {
     setShowSearch(true);
@@ -609,25 +683,51 @@ const App = () => {
     navigateToScreen('post-detail');
   };
 
-  const handleBackFromPost = () => {
+  const handleBackFromPost = React.useCallback(() => {
     setSelectedPostId(null);
+    
+    // Set navigation state to prevent camera from starting immediately
+    setIsNavigating(true);
+    
+    // Save current screen position before navigating back
+    saveScrollPosition('post-detail');
+    
+    let targetScreen;
+    
     // Prefer explicit origin if available
     if (postOriginScreen) {
+      targetScreen = postOriginScreen;
       setCurrentScreen(postOriginScreen);
       if (postOriginScreen === 'user-profile') setUserProfileKey((k) => k + 1);
       setPostOriginScreen(null);
-      resetScrollToTop();
-      return;
-    }
-    // Fallback to previousScreen or home
-    if (previousScreen === 'profile' || previousScreen === 'lists' || previousScreen === 'user-profile') {
-      setCurrentScreen(previousScreen);
-      if (previousScreen === 'user-profile') setUserProfileKey((k) => k + 1);
     } else {
-      setCurrentScreen('home');
+      // Fallback to previousScreen or home
+      if (previousScreen === 'profile' || previousScreen === 'lists' || previousScreen === 'user-profile') {
+        targetScreen = previousScreen;
+        setCurrentScreen(previousScreen);
+        if (previousScreen === 'user-profile') setUserProfileKey((k) => k + 1);
+      } else {
+        targetScreen = 'home';
+        setCurrentScreen('home');
+      }
     }
-    resetScrollToTop();
-  };
+    
+    // Handle scroll position based on target screen
+    requestAnimationFrame(() => {
+      if (targetScreen === 'home') {
+        // Restore scroll position for home screen to prevent camera activation
+        restoreScrollPosition('home');
+      } else {
+        // Reset scroll for other screens
+        resetScrollToTop();
+      }
+      
+      // Clear navigation state after a delay to allow UI to settle
+      setTimeout(() => {
+        setIsNavigating(false);
+      }, 1000); // Give enough time for scroll restoration and UI settling
+    });
+  }, [postOriginScreen, previousScreen, saveScrollPosition, restoreScrollPosition]);
 
   // Handle native Android back button globally
   useEffect(() => {
@@ -1863,7 +1963,7 @@ const App = () => {
                 imagesLoaded={imagesLoaded}
                 onUpdateFeedPosts={handleUpdateFeedPosts}
                 onCameraReady={handleCameraReady}
-                isActive={currentScreen === 'home' && !appLoading} // Pass active state, but not during app loading
+                isActive={currentScreen === 'home' && !appLoading && !isNavigating} // Pass active state, but not during app loading or navigation
               />
             </PullToRefresh>
           )}
@@ -2260,7 +2360,7 @@ const App = () => {
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Content
+                  Products
                 </button>
                 <button
                   onClick={() => handleSearchTabChange('users')}

@@ -185,6 +185,7 @@ Tastest
 Bestist
 Bestest
 yumary/yumery/yumory
+bestly
 
 
 
@@ -230,22 +231,28 @@ map showing pins of all
 While the user is away if they get an achivement, they should see it as a notification from  the achivements button, not the notificatons one
 
 
-fix the search by users to search by correct field
 
 Save other users' posts
 
 share doesn't create a proper link that can be clicked
 
-Remove tacky icons on share
 
 
 
 
-
-Sign on when slow inernet, it does loading screen then login then it logs in and goes to the feed
 
 Change api keys to extend trials
 
 flagging innappropriate
 
-Test deletion, icons for first in world, investigate camera failure
+icons for first in world
+
+Get domain, app, etc... and fix share
+
+Track when they press share and where
+
+redirect on feed to previous lcocation
+
+Contact us
+
+Invite a friend

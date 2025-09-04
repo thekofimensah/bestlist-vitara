@@ -33,6 +33,9 @@ import ShareModal from './secondary/ShareModal';
 import HorizontalSuggestions from './wordSuggestions/HorizontalSuggestions';
 import { useWordSuggestions } from '../hooks/useWordSuggestions';
 
+// AI certainty threshold for showing retry button and word suggestions
+const AI_CERTAINTY_THRESHOLD = 40;
+
 
 const StarRating = ({ rating, showNumber = true, editable = true, onChange }) => {
   const [justClicked, setJustClicked] = useState(null);
@@ -465,6 +468,11 @@ const AddItemModal = ({
   const [showLocationSearch, setShowLocationSearch] = useState(false);
   const locationDropdownRef = useRef(null);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+
+  // Swipe gesture state for location bottom sheet
+  const [touchStartY, setTouchStartY] = useState(null);
+  const [touchCurrentY, setTouchCurrentY] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [recentLocations, setRecentLocations] = useState(() => {
     try {
       const saved = localStorage.getItem('recentLocations');
@@ -1686,17 +1694,54 @@ const AddItemModal = ({
   const resetToDefaultAttributes = () => {
     const defaultAttributes = ['aroma', 'texture', 'freshness', 'value'];
     setAttributeNames(defaultAttributes);
-    
+
     const resetAttributes = {};
     defaultAttributes.forEach(name => {
       resetAttributes[name] = rating || 3;
     });
     setAttributes(resetAttributes);
-    
+
     // Save to localStorage for the primary list
     if (selectedLists.length > 0) {
       saveListAttributes(selectedLists[0], defaultAttributes);
     }
+  };
+
+  // Touch gesture handlers for location bottom sheet
+  const handleTouchStart = (e) => {
+    const touch = e.touches[0];
+    setTouchStartY(touch.clientY);
+    setTouchCurrentY(touch.clientY);
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    setTouchCurrentY(touch.clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (!isDragging || touchStartY === null || touchCurrentY === null) {
+      setIsDragging(false);
+      setTouchStartY(null);
+      setTouchCurrentY(null);
+      return;
+    }
+
+    const swipeDistance = touchCurrentY - touchStartY;
+    const swipeThreshold = 100; // Minimum distance to trigger close
+
+    // If swiped down more than threshold, close the sheet
+    if (swipeDistance > swipeThreshold) {
+      setShowLocationSearch(false);
+      setLocationSearch('');
+    }
+
+    // Reset gesture state
+    setIsDragging(false);
+    setTouchStartY(null);
+    setTouchCurrentY(null);
   };
 
   // Add validation state
@@ -1744,7 +1789,7 @@ const AddItemModal = ({
   useEffect(() => {
     const updateSuggestions = async () => {
       // Only proceed if we have sufficient product identification
-      if (aiMetadata && (!aiMetadata.productName || aiMetadata.certainty < 40)) {
+      if (aiMetadata && (!aiMetadata.productName || aiMetadata.certainty < AI_CERTAINTY_THRESHOLD)) {
         console.log('📝 [AddItemModal] Skipping word suggestions - insufficient product identification:', {
           productName: aiMetadata.productName,
           certainty: aiMetadata.certainty
@@ -2280,23 +2325,27 @@ const AddItemModal = ({
                     </button>
                   )}
                   
-                  {/* AI Retry Button - show when AI failed */}
-                  {!isAIProcessing && (aiError || aiCancelled) && onRetryAI && (
+                  {/* AI Retry Button - commented out for now */}
+                  {/* 
+                  {console.log('🔍 [Debug] Retry button conditions:', { isAIProcessing, aiError, aiCancelled, certainty, threshold: AI_CERTAINTY_THRESHOLD, onRetryAI: !!onRetryAI, aiMetadata: !!aiMetadata })}
+                  {!isAIProcessing && (aiError || aiCancelled || (aiMetadata && certainty < AI_CERTAINTY_THRESHOLD)) && onRetryAI && (
                     <button 
                       onClick={() => {
+                        console.log('🔄 Retry button clicked:', { aiError, aiCancelled, isAIProcessing, onRetryAI: !!onRetryAI });
                         setAiCancelled(false);
                         // Use the current image (which may be cropped) for retry
                         onRetryAI(currentImage);
                       }}
-                      className="flex items-center gap-1 bg-red-50 hover:bg-red-100 rounded-full px-2 py-0.5 transition-colors border border-red-200" 
+                      className="w-8 h-8 bg-stone-50 hover:bg-stone-100 rounded-full flex items-center justify-center transition-colors border border-orange-200 hover:border-orange-300" 
+                      style={{ backgroundColor: '#FAFAF9' }}
                       title="Retry AI analysis"
                     >
-                      <svg className="w-2.5 h-2.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                      <span className="text-xs text-red-600 font-medium">Retry</span>
                     </button>
                   )}
+                  */}
                   
                   {/* Share Button - only show for existing items */}
                   {isEditingExisting && (
@@ -2514,7 +2563,7 @@ const AddItemModal = ({
                 >
                   {/* AI Description */}
                   <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">AI Description</h4>
+                    <h4 className="text-xs font-medium text-gray-600 mb-2">Description</h4>
                     <textarea
                       value={qualityOverview}
                       onChange={(e) => setQualityOverview(e.target.value)}
@@ -2629,35 +2678,7 @@ const AddItemModal = ({
 
             {/* Flavor Notes section removed per latest design */}
 
-                        {/* Location */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium text-gray-900">Location</h3>
-                </div>
-              </div>
-
-              {/* Single unified search bar */}
-              <button
-                onClick={() => setShowLocationSearch(true)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="text-xs text-gray-900 truncate">
-                    {place || 'Add place..'}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {location && location !== 'Current Location' && (
-                    <div className="text-xs text-gray-500 truncate max-w-[120px]">
-                      {location}
-                    </div>
-                  )}
-
-                </div>
-              </button>
-            </div>
+                       
 
             {/* List Selection */}
             <div className="mb-16" ref={listDropdownRef}>
@@ -2766,7 +2787,35 @@ const AddItemModal = ({
                 </>
               )}
             </div>
+             {/* Location */}
+             <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium text-gray-900">Location</h3>
+                </div>
+              </div>
 
+              {/* Single unified search bar */}
+              <button
+                onClick={() => setShowLocationSearch(true)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="text-xs text-gray-900 truncate">
+                    {place || 'Add place..'}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {location && location !== 'Current Location' && (
+                    <div className="text-xs text-gray-500 truncate max-w-[120px]">
+                      {location}
+                    </div>
+                  )}
+
+                </div>
+              </button>
+            </div>
             {/* Public/Private Toggle */}
             <div className="mb-6">
               <div className="flex items-center justify-between">
@@ -3369,7 +3418,7 @@ const AddItemModal = ({
               </h3>
 
               <p className="text-sm text-gray-600 leading-relaxed">
-                You just made history! 
+                You made history! 
                 <br />
                 <br />
                 You're the very first person to find and rate this product, and that's yours forever.
@@ -3433,7 +3482,18 @@ const AddItemModal = ({
             >
               {/* Grip + Search */}
               <div className="p-3 border-b border-gray-100">
-                <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-200" />
+                <div
+                  className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-200 cursor-grab active:cursor-grabbing touch-none"
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  style={{
+                    transform: isDragging && touchCurrentY !== null && touchStartY !== null
+                      ? `translateY(${Math.max(0, touchCurrentY - touchStartY)}px)`
+                      : 'translateY(0px)',
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+                  }}
+                />
                 <div className="relative">
                   <input
                     type="text"

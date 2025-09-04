@@ -163,26 +163,21 @@ const OptimizedPostCard = memo(({
         </button>
         
         <div className="flex-1 min-w-0">
-          <button 
+          <button
             onClick={handleUserTap}
             className="text-sm font-medium text-gray-900 hover:text-teal-700 transition-colors text-left"
           >
             {post.user?.name}
           </button>
-          <div className="text-xs text-gray-500">{post.timestamp}</div>
-        </div>
-        
-        <div className="flex flex-col items-end ml-auto">
-          {/* Right-aligned larger stars */}
-          <div className="flex items-center gap-2 h-6">
-            <StarRating rating={post.rating} size="lg" />
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-500">{post.timestamp}</div>
+            {/* List name aligned with timestamp */}
+            {post.list_name && (
+              <div className="text-xs text-gray-500 text-right max-w-50 truncate ml-2">
+                {post.list_name}
+              </div>
+            )}
           </div>
-          {/* List name under stars */}
-          {post.list_name && (
-            <div className="text-xs text-gray-500 text-right max-w-50 truncate">
-              {post.list_name}
-            </div>
-          )}
         </div>
       </div>
 
@@ -271,8 +266,8 @@ const OptimizedPostCard = memo(({
           >
             <Heart className={`w-5 h-5 ${liked ? 'fill-current' : ''}`} />
           </button>
-          
-          <button 
+
+          <button
             onClick={(e) => {
               e.stopPropagation();
               onCommentTap?.(post);
@@ -281,6 +276,11 @@ const OptimizedPostCard = memo(({
           >
             <MessageCircle className="w-5 h-5" />
           </button>
+
+          {/* Stars moved from header */}
+          <div className="flex items-center">
+            <StarRating rating={post.rating} size="md" />
+          </div>
         </div>
       </div>
 
@@ -332,10 +332,10 @@ const OptimizedPostCard = memo(({
             </h3>
 
             <p className="text-sm text-gray-600 leading-relaxed">
-              You just made history!
+              {post.user?.name} made history!
               <br />
               <br />
-              You're the very first person to find and rate this product, and that's yours forever.
+              {post.user?.name} was the very first person to find and rate this product, and that's theirs forever.
             </p>
           </div>
         </div>

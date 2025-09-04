@@ -201,6 +201,66 @@ const MainScreen = React.forwardRef(({
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
+  // Retry AI analysis function
+  const handleRetryAI = async (imageToAnalyze) => {
+    try {
+      console.log('🔄 [Retry AI] Starting retry analysis with image:', imageToAnalyze ? 'provided' : 'current');
+      
+      // Use provided image (which may be cropped) or fall back to current captured image
+      const imageForAnalysis = imageToAnalyze || capturedImage?.url;
+      
+      if (!imageForAnalysis) {
+        console.error('🔄 [Retry AI] No image available for retry');
+        return;
+      }
+      
+      // Convert image to file if it's a data URL
+      let fileForAnalysis;
+      if (imageForAnalysis.startsWith('data:')) {
+        // Convert data URL to file
+        const response = await fetch(imageForAnalysis);
+        const blob = await response.blob();
+        fileForAnalysis = new File([blob], 'retry-image.jpg', { type: 'image/jpeg' });
+      } else {
+        // If it's already a file or URL, use it directly
+        fileForAnalysis = imageForAnalysis;
+      }
+      
+      // Update the captured image to show AI is processing
+      setCapturedImage(prev => ({
+        ...prev,
+        aiProcessing: true,
+        aiError: null,
+        aiMetadata: null
+      }));
+      
+      // Start AI analysis
+      const aiResult = await analyzeImage(fileForAnalysis, deviceLocation);
+      
+      // Update captured image with new AI results
+      setCapturedImage(prev => ({
+        ...prev,
+        aiProcessing: false,
+        aiMetadata: aiResult,
+        aiError: null,
+        url: imageToAnalyze || prev.url // Update URL if a new cropped image was provided
+      }));
+      
+      console.log('🔄 [Retry AI] Analysis completed successfully:', aiResult);
+      
+    } catch (error) {
+      console.error('🔄 [Retry AI] Analysis failed:', error);
+      
+      // Update captured image with error state
+      setCapturedImage(prev => ({
+        ...prev,
+        aiProcessing: false,
+        aiError: error,
+        aiMetadata: null
+      }));
+    }
+  };
+
   // Log AI failures to Supabase (app_errors table)
   const logAIFailure = async ({ message, imageUrl, source = 'unknown', location = null, extra = {} }) => {
     try {
@@ -573,14 +633,18 @@ const MainScreen = React.forwardRef(({
       cameraRetryTimeoutRef.current = null;
     }
     
-    // Stop all media tracks
+    // Stop all media tracks AGGRESSIVELY
     if (streamRef.current) {
       try {
-        streamRef.current.getTracks().forEach(track => {
+        const tracks = streamRef.current.getTracks();
+        console.log('📷 [MainScreen] Stopping', tracks.length, 'media tracks');
+        tracks.forEach((track, index) => {
           try {
+            console.log('📷 [MainScreen] Stopping track', index, ':', track.kind, 'state:', track.readyState);
             track.stop();
+            console.log('📷 [MainScreen] Track', index, 'stopped, new state:', track.readyState);
           } catch (e) {
-            console.warn('📷 [MainScreen] Error stopping track:', e);
+            console.warn('📷 [MainScreen] Error stopping track', index, ':', e);
           }
         });
       } catch (e) {
@@ -593,14 +657,29 @@ const MainScreen = React.forwardRef(({
     if (videoRef.current) {
       try {
         const v = videoRef.current;
+        console.log('📷 [MainScreen] Clearing video element');
+        
         // Remove event handlers to prevent memory leaks
         v.onloadedmetadata = null;
         v.onerror = null;
         
-        try { v.pause(); } catch (e) { console.warn('📷 [MainScreen] Error pausing video:', e); }
+        try { 
+          v.pause(); 
+          console.log('📷 [MainScreen] Video paused');
+        } catch (e) { 
+          console.warn('📷 [MainScreen] Error pausing video:', e); 
+        }
+        
         v.srcObject = null;
+        console.log('📷 [MainScreen] Video srcObject cleared');
+        
         // load() resets the media element and prevents transient overlay
-        try { v.load(); } catch (e) { console.warn('📷 [MainScreen] Error loading video:', e); }
+        try { 
+          v.load(); 
+          console.log('📷 [MainScreen] Video element reset');
+        } catch (e) { 
+          console.warn('📷 [MainScreen] Error loading video:', e); 
+        }
       } catch (e) {
         console.warn('📷 [MainScreen] Error clearing video element:', e);
       }
@@ -609,6 +688,7 @@ const MainScreen = React.forwardRef(({
     setVideoReady(false);
     setIsCameraStreamActive(false);
     setIsCameraStarting(false); // Ensure this is reset
+    console.log('📷 [MainScreen] Camera stop completed - all states reset');
   };
 
   // Toggle flash/torch
@@ -696,8 +776,9 @@ const MainScreen = React.forwardRef(({
   
   // Effect to start camera when app becomes active (after loading)
   useEffect(() => {
+    // IMPORTANT: Only start camera if it's actually visible to user
     if (isActive && !isCameraStreamActive && !isCameraStarting && isCameraVisible && !showModal && !isCapturing && !capturedImage) {
-      console.log('📷 [MainScreen] App became active - starting camera');
+      console.log('📷 [MainScreen] App became active AND camera is visible - starting camera');
       // Clear any pending delayed start
       if (cameraStartTimeoutRef.current) {
         clearTimeout(cameraStartTimeoutRef.current);
@@ -705,7 +786,7 @@ const MainScreen = React.forwardRef(({
       }
       startCamera(facingMode);
     } else {
-      // NEW: Log why not starting
+      // Log why not starting (including visibility)
       console.log('📷 [MainScreen] Camera start conditions not met:', JSON.stringify({
         isActive,
         isCameraStreamActive: !isCameraStreamActive,
@@ -715,6 +796,12 @@ const MainScreen = React.forwardRef(({
         isCapturing: !isCapturing,
         capturedImage: !capturedImage
       }, null, 2));
+      
+      // CRITICAL: If camera is not visible but we have an active stream, stop it immediately
+      if (!isCameraVisible && isCameraStreamActive) {
+        console.log('📷 [MainScreen] Camera not visible but stream active - stopping immediately');
+        stopCamera();
+      }
     }
   }, [isActive, isCameraStreamActive, isCameraStarting, isCameraVisible, showModal, isCapturing, capturedImage, facingMode]);
 
@@ -777,22 +864,23 @@ const MainScreen = React.forwardRef(({
         const [entry] = entries;
         const isVisible = entry.isIntersecting;
         
-        // Debounce visibility changes to prevent rapid toggling
-        if (visibilityTimeout) clearTimeout(visibilityTimeout);
-        visibilityTimeout = setTimeout(() => {
-          console.log('📷 [Visibility] Camera visibility changed:', isVisible);
-          setIsCameraVisible(isVisible);
-          
-          // If camera becomes invisible and is currently active, stop it for battery optimization
-          if (!isVisible && isCameraStreamActive) {
-            console.log('📷 [Visibility] Camera scrolled out of view, stopping for battery optimization');
-            stopCamera();
-          }
-        }, 200); // Debounce to prevent rapid toggling
+        // Immediate action for camera going out of view, debounced for coming into view
+        if (!isVisible && isCameraStreamActive) {
+          console.log('📷 [Visibility] Camera scrolled out of view IMMEDIATELY, stopping for battery optimization');
+          stopCamera();
+          setIsCameraVisible(false);
+        } else if (isVisible && !isCameraStreamActive) {
+          // Debounce visibility changes to prevent rapid toggling when coming back into view
+          if (visibilityTimeout) clearTimeout(visibilityTimeout);
+          visibilityTimeout = setTimeout(() => {
+            console.log('📷 [Visibility] Camera scrolled into view, setting visible state');
+            setIsCameraVisible(true);
+          }, 300); // Debounce only for coming into view
+        }
       },
       {
-        threshold: 0.1, // Trigger when at least 10% of camera is visible
-        rootMargin: '0px 0px -50px 0px' // Stop camera when it's 50px from being out of view
+        threshold: 0.0, // Trigger as soon as any part of camera goes out of view
+        rootMargin: '0px 0px 0px 0px' // Stop camera immediately when it goes out of view
       }
     );
 
@@ -2036,6 +2124,7 @@ const MainScreen = React.forwardRef(({
                 aiMetadata={capturedImage?.aiMetadata}
                 isAIProcessing={capturedImage?.aiProcessing}
                 aiError={capturedImage?.aiError}
+                onRetryAI={handleRetryAI}
                 onCreateList={onCreateList}
                 showRatingFirst={true}
                 photoMetadata={capturedImage?.photoMetadata}

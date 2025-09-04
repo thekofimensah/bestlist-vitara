@@ -80,8 +80,8 @@ const PullToRefresh = ({
         scrollTop = scrollContainer.scrollTop;
       }
       
-      // Allow pull-to-refresh when at or very close to the top (more forgiving)
-      const isAtTop = scrollTop <= 5; // Allow 5px tolerance
+      // Only allow pull-to-refresh when at the very top (strict check to prevent accidental triggers)
+      const isAtTop = scrollTop === 0;
       if (!isAtTop || isRefreshing || isDisabled) return;
 
       startY.current = e.touches[0].clientY;
@@ -116,8 +116,8 @@ const PullToRefresh = ({
       const deltaX = Math.abs(currentX - startX.current);
       const scrollDelta = currentScrollTop - lastScrollTop.current;
 
-      // If scrolling up (negative delta) or away from top, cancel immediately (more forgiving)
-      if (scrollDelta < 0 || currentScrollTop > 10) { // Allow 10px tolerance
+      // If scrolling up (negative delta) or away from top, cancel immediately (strict check)
+      if (scrollDelta < 0 || currentScrollTop > 0) { // No tolerance - must be at exact top
         pullStarted.current = false;
         setPullDistance(0);
         setIsPulling(false);

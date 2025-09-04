@@ -2,16 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { Bell, X, Heart, MessageSquare, UserPlus } from 'lucide-react';
 
-// Helper function to log to Android Studio
-const logToAndroid = (message, data = null) => {
-  const logMessage = data ? `${message}: ${JSON.stringify(data)}` : message;
-  console.log(logMessage);
-  
-  // Also try to use Capacitor's logging if available
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Console) {
-    window.Capacitor.Plugins.Console.log({ message: logMessage });
-  }
-};
+
 
 const NotificationItem = ({ notification, onMarkRead, onNavigateToPost, onNavigateToUser }) => {
   const controls = useAnimation();
@@ -133,14 +124,6 @@ export const NotificationsDropdown = ({
   onNavigateToPost,
   onNavigateToUser
 }) => {
-  // Debug logging
-  logToAndroid('🔔 NotificationsDropdown rendered with:', {
-    isOpen,
-    notificationsCount: notifications?.length || 0,
-    unreadCount,
-    notifications: notifications
-  });
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -194,7 +177,6 @@ export const NotificationsDropdown = ({
             >
               {notifications && notifications.length > 0 ? (
                 <AnimatePresence initial={false}>
-                  {logToAndroid('🔔 Rendering', notifications.length, 'notifications')}
                   {notifications.map((notification, index) => (
                     <motion.div
                       key={notification.id}

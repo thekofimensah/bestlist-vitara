@@ -473,9 +473,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
                   />
                 ))}
               </div>
-              <span className="text-base font-semibold text-gray-900">
-                {post.items?.rating}
-              </span>
+             
             </div>
 
             {displayLocation && (
@@ -704,10 +702,10 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
             </h3>
 
             <p className="text-sm text-gray-600 leading-relaxed">
-              You just made history!
+              {post.profiles?.username} made history!
               <br />
               <br />
-              You're the very first person to find and rate this product, and that's yours forever.
+              {post.profiles?.username} was the very first person to find and rate this product, and that's theirs forever.
             </p>
           </div>
         </div>

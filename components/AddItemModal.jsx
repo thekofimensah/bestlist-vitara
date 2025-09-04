@@ -1167,7 +1167,7 @@ const AddItemModal = ({
       qualityOverview,
       place,
       location,
-      price: editPrice || null,
+      price: null, // Price functionality commented out
       currency_code: currency || 'USD',
       detailed_breakdown: attributes,
       rarity: 1, // Hardcoded to Common for now
@@ -1772,6 +1772,9 @@ const AddItemModal = ({
   
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
+  
+  // Tab state for notes/details
+  const [activeTab, setActiveTab] = useState('notes'); // 'notes' or 'details'
 
   // --- Word Suggestions (Phase 3 - AI Integration) ---
   const notesTextareaRef = useRef(null);
@@ -2485,205 +2488,244 @@ const AddItemModal = ({
               </div>
             </div>
 
-            {/* Personal Notes */}
-            <div className="mb-2 mt-2">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Your Notes</h3>
-              <textarea
-                ref={notesTextareaRef}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add your personal thoughts, memories, or additional notes..."
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
-                rows={3}
-                autoComplete="off"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                spellCheck="true"
-              />
-              {/* Suggestions container - only show if AI provided suggestions */}
-              {(hasSuggestions || isLoadingSuggestions) && (
-                <div className="mt-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-3 h-3 text-gray-500" />
-                    <span className="text-xs text-gray-500">
-                      {isLoadingSuggestions ? 'Loading suggestions...' : (
-                        <>
-                          Tap to add • Double-tap for opposite 
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <div className="p-2">
-                    {isLoadingSuggestions ? (
-                      <div className="flex gap-2 pb-1">
-                        {/* Loading skeleton */}
-                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-16"></div>
-                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-20"></div>
-                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-14"></div>
-                        <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-18"></div>
-                      </div>
-                    ) : (
-                      <HorizontalSuggestions
-                        suggestions={availableSuggestions}
-                        onTap={handleSuggestionTap}
-                        rating={rating}
-                        showMore={showMoreSuggestions}
-                        setShowMore={setShowMoreSuggestions}
-                        removingSuggestions={removingSuggestions}
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-
-
-            {/* AI Summary & Details Section */}
-            <div className="mb-6 mt-2">
-              <button
-                onClick={() => setShowAISummary(!showAISummary)}
-                className="flex items-center justify-between w-full p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-              >
-                          <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-teal-600" />
-                  <span className="text-sm font-medium text-gray-900">AI Summary & Details</span>
-                </div>
-                {showAISummary ? (
-                  <ChevronUp className="w-4 h-4 text-gray-500" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                )}
-              </button>
-              
-              {showAISummary && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mt-3 space-y-4"
+            {/* Tabbed Notes & Details Section */}
+            <div className="mb-6 mt-6">
+              {/* Tab Navigation */}
+              <div className="flex border-b border-gray-200 mb-4">
+                <button
+                  onClick={() => setActiveTab('notes')}
+                  className={`pb-3 px-1 mr-6 text-sm font-medium transition-colors relative ${
+                    activeTab === 'notes'
+                      ? 'text-teal-700 border-b-2 border-teal-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  style={{ 
+                    color: activeTab === 'notes' ? '#1F6D5A' : undefined,
+                    borderColor: activeTab === 'notes' ? '#1F6D5A' : undefined
+                  }}
                 >
-                  {/* AI Description */}
-                  <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">Description</h4>
+                  Your Notes
+                </button>
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`pb-3 px-1 text-sm font-medium transition-colors relative ${
+                    activeTab === 'details'
+                      ? 'text-teal-700 border-b-2 border-teal-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  style={{ 
+                    color: activeTab === 'details' ? '#1F6D5A' : undefined,
+                    borderColor: activeTab === 'details' ? '#1F6D5A' : undefined
+                  }}
+                >
+                  Product Details
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              <div className="min-h-[200px]">
+                {activeTab === 'notes' && (
+                  <div className="space-y-3">
                     <textarea
-                      value={qualityOverview}
-                      onChange={(e) => setQualityOverview(e.target.value)}
-                      placeholder={
-                        isAIProcessing 
-                          ? "AI is analyzing the image..." 
-                          : "Describe this item..."
-                      }
-                      className="w-full text-sm text-gray-700 leading-relaxed bg-white border border-gray-200 rounded-lg p-3 outline-none focus:border-teal-700 resize-none"
+                      ref={notesTextareaRef}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Add your personal thoughts, memories, or additional notes..."
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
                       rows={3}
                       autoComplete="off"
                       autoCorrect="on"
                       autoCapitalize="sentences"
                       spellCheck="true"
                     />
-                  </div>
-                  
-                  {/* Allergens */}
-                  <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">Allergens</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {allergens.length > 0 ? (
-                        allergens.map((allergen) => (
-                          <span
-                            key={allergen}
-                            className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium"
-                          >
-                            {allergen}
+                    
+                    {/* Word Suggestions - only show if AI provided suggestions */}
+                    {(hasSuggestions || isLoadingSuggestions) && (
+                      <div className="mt-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Sparkles className="w-3 h-3 text-gray-500" />
+                          <span className="text-xs text-gray-500">
+                            {isLoadingSuggestions ? 'Loading suggestions...' : (
+                              <>
+                                Tap to add • Double-tap for opposite 
+                              </>
+                            )}
                           </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-gray-500">No allergens detected</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div>
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">Tags</h4>
-                    <div className="flex gap-2 overflow-x-auto items-center">
-                      {!isAIProcessing && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setShowAdditionalTags(!showAdditionalTags)}
-                            className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap"
-                          >
-                            <div className="flex items-center gap-1">
-                              <Plus className="w-3 h-3" />
+                        </div>
+                        <div className="p-2">
+                          {isLoadingSuggestions ? (
+                            <div className="flex gap-2 pb-1">
+                              {/* Loading skeleton */}
+                              <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-16"></div>
+                              <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-20"></div>
+                              <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-14"></div>
+                              <div className="px-3 py-2 rounded-lg bg-gray-100 animate-pulse h-7 w-18"></div>
                             </div>
-                          </button>
-
-                          {showAdditionalTags && (
-                            <div className="flex gap-1 items-center">
-                              <input
-                                type="text"
-                                value={customTag}
-                                onChange={(e) => setCustomTag(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') addCustomTag();
-                                  else if (e.key === 'Escape') {
-                                    setShowAdditionalTags(false);
-                                    setCustomTag('');
-                                  }
-                                }}
-                                placeholder="Add tag..."
-                                className="px-2 py-1 text-xs border border-gray-200 rounded-full focus:outline-none focus:border-teal-700 w-28"
-                                autoFocus
-                              />
-                              <button
-                                onClick={addCustomTag}
-                                className="px-3 py-1.5 bg-teal-700 text-white rounded-full text-xs hover:bg-teal-800 transition-colors min-w-[32px] flex items-center justify-center"
-                                style={{ backgroundColor: '#1F6D5A' }}
-                              >
-                                ✓
-                              </button>
-                            </div>
+                          ) : (
+                            <HorizontalSuggestions
+                              suggestions={availableSuggestions}
+                              onTap={handleSuggestionTap}
+                              rating={rating}
+                              showMore={showMoreSuggestions}
+                              setShowMore={setShowMoreSuggestions}
+                              removingSuggestions={removingSuggestions}
+                            />
                           )}
                         </div>
-                      )}
-                      
-                      {/* Loading placeholders for tags when AI is processing */}
-                      {isAIProcessing && (
-                        <>
-                          <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-6 loading-tag"></div>
-                          <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-6 loading-tag"></div>
-                          <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-14 h-6 loading-tag"></div>
-                        </>
-                      )}
-                      
-                      {!isAIProcessing && activeTags.map((tag, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap"
-                          style={{ backgroundColor: '#F1F1EF' }}
-                        >
-                          <span>{tag}</span>
-                          {!isAIProcessing && (
-                            <button
-                              onClick={() => removeTag(tag)}
-                              className="w-3 h-3 flex items-center justify-center hover:bg-gray-300 rounded-full"
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'details' && (
+                  <div className="space-y-4">
+                    {/* AI Description */}
+                    <div>
+                      <h4 className="text-xs font-medium text-gray-600 mb-2">Description</h4>
+                      <textarea
+                        value={qualityOverview}
+                        onChange={(e) => setQualityOverview(e.target.value)}
+                        placeholder={
+                          isAIProcessing 
+                            ? "AI is analyzing the image..." 
+                            : "Describe this item..."
+                        }
+                        className="w-full text-sm text-gray-700 leading-relaxed bg-white border border-gray-200 rounded-lg p-3 outline-none focus:border-teal-700 resize-none"
+                        rows={3}
+                        autoComplete="off"
+                        autoCorrect="on"
+                        autoCapitalize="sentences"
+                        spellCheck="true"
+                      />
+                    </div>
+                    
+                    {/* Allergens */}
+                    <div>
+                      <h4 className="text-xs font-medium text-gray-600 mb-2">Allergens</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {allergens.length > 0 ? (
+                          allergens.map((allergen) => (
+                            <span
+                              key={allergen}
+                              className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium"
                             >
-                              <X className="w-2 h-2" />
+                              {allergen}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-gray-500">No allergens detected</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Tags */}
+                    <div>
+                      <h4 className="text-xs font-medium text-gray-600 mb-2">Tags</h4>
+                      <div className="flex gap-2 overflow-x-auto items-center">
+                        {!isAIProcessing && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setShowAdditionalTags(!showAdditionalTags)}
+                              className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full text-xs font-medium whitespace-nowrap"
+                            >
+                              <div className="flex items-center gap-1">
+                                <Plus className="w-3 h-3" />
+                              </div>
                             </button>
-                          )}
-                        </div>
-                      ))}
+
+                            {showAdditionalTags && (
+                              <div className="flex gap-1 items-center">
+                                <input
+                                  type="text"
+                                  value={customTag}
+                                  onChange={(e) => setCustomTag(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') addCustomTag();
+                                    else if (e.key === 'Escape') {
+                                      setShowAdditionalTags(false);
+                                      setCustomTag('');
+                                    }
+                                  }}
+                                  placeholder="Add tag..."
+                                  className="px-2 py-1 text-xs border border-gray-200 rounded-full focus:outline-none focus:border-teal-700 w-28"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={addCustomTag}
+                                  className="px-3 py-1.5 bg-teal-700 text-white rounded-full text-xs hover:bg-teal-800 transition-colors min-w-[32px] flex items-center justify-center"
+                                  style={{ backgroundColor: '#1F6D5A' }}
+                                >
+                                  ✓
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Loading placeholders for tags when AI is processing */}
+                        {isAIProcessing && (
+                          <>
+                            <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-16 h-6 loading-tag"></div>
+                            <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-20 h-6 loading-tag"></div>
+                            <div className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap w-14 h-6 loading-tag"></div>
+                          </>
+                        )}
+                        
+                        {!isAIProcessing && activeTags.map((tag, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap"
+                            style={{ backgroundColor: '#F1F1EF' }}
+                          >
+                            <span>{tag}</span>
+                            {!isAIProcessing && (
+                              <button
+                                onClick={() => removeTag(tag)}
+                                className="w-3 h-3 flex items-center justify-center hover:bg-gray-300 rounded-full"
+                              >
+                                <X className="w-2 h-2" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </motion.div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Flavor Notes section removed per latest design */}
 
                        
 
+             {/* Location */}
+             <div className="mb-6">
+
+              {/* Single unified search bar */}
+              <button
+                onClick={() => setShowLocationSearch(true)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="text-sm text-gray-900 truncate ">
+                    {place || 'Location'}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {location && location !== 'Current Location' && (
+                    <div className="text-xs text-gray-500 truncate max-w-[120px]">
+                      {location}
+                    </div>
+                  )}
+
+                </div>
+              </button>
+            </div>
+
             {/* List Selection */}
-            <div className="mb-10" ref={listDropdownRef}>
+            <div className="mb-6" ref={listDropdownRef}>
               <div className="flex items-center justify-between mb-3" ref={listsRef}>
                 <h3 className={`text-sm font-medium ${
                   showValidationErrors && validationErrors.selectedLists 
@@ -2789,54 +2831,7 @@ const AddItemModal = ({
                 </>
               )}
             </div>
-             {/* Location */}
-             <div className="mb-6">
-
-              {/* Single unified search bar */}
-              <button
-                onClick={() => setShowLocationSearch(true)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="text-xs text-gray-900 truncate">
-                    {place || 'Location'}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {location && location !== 'Current Location' && (
-                    <div className="text-xs text-gray-500 truncate max-w-[120px]">
-                      {location}
-                    </div>
-                  )}
-
-                </div>
-              </button>
-            </div>
-            {/* Public/Private Toggle */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-1">Share with community</h3>
-                  <p className="text-xs text-gray-500">
-                    {isPublic ? 'Others can see this in their feed' : 'Only you can see this item'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsPublic(!isPublic)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
-                    isPublic ? 'bg-teal-600' : 'bg-gray-200'
-                  }`}
-                  style={{ backgroundColor: isPublic ? '#1F6D5A' : undefined }}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
-                      isPublic ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
+            {/* Public/Private Toggle - moved to save row */}
 
             {/* Flying Animation Elements */}
             {flyingAnimations.map((animation) => {
@@ -2869,16 +2864,16 @@ const AddItemModal = ({
             })}
 
             {/* Action Bar */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleSave}
                 disabled={isAIProcessing || isSaving}
-                className={`flex-1 h-13 rounded-full font-semibold text-base flex items-center justify-center gap-2 mr-4 transition-all duration-200 ${
+                className={`flex-1 h-13 rounded-full font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 ${
                   !isAIProcessing && !isSaving
                     ? 'bg-teal-700 text-white hover:bg-teal-800 active:scale-95'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
-                style={{ 
+                style={{
                   backgroundColor: showSuccessAnimation ? '#10B981' : (!isAIProcessing && !isSaving ? '#1F6D5A' : undefined),
                   height: '52px',
                   transition: 'background-color 0.3s ease'
@@ -2906,12 +2901,30 @@ const AddItemModal = ({
                 )}
               </button>
 
+              {/* Public/Private Toggle - larger version */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Public</span>
+                <button
+                  onClick={() => setIsPublic(!isPublic)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
+                    isPublic ? 'bg-teal-600' : 'bg-gray-300'
+                  }`}
+                  style={{ backgroundColor: isPublic ? '#1F6D5A' : undefined }}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                      isPublic ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
 
 
+
+              {/* Price section commented out for now
               <div className="text-right relative">
                 {isEditingPrice ? (
                   <div className="flex items-center justify-end gap-2">
-                    {/* Currency selector */}
                     <button
                       onClick={() => setShowCurrencySelector(true)}
                       className="text-sm text-teal-700 hover:bg-gray-50 px-2 py-1 rounded border border-teal-200 transition-colors flex-shrink-0"
@@ -2919,7 +2932,6 @@ const AddItemModal = ({
                     >
                       {getCurrencyDisplay(currency)}
                     </button>
-                    {/* Price input */}
                     <input
                       type="text"
                       inputMode="numeric"
@@ -2936,7 +2948,7 @@ const AddItemModal = ({
                     />
                   </div>
                 ) : (
-                  <div 
+                  <div
                     onClick={handlePriceEdit}
                     className="cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors text-right"
                   >
@@ -2945,16 +2957,14 @@ const AddItemModal = ({
                     </div>
                   </div>
                 )}
-                
-                {/* Currency Selector Modal */}
+
                 {showCurrencySelector && (
                   <>
-                    <div 
+                    <div
                       className="fixed inset-0 bg-transparent z-10"
                       onClick={() => setShowCurrencySelector(false)}
                     />
                         <div className="fixed inset-x-4 top-20 bottom-20 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden flex flex-col">
-                      {/* Recent currencies */}
                       {recentCurrencies.length > 0 && (
                         <>
                           <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
@@ -2986,8 +2996,7 @@ const AddItemModal = ({
                           </div>
                         </>
                       )}
-                      
-                      {/* Popular currencies first */}
+
                       <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
                         Popular currencies
                       </div>
@@ -3009,8 +3018,7 @@ const AddItemModal = ({
                           )}
                         </button>
                       ))}
-                      
-                      {/* All other currencies */}
+
                       <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
                         All currencies ({allCurrencies.filter(c => !c.popular).length})
                       </div>
@@ -3036,6 +3044,7 @@ const AddItemModal = ({
                   </>
                 )}
               </div>
+              */}
             </div>
 
             {/* Slide-to-delete below actions */}

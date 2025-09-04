@@ -256,3 +256,5 @@ redirect on feed to previous lcocation
 Contact us
 
 Invite a friend
+
+Addd share button on feed

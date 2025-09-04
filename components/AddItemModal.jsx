@@ -1709,6 +1709,7 @@ const AddItemModal = ({
 
   // Touch gesture handlers for location bottom sheet
   const handleTouchStart = (e) => {
+    e.preventDefault(); // Prevent scrolling while dragging
     const touch = e.touches[0];
     setTouchStartY(touch.clientY);
     setTouchCurrentY(touch.clientY);
@@ -1717,6 +1718,7 @@ const AddItemModal = ({
 
   const handleTouchMove = (e) => {
     if (!isDragging) return;
+    e.preventDefault(); // Prevent scrolling while dragging
     const touch = e.touches[0];
     setTouchCurrentY(touch.clientY);
   };
@@ -2681,7 +2683,7 @@ const AddItemModal = ({
                        
 
             {/* List Selection */}
-            <div className="mb-16" ref={listDropdownRef}>
+            <div className="mb-10" ref={listDropdownRef}>
               <div className="flex items-center justify-between mb-3" ref={listsRef}>
                 <h3 className={`text-sm font-medium ${
                   showValidationErrors && validationErrors.selectedLists 
@@ -2789,11 +2791,6 @@ const AddItemModal = ({
             </div>
              {/* Location */}
              <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium text-gray-900">Location</h3>
-                </div>
-              </div>
 
               {/* Single unified search bar */}
               <button
@@ -2802,7 +2799,7 @@ const AddItemModal = ({
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="text-xs text-gray-900 truncate">
-                    {place || 'Add place..'}
+                    {place || 'Location'}
                   </div>
                 </div>
 
@@ -3478,12 +3475,17 @@ const AddItemModal = ({
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="absolute inset-x-0 bottom-0 top-0 bg-white rounded-t-2xl shadow-xl flex flex-col"
+              className="absolute inset-x-0 bottom-0 top-[10%] bg-white rounded-t-2xl shadow-xl flex flex-col"
             >
               {/* Grip + Search */}
-              <div className="p-3 border-b border-gray-100">
+              <div
+                className="p-3 border-b border-gray-100"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
                 <div
-                  className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-200 cursor-grab active:cursor-grabbing touch-none"
+                  className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-200 cursor-grab active:cursor-grabbing touch-none select-none"
                   onTouchStart={handleTouchStart}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
@@ -3500,18 +3502,18 @@ const AddItemModal = ({
                     value={locationSearch}
                     onChange={(e) => setLocationSearch(e.target.value)}
                     placeholder="Search places and locations..."
-                    className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
+                    className="w-full pl-8 pr-3 py-3 text-base bg-gray-50 rounded-lg focus:outline-none focus:bg-white focus:border-teal-700"
                     autoFocus
                     autoComplete="on"
                     autoCorrect="on"
                     autoCapitalize="words"
                     spellCheck="true"
                   />
-                  <MapPin className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                  <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   {(isSearchingLocation || isSearchingPlaces) && (
-                    <div className="absolute right-2 top-2.5">
-                      <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
+                                      <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
                   )}
                 </div>
               </div>

@@ -113,10 +113,10 @@ Generate TWO SETS of word pairs for each category:
 
 1. **Positive Review Words** - Words people use in positive reviews (3+ stars):
    - Main word: positive descriptor (e.g., "good", "delicious", "would recommend")
-   - Negative version: add appropriate prefix (e.g., "not good", "not delicious", "wouldn't recommend")
+   - Negative version: add appropriate prefix "not" (e.g., "not good", "not delicious", "wouldn't recommend")
 
 2. **Negative Review Words** - Words people use in negative reviews (1-2 stars):
-   - Main word: negative descriptor (can include "not" forms if common, e.g., "terrible", "not fresh", "bland")
+   - Main word: negative descriptor (can include "not" forms of the positive descriptor if common, e.g., "terrible", "not fresh", "bland")
    - Positive opposite: the positive counterpart (e.g., "great", "fresh", "flavorful")
 
 Generate these pairs for these **4 categories**:
@@ -133,13 +133,13 @@ Generate these pairs for these **4 categories**:
 IMPORTANT: 
 - All words within each category must be DIFFERENT from each other
 - Choose words that people ACTUALLY use in product reviews
-- For negative versions of positive words, use appropriate prefixes:
+- For negative versions of positive words, prioritize using "not" as the prefix if possible:
   * General words: use "not" (e.g., "not good", "not fresh")
   * "Would I..." words: use "wouldn't" (e.g., "wouldn't recommend")
 - For negative review words, use natural negative expressions:
   * Can be specific negative words (e.g., "terrible", "bland")
   * Can be "not" forms if that's how people commonly express it (e.g., "not fresh")
-- Keep words simple and commonly understood
+- Keep words simple and commonly used andunderstood
 
 FORMAT (MUST follow exactly):
 
@@ -197,7 +197,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
                 },
                 ps_pos: {
                   type: 'STRING',
-                  description: 'Product-Specific positive pairs: 6-8 pairs as "positive:negative" (e.g., "fresh:not fresh,flavorful:bland")'
+                  description: 'Product-Specific positive pairs: 6-8 pairs as "positive:negative" (e.g., "fresh:not fresh,flavorful:bland, good:not good, strong: not strong")'
                 },
                 ps_neg: {
                   type: 'STRING', 

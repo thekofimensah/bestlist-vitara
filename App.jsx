@@ -24,6 +24,7 @@ import { NotificationsDropdown } from './components/secondary/NotificationsDropd
 // import useAchievements from './hooks/useAchievements';
 import { useNotifications } from './hooks/useNotifications';
 import PostDetailView from './components/secondary/PostDetailView';
+import SearchModal from './components/secondary/SearchModal';
 import AchievementSystem from './components/gamification/AchievementSystem';
 import { AchievementProvider } from './hooks/useGlobalAchievements.jsx';
 import useUserTracking from './hooks/useUserTracking';
@@ -177,12 +178,6 @@ const App = () => {
   const [userProfileKey, setUserProfileKey] = useState(0);
   const [userProfileOrigin, setUserProfileOrigin] = useState(null);
   const profileViewRef = useRef(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef(null);
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchTab, setSearchTab] = useState('content'); // 'content' or 'users'
-  const [userResults, setUserResults] = useState([]);
   const [followingUsers, setFollowingUsers] = useState(new Set());
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [scrollToCommentsOnOpen, setScrollToCommentsOnOpen] = useState(false);
@@ -365,107 +360,6 @@ const App = () => {
     }
   };
 
-  // Real Supabase search function
-  const performSearch = async (query) => {
-    if (!query.trim() || !user?.id) {
-      setSearchResults([]);
-      setUserResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-    
-    try {
-      if (searchTab === 'content') {
-        const { data, error } = await searchUserContent(user.id, query);
-        
-        if (error) {
-          console.error('Search error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-          setSearchResults([]);
-        } else {
-          setSearchResults(data || []);
-        }
-      } else {
-        const { data, error } = await searchUsers(query);
-        
-        if (error) {
-          console.error('User search error:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-          setUserResults([]);
-        } else {
-          // Exclude current user from results
-          const filtered = (data || []).filter((u) => u.id !== user?.id);
-          setUserResults(filtered);
-        }
-      }
-    } catch (error) {
-      console.error('Search failed:', JSON.stringify({
-          message: err.message,
-          name: err.name,
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-          fullError: err
-        }, null, 2));
-      if (searchTab === 'content') {
-        setSearchResults([]);
-      } else {
-        setUserResults([]);
-      }
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleSearchChange = (e) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-    
-    // Debounce search
-    clearTimeout(window.searchTimeout);
-    window.searchTimeout = setTimeout(() => {
-      performSearch(query);
-    }, 300);
-  };
-
-  // Force native keyboard attributes on the search box specifically
-  useEffect(() => {
-    const el = searchInputRef.current;
-    if (!el) return;
-    try {
-      el.setAttribute('autocorrect', 'on');
-      el.setAttribute('autocapitalize', 'sentences');
-      el.setAttribute('spellcheck', 'true');
-      if (!el.hasAttribute('inputmode')) el.setAttribute('inputmode', 'search');
-      // Ensure iOS allows selection/long-press
-      el.style.webkitUserSelect = 'text';
-      el.style.userSelect = 'text';
-      el.style.webkitTouchCallout = 'default';
-      el.style.touchAction = 'manipulation';
-    } catch {}
-  }, [showSearch, searchTab]);
-
-  const handleSearchTabChange = (tab) => {
-    setSearchTab(tab);
-    setSearchResults([]);
-    setUserResults([]);
-    if (searchQuery.trim()) {
-      performSearch(searchQuery);
-    }
-  };
 
   const handleFollowUser = async (userId, username) => {
     try {
@@ -509,29 +403,6 @@ const App = () => {
     }
   };
 
-  const handleSearchResultClick = (result) => {
-    // Navigate to appropriate screen based on result type
-    if (result.type === 'item') {
-      // Find the list and navigate to it
-      const targetList = lists.find(list => list.id === result.listId);
-      if (targetList) {
-        setSelectedList(targetList);
-        setCurrentScreen('list-detail');
-      }
-    } else if (result.type === 'list') {
-      // Navigate to specific list
-      const targetList = lists.find(list => list.id === result.id);
-      if (targetList) {
-        setSelectedList(targetList);
-        setCurrentScreen('list-detail');
-      } else {
-        setCurrentScreen('lists');
-      }
-    }
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  };
 
   // OPTIMIZED: Memoized navigation with scroll position management
   const navigateToScreen = React.useCallback((screen) => {
@@ -2328,268 +2199,21 @@ const App = () => {
         </AnimatePresence>
       </ModalPortal>
 
-      {/* Search Modal */}
-      {showSearch && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-20 flex items-start justify-center pt-8 p-4 z-50">
-          <div className="bg-white rounded-3xl w-full max-w-md h-[85vh] flex flex-col overflow-hidden">
-            {/* Search Header */}
-            <div className="p-6 pb-4 flex-shrink-0">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Search</h3>
-                <button
-                  onClick={() => {
-                    setShowSearch(false);
-                    setSearchQuery('');
-                    setSearchResults([]);
-                    setUserResults([]);
-                    setSearchTab('content');
-                  }}
-                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Search Tabs */}
-              <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
-                <button
-                  onClick={() => handleSearchTabChange('content')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    searchTab === 'content'
-                      ? 'bg-white text-teal-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Products
-                </button>
-                <button
-                  onClick={() => handleSearchTabChange('users')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    searchTab === 'users'
-                      ? 'bg-white text-teal-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Users
-                </button>
-              </div>
-              
-              <div className="relative">
-                   <input
-                    ref={searchInputRef}
-                    type="text"
-                     name="search"
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    placeholder={searchTab === 'content' ? 'Search lists and items...' : 'Search users...'}
-                    className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100 transition-all duration-200"
-                    autoFocus
-                    autoComplete="on"
-                    autoCorrect="on"
-                    autoCapitalize="sentences"
-                    spellCheck="true"
-                    inputMode="search"
-                    enterKeyHint="search"
-                  />
-                  {/* Search Icon */}
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                    <Search className="w-4 h-4 text-gray-400" />
-                  </div>
-                  {/* Loading/Clear Button */}
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    {isSearching ? (
-                      <div className="w-4 h-4 border-2 border-teal-700 border-t-transparent rounded-full animate-spin"></div>
-                    ) : searchQuery ? (
-                      <button
-                        onClick={() => {
-                          setSearchQuery('');
-                          setSearchResults([]);
-                          setUserResults([]);
-                        }}
-                        className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-            {/* Search Results */}
-            {searchQuery && (
-              <div className="flex-1 overflow-y-auto">
-                {searchTab === 'content' && searchResults.length > 0 ? (
-                  <div className="px-6 pb-6">
-                    <div className="text-sm text-gray-500 mb-4">
-                      {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
-                    </div>
-                    
-                    {/* Group results: Lists first, then Items */}
-                    {(() => {
-                      const lists = searchResults.filter(r => r.type === 'list');
-                      const items = searchResults.filter(r => r.type === 'item');
-                      
-                      return (
-                        <div className="space-y-6">
-                          {/* Lists Section */}
-                          {lists.length > 0 && (
-                            <div>
-                              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
-                                Lists ({lists.length})
-                              </div>
-                              <div className="space-y-2">
-                                {lists.map((result) => (
-                                  <button
-                                    key={`${result.type}-${result.id}`}
-                                    onClick={() => handleSearchResultClick(result)}
-                                    className="w-full text-left p-3 bg-teal-50 rounded-xl hover:bg-teal-100 transition-colors border border-teal-100"
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-teal-100 text-teal-700">
-                                        <List className="w-4 h-4" />
-                                      </div>
-                                      <div className="flex-1">
-                                        <div className="font-medium text-gray-900">{result.name}</div>
-                                        <div className="text-sm text-gray-500">
-                                          {result.itemCount || 0} items
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Items Section */}
-                          {items.length > 0 && (
-                            <div>
-                              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
-                                Items ({items.length})
-                              </div>
-                              <div className="space-y-2">
-                                {items.map((result) => (
-                                  <button
-                                    key={`${result.type}-${result.id}`}
-                                    onClick={() => handleSearchResultClick(result)}
-                                    className="w-full text-left p-3 bg-stone-50 rounded-xl hover:bg-stone-100 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-100 text-yellow-700">
-                                        <Star className="w-4 h-4 fill-current" />
-                                      </div>
-                                      <div className="flex-1">
-                                        <div className="font-medium text-gray-900">{result.name}</div>
-                                        <div className="text-sm text-gray-500">
-                                          in {result.list}
-                                          {result.rating && (
-                                            <span className="ml-2 flex items-center gap-1">
-                                              <Star className="w-3 h-3 text-yellow-500 fill-current" />
-                                              <span>{Math.abs(result.rating)}</span>
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : searchTab === 'users' && userResults.length > 0 ? (
-                  <div className="px-6 pb-6">
-                    <div className="text-sm text-gray-500 mb-4">
-                      {userResults.length} user{userResults.length !== 1 ? 's' : ''} found
-                    </div>
-                    
-                    <div className="space-y-3">
-                      {userResults.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-                        >
-                          <button
-                            onClick={() => {
-                              handleNavigateToUser(user.username);
-                              setShowSearch(false);
-                              setSearchQuery('');
-                              setSearchResults([]);
-                              setUserResults([]);
-                              setSearchTab('content');
-                            }}
-                            className="flex items-center gap-3 flex-1 text-left"
-                          >
-                            <img
-                              src={user.avatar_url || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpath d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"%3E%3C/path%3E%3Ccircle cx="12" cy="7" r="4"%3E%3C/circle%3E%3C/svg%3E'}
-                              alt={user.username}
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">{user.username}</div>
-                             
-                            </div>
-                          </button>
-                          
-                          {user.id !== user?.id && (
-                            <button
-                              onClick={() => {
-                                if (followingUsers.has(user.id)) {
-                                  handleUnfollowUser(user.id, user.username);
-                                } else {
-                                  handleFollowUser(user.id, user.username);
-                                }
-                              }}
-                              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                                followingUsers.has(user.id)
-                                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                  : 'bg-teal-600 text-white hover:bg-teal-700'
-                              }`}
-                            >
-                              {followingUsers.has(user.id) ? 'Following' : 'Follow'}
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : !isSearching ? (
-                  <div className="px-6 pb-6 text-center">
-                    <div className="text-sm text-gray-500 mb-2">
-                      {searchTab === 'content' ? 'No content found' : 'No users found'}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {searchTab === 'content' 
-                        ? 'Try different keywords or check spelling'
-                        : 'Try searching for exact usernames'
-                      }
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-
-            {!searchQuery && (
-              <div className="px-6 pb-6">
-                <div className="text-sm text-gray-500">
-                  {searchTab === 'content' 
-                    ? 'Search through your lists and food items'
-                    : 'Search for other users to follow'
-                  }
-                </div>
-                <div className="mt-3 space-y-2">
-                 
-                  
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-     
-      )}
+            {/* Search Modal */}
+      <SearchModal
+        isOpen={showSearch}
+        onClose={() => setShowSearch(false)}
+        user={user}
+        lists={lists}
+        onNavigateToUser={handleNavigateToUser}
+        onNavigateToList={(list) => {
+          setSelectedList(list);
+          setCurrentScreen('list-detail');
+        }}
+        onFollowUser={handleFollowUser}
+        onUnfollowUser={handleUnfollowUser}
+        followingUsers={followingUsers}
+      />
 
       {/* Achievement System - Global notifications */}
       <AchievementSystem />

@@ -159,6 +159,8 @@ const MainScreen = React.forwardRef(({
   const hasAdjustedRef = useRef(false);
   const streamRef = useRef(null);
   const isGalleryPickerActiveRef = useRef(false);
+  const cameraRestartInProgressRef = useRef(false);
+  const lastCameraResetAtRef = useRef(0);
   
   // Achievement hooks
   const { checkAchievements, removeAchievement, previewAchievements } = useAchievements();
@@ -220,7 +222,10 @@ const MainScreen = React.forwardRef(({
         // Convert data URL to file
         const response = await fetch(imageForAnalysis);
         const blob = await response.blob();
-        fileForAnalysis = new File([blob], 'retry-image.jpg', { type: 'image/jpeg' });
+        // Use the stored source from capturedImage to determine filename
+        const source = capturedImage?.source || 'unknown';
+        const filename = source === 'gallery' ? 'retry-gallery.jpg' : 'retry-camera.jpg';
+        fileForAnalysis = new File([blob], filename, { type: 'image/jpeg' });
       } else {
         // If it's already a file or URL, use it directly
         fileForAnalysis = imageForAnalysis;
@@ -829,30 +834,56 @@ const MainScreen = React.forwardRef(({
     }
   }, [deviceLocation]);
 
-  // Listen for camera reset events from PullToRefresh
+  // Listen for camera reset events from PullToRefresh with debounce and guards
   useEffect(() => {
     const handleCameraReset = () => {
-      console.log('📷 [MainScreen] Received camera reset event');
+      const now = Date.now();
+      if (now - (lastCameraResetAtRef.current || 0) < 1200) {
+        console.log('📷 [MainScreen] Camera reset ignored (debounced)');
+        return;
+      }
+      lastCameraResetAtRef.current = now;
+
+      if (cameraRestartInProgressRef.current) {
+        console.log('📷 [MainScreen] Camera reset ignored (restart in progress)');
+        return;
+      }
+
+      // Only reset when camera is relevant and not in critical flows
+      if (!isActive || !isCameraVisible || showModal || isCapturing || capturedImage) {
+        console.log('📷 [MainScreen] Camera reset skipped (conditions not suitable)');
+        return;
+      }
+
+      console.log('📷 [MainScreen] Processing camera reset event');
+      cameraRestartInProgressRef.current = true;
+
       // Clear error states
       setError(null);
       setCameraError(null);
       setCameraInitialized(false);
-      
-      // Stop and restart camera
-      stopCamera();
-      
-      // Use a timeout to ensure clean restart
+
+      // Stop current stream if active
+      if (isCameraStreamActive) {
+        stopCamera();
+      }
+
+      // Ensure only one start attempt after a brief cooldown
       setTimeout(() => {
-        if (isActive && isCameraVisible && !showModal) {
-          console.log('📷 [MainScreen] Restarting camera after reset event');
+        if (isActive && isCameraVisible && !showModal && !isCapturing && !capturedImage && !isCameraStarting) {
+          console.log('📷 [MainScreen] Restarting camera after reset event (safe)');
           startCamera(facingMode);
+        } else {
+          console.log('📷 [MainScreen] Restart skipped after cooldown (conditions changed)');
         }
-      }, 300);
+        // Release the in-progress flag after a short delay to avoid thrash
+        setTimeout(() => { cameraRestartInProgressRef.current = false; }, 600);
+      }, 400);
     };
 
     window.addEventListener('feed:reset-camera', handleCameraReset);
     return () => window.removeEventListener('feed:reset-camera', handleCameraReset);
-  }, [facingMode, isActive, isCameraVisible, showModal]);
+  }, [facingMode, isActive, isCameraVisible, showModal, isCapturing, capturedImage, isCameraStreamActive, isCameraStarting]);
 
   // Camera visibility detection using intersection observer
   useEffect(() => {
@@ -1054,11 +1085,11 @@ const MainScreen = React.forwardRef(({
       setTimeout(async () => {
         try {
           compressedFile = await imageCompression(file, {
-            maxSizeMB: 0.5,
-            maxWidthOrHeight: 1280,
+            maxSizeMB: 0.08,          // Match AI compression limit (80KB)
+            maxWidthOrHeight: 768,    // Match AI compression resolution
             useWebWorker: true,
-            fileType: 'image/webp',
-            initialQuality: 0.8
+            fileType: 'image/jpeg',   // Match AI compression format
+            initialQuality: 0.65      // Match AI compression quality
           });
           
           // Convert compressed file to base64
@@ -1066,10 +1097,11 @@ const MainScreen = React.forwardRef(({
           console.log('📸 [Camera] Compressed image size:', compressedFile.size, 'bytes');
           
           // Update with compressed image
-          setCapturedImage(prev => ({ 
-            ...prev, 
+          setCapturedImage(prev => ({
+            ...prev,
             url: compressedBase64,
-            compressed: true
+            compressed: true,
+            source: 'camera' // Track source for analytics
           }));
         } catch (compressionError) {
           console.error('📸 [Compression] Failed, keeping original:', compressionError);
@@ -1442,11 +1474,11 @@ const MainScreen = React.forwardRef(({
           
           // Single compression: compress once and use the same file for preview and upload
           let compressedFile = await imageCompression(file, {
-            maxSizeMB: 0.5,
-            maxWidthOrHeight: 1280,
+            maxSizeMB: 0.08,          // Match AI compression limit (80KB)
+            maxWidthOrHeight: 768,    // Match AI compression resolution
             useWebWorker: true,
-            fileType: 'image/webp',
-            initialQuality: 0.8
+            fileType: 'image/jpeg',   // Match AI compression format
+            initialQuality: 0.65      // Match AI compression quality
           });
           
           // Convert compressed file to base64 for immediate display
@@ -1455,11 +1487,12 @@ const MainScreen = React.forwardRef(({
           console.log('📸 [Gallery] Compressed image size:', compressedFile.size, 'bytes');
           
           const tempFilename = `upload_${Date.now()}.webp`;
-          const uploadImageData = { 
+          const uploadImageData = {
             url: compressedBase64,           // Base64 for immediate display
-            filename: tempFilename, 
-            uploading: true, 
-            aiProcessing: true
+            filename: tempFilename,
+            uploading: true,
+            aiProcessing: true,
+            source: 'gallery' // Track source for analytics
           };
           setCapturedImage(uploadImageData);
           setShowModal(true); // Open modal immediately

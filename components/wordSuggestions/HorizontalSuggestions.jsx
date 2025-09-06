@@ -79,8 +79,7 @@ const HorizontalSuggestions = React.memo(({ suggestions, onTap, onGetButtonRect,
           </div>
         </div>
       </div>
-
-      {/* Show more/less button */}
+      {/* Show more/less button under suggestions */}
       {(suggestions.length > 4 || showMore) && (
         <div className="flex justify-end mt-2">
           <button

@@ -258,3 +258,13 @@ Contact us
 Invite a friend
 
 Addd share button on feed
+
+Slide to delete deosn't change the listsview instantly
+
+Intro sequence?
+
+Add shared lists feature
+
+Tracking
+Share buttons clicked
+Invite buttons clicked

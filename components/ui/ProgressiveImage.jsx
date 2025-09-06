@@ -313,7 +313,7 @@ const ProgressiveImage = ({
   }
 
   return (
-    <div ref={imgRef} className="relative">
+    <div ref={imgRef} className="relative" style={{ touchAction: 'pan-y' }}>
       {/* Placeholder while loading */}
       {loadState === 'loading' && !currentSrc && renderPlaceholder()}
       
@@ -324,7 +324,10 @@ const ProgressiveImage = ({
           src={currentSrc}
           alt={alt}
           className={className}
-          style={style}
+          style={{ WebkitUserDrag: 'none', userDrag: 'none', WebkitTouchCallout: 'none', ...style }}
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          onContextMenu={(e) => e.preventDefault()}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.2 }}

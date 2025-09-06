@@ -1764,6 +1764,7 @@ const AddItemModal = ({
   }, [productName]);
   const listsRef = useRef(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const isEditingExisting = Boolean(item?.id);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -2489,41 +2490,51 @@ const AddItemModal = ({
             </div>
 
             {/* Tabbed Notes & Details Section */}
-            <div className="mb-6 mt-6">
+            <div className="mb-10 mt-6">
               {/* Tab Navigation */}
               <div className="flex border-b border-gray-200 mb-4">
                 <button
                   onClick={() => setActiveTab('notes')}
-                  className={`pb-3 px-1 mr-6 text-sm font-medium transition-colors relative ${
+                  className={`px-1 mr-6 text-sm font-medium transition-colors relative ${
                     activeTab === 'notes'
-                      ? 'text-teal-700 border-b-2 border-teal-700'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'pb-2 text-teal-700 font-semibold'
+                      : 'pb-3 text-gray-500 hover:text-gray-700'
                   }`}
                   style={{ 
                     color: activeTab === 'notes' ? '#1F6D5A' : undefined,
                     borderColor: activeTab === 'notes' ? '#1F6D5A' : undefined
                   }}
                 >
-                  Your Notes
+                  <span
+                    className={`inline-block transition-transform duration-200 ease-out ${activeTab === 'notes' ? 'border-b-2 border-teal-700 pb-0.5' : ''}`}
+                    style={{ transform: activeTab === 'notes' ? 'scale(1.03)' : 'scale(1)' }}
+                  >
+                    Your Notes
+                  </span>
                 </button>
                 <button
                   onClick={() => setActiveTab('details')}
-                  className={`pb-3 px-1 text-sm font-medium transition-colors relative ${
+                  className={`px-1 text-sm font-medium transition-colors relative ${
                     activeTab === 'details'
-                      ? 'text-teal-700 border-b-2 border-teal-700'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'pb-2 text-teal-700 font-semibold'
+                      : 'pb-3 text-gray-500 hover:text-gray-700'
                   }`}
                   style={{ 
                     color: activeTab === 'details' ? '#1F6D5A' : undefined,
                     borderColor: activeTab === 'details' ? '#1F6D5A' : undefined
                   }}
                 >
-                  Product Details
+                  <span
+                    className={`inline-block transition-transform duration-200 ease-out ${activeTab === 'details' ? 'border-b-2 border-teal-700 pb-0.5' : ''}`}
+                    style={{ transform: activeTab === 'details' ? 'scale(1.03)' : 'scale(1)' }}
+                  >
+                    Product Details
+                  </span>
                 </button>
               </div>
 
               {/* Tab Content */}
-              <div className="min-h-[200px]">
+              <div className={`${(hasSuggestions || isLoadingSuggestions) ? 'min-h-[80px]' : ''}`}>
                 {activeTab === 'notes' && (
                   <div className="space-y-3">
                     <textarea
@@ -2542,15 +2553,18 @@ const AddItemModal = ({
                     {/* Word Suggestions - only show if AI provided suggestions */}
                     {(hasSuggestions || isLoadingSuggestions) && (
                       <div className="mt-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Sparkles className="w-3 h-3 text-gray-500" />
-                          <span className="text-xs text-gray-500">
-                            {isLoadingSuggestions ? 'Loading suggestions...' : (
-                              <>
-                                Tap to add • Double-tap for opposite 
-                              </>
-                            )}
-                          </span>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-3 h-3 text-gray-500" />
+                            <span className="text-xs text-gray-500">
+                              {isLoadingSuggestions ? 'Loading suggestions...' : (
+                                <>
+                                  Tap to add • Double-tap for opposite 
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          {/* Show more/less moved back under suggestions */}
                         </div>
                         <div className="p-2">
                           {isLoadingSuggestions ? (
@@ -2700,16 +2714,16 @@ const AddItemModal = ({
                        
 
              {/* Location */}
-             <div className="mb-6">
+             <div className="mb-10">
 
               {/* Single unified search bar */}
               <button
                 onClick={() => setShowLocationSearch(true)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-xl transition-colors hover:border-teal-700"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="text-sm text-gray-900 truncate ">
-                    {place || 'Location'}
+                  <div className="text-xs text-gray-600 truncate ">
+                    {place || 'Place Name'}
                   </div>
                 </div>
 
@@ -2725,7 +2739,7 @@ const AddItemModal = ({
             </div>
 
             {/* List Selection */}
-            <div className="mb-6" ref={listDropdownRef}>
+            <div className="mb-10" ref={listDropdownRef}>
               <div className="flex items-center justify-between mb-3" ref={listsRef}>
                 <h3 className={`text-sm font-medium ${
                   showValidationErrors && validationErrors.selectedLists 
@@ -2841,9 +2855,9 @@ const AddItemModal = ({
               const doubleTapColor = isLowRating ? 'teal' : 'red';
               const animationColor = animation.isDoubleTap ? doubleTapColor : singleTapColor;
               
-              const colorClasses = animationColor === 'red' 
+              const colorClasses = animationColor === 'red'
                 ? 'bg-red-100 text-red-700 border border-red-200'
-                : 'bg-teal-100 text-teal-800 border border-teal-200';
+                : 'bg-teal-100 text-teal-600 border border-teal-200';
               
               return (
                 <div
@@ -2868,7 +2882,7 @@ const AddItemModal = ({
               <button
                 onClick={handleSave}
                 disabled={isAIProcessing || isSaving}
-                className={`flex-1 h-13 rounded-full font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 ${
+                className={`flex-1 h-13 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 ${
                   !isAIProcessing && !isSaving
                     ? 'bg-teal-700 text-white hover:bg-teal-800 active:scale-95'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
@@ -2894,10 +2908,7 @@ const AddItemModal = ({
                     <span>{successMessage}</span>
                   </>
                 ) : (
-                  <>
-                    <Plus className="w-5 h-5" />
                     <span>Save</span>
-                  </>
                 )}
               </button>
 
@@ -3067,73 +3078,38 @@ const AddItemModal = ({
                       max="100"
                       defaultValue="0"
                       onChange={async (e) => {
-                    const val = Number(e.target.value);
+                        const val = Number(e.target.value);
                         // Update progress overlay width as the user swipes
                         const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
                         if (progressEl) progressEl.style.width = `${val}%`;
-                    if (val >= 100 && !isDeleting) {
-                      const ok = window.confirm('Delete this item?');
-                      if (!ok) {
-                        e.target.value = 0;
-                            if (progressEl) progressEl.style.width = '0%';
-                        return;
-                      }
-                      try {
-                        setIsDeleting(true);
-                        
-                        // 🚀 IMMEDIATE UI RESPONSE: Close modal immediately for better UX
-                        onClose();
-                        
-                        // ⚡ Background deletion with optimistic updates
-                        const { error } = await deleteItemAndRelated(item.id);
-                        if (error) {
-                          console.error('Failed to delete item:', error);
-                          // Reopen modal to show error since we already closed it
-                          alert('Failed to delete item. The item may still be visible in your lists.');
-                          setIsDeleting(false);
+
+                        if (val >= 100 && !isDeleting) {
+                          setShowDeleteConfirm(true);
+                          e.target.value = 0;
+                          if (progressEl) progressEl.style.width = '0%';
                           return;
                         }
-                        
-                        // Success - item is already hidden from UI by the modal close
-                        console.log('✅ [AddItemModal] Item deleted successfully');
-                        
-                      } catch (error) {
-                        console.error('Error deleting item:', JSON.stringify({
-                          message: error.message,
-                          name: error.name,
-                          details: error.details,
-                          hint: error.hint,
-                          code: error.code,
-                          fullError: error
-                        }, null, 2));
-                        alert('Failed to delete item. Please try again.');
-                      } finally {
-                        setIsDeleting(false);
-                        e.target.value = 0;
-                            if (progressEl) progressEl.style.width = '0%';
-                      }
-                    }
                       }}
-                       onMouseUp={(e) => {
-                         if (isDeleting) return;
-                         const val = Number(e.currentTarget.value);
-                         if (val < 100) {
-                           e.currentTarget.value = 0;
-                           const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
-                           if (progressEl) progressEl.style.width = '0%';
-                         }
-                       }}
-                       onTouchEnd={(e) => {
-                         if (isDeleting) return;
-                         const val = Number(e.currentTarget.value);
-                         if (val < 100) {
-                           e.currentTarget.value = 0;
-                           const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
-                           if (progressEl) progressEl.style.width = '0%';
-                         }
-                       }}
-                      className="w-full h-12 opacity-0"
-                    />
+                  onMouseUp={(e) => {
+                    if (isDeleting) return;
+                    const val = Number(e.currentTarget.value);
+                    if (val < 100) {
+                      e.currentTarget.value = 0;
+                      const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
+                      if (progressEl) progressEl.style.width = '0%';
+                    }
+                  }}
+                  onTouchEnd={(e) => {
+                    if (isDeleting) return;
+                    const val = Number(e.currentTarget.value);
+                    if (val < 100) {
+                      e.currentTarget.value = 0;
+                      const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
+                      if (progressEl) progressEl.style.width = '0%';
+                    }
+                  }}
+                  className="w-full h-12 opacity-0"
+                />
                   </div>
                 </div>
               </div>
@@ -3427,7 +3403,7 @@ const AddItemModal = ({
                 You made history! 
                 <br />
                 <br />
-                You're the very first person to find and rate this product, and that's yours forever.
+                You're the first person to find and rate this product, and that's yours forever.
               </p>
             </div>
           </div>
@@ -3727,6 +3703,74 @@ const AddItemModal = ({
           }
         `
       }} />
+
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Item</h3>
+                <p className="text-sm text-gray-600">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowDeleteConfirm(false);
+                  setIsDeleting(true);
+
+                  try {
+                    // 🚀 IMMEDIATE UI RESPONSE: Close modal immediately for better UX
+                    onClose();
+
+                    // ⚡ Background deletion with optimistic updates
+                    const { error } = await deleteItemAndRelated(item.id);
+                    if (error) {
+                      console.error('Failed to delete item:', error);
+                      // Reopen modal to show error since we already closed it
+                      alert('Failed to delete item. The item may still be visible in your lists.');
+                      setIsDeleting(false);
+                      return;
+                    }
+
+                    // Success - item is already hidden from UI by the modal close
+                    console.log('✅ [AddItemModal] Item deleted successfully');
+
+                  } catch (error) {
+                    console.error('Error deleting item:', JSON.stringify({
+                      message: error.message,
+                      name: error.name,
+                      details: error.details,
+                      hint: error.hint,
+                      code: error.code,
+                      fullError: error
+                    }, null, 2));
+                    alert('Failed to delete item. Please try again.');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-medium hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

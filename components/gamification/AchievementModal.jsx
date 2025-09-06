@@ -186,7 +186,7 @@ const AchievementModal = ({ achievement, onClose, isVisible = true, isGlobalFirs
                 >
                   <Star className="w-5 h-5 text-yellow-300 mx-auto mb-1" />
                   <p className="text-sm text-yellow-100">
-                    You're the very first person to discover this! Your name will be remembered forever.
+                    You're the first person to discover this! Your name will be remembered forever.
                   </p>
                 </motion.div>
               )}

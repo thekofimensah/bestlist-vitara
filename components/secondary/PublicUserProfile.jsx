@@ -268,7 +268,7 @@ const UserProfile = ({ username, onBack, onNavigateToUser, onSelectPost, onImage
         post.lists?.items?.[0]?.image_url ||
         'https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg',
       title: post.items?.name || post.lists?.name || 'Untitled',
-      description: post.content || post.items?.notes || 'No description',
+      description: post.content || post.items?.notes,
       rating: post.items?.rating || 3,
       likes: post.like_count || 0,
       comments: post.comment_count || 0,

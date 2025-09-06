@@ -10,40 +10,17 @@ export const useAI = () => {
   const [result, setResult] = useState(null);
   const [abortController, setAbortController] = useState(null);
 
-  const encodeImageToBase64 = useCallback((file) => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      
-      img.onload = () => {
-        // Resize to max 1024px preserving aspect ratio
-        const maxSize = 1024;
-        let { width, height } = img;
-        
-        if (width > height) {
-          if (width > maxSize) {
-            height = (height * maxSize) / width;
-            width = maxSize;
-          }
-        } else {
-          if (height > maxSize) {
-            width = (width * maxSize) / height;
-            height = maxSize;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Convert to base64 with quality compression
-        const base64 = canvas.toDataURL('image/jpeg', 0.8);
-        resolve(base64.split(',')[1]); // Remove data:image/jpeg;base64, prefix
-      };
-      
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
+  // Compress image for optimal AI analysis (targeting max 80KB)
+  const compressImageForAI = useCallback(async (file) => {
+    const imageCompression = (await import('browser-image-compression')).default;
+    
+    return await imageCompression(file, {
+      maxSizeMB: 0.08,              // Target max 80KB
+      maxWidthOrHeight: 768,        // Reduced resolution for AI (sufficient for analysis)
+      useWebWorker: true,
+      fileType: 'image/jpeg',       // JPEG is more efficient than WebP for AI
+      initialQuality: 0.65,         // Lower quality for aggressive compression
+      alwaysKeepResolution: false   // Allow aggressive resizing
     });
   }, []);
 
@@ -70,6 +47,8 @@ export const useAI = () => {
     setError(null);
     setResult(null);
     
+    let totalBackoffDelayMs = 0;
+
     const makeRequest = async (attempt = 1, maxAttempts = 3) => {
       const startTime = Date.now();
       console.log(`🤖 [AI] Starting analysis attempt ${attempt}/${maxAttempts}`);
@@ -77,8 +56,23 @@ export const useAI = () => {
       // Progressive timeout: 20s for first attempt, 30s for retries
       const timeoutMs = attempt === 1 ? 20000 : 30000;
       try {
-        const base64Image = await encodeImageToBase64(imageFile);
-        console.log(`🤖 [AI] Image encoded (${base64Image.length} chars), location: ${location || 'none'}`);
+        const prepStart = Date.now();
+        
+        // Check if image is already optimally compressed (from MainScreen.jsx)
+        let compressedFile = imageFile;
+        
+        // Only compress if the image is larger than our target or not JPEG
+        if (imageFile.size > 82000 || !imageFile.type.includes('jpeg')) { // 80KB + small buffer
+          console.log(`🤖 [AI] Image needs compression: ${Math.round(imageFile.size / 1024)}KB`);
+          compressedFile = await compressImageForAI(imageFile);
+        } else {
+          console.log(`🤖 [AI] Image already optimally compressed: ${Math.round(imageFile.size / 1024)}KB`);
+        }
+        
+        const imageArrayBuffer = await compressedFile.arrayBuffer();
+        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageArrayBuffer)));
+        
+        console.log(`🤖 [AI] Final image size for AI: ${Math.round(compressedFile.size / 1024)}KB (${compressedFile.size} bytes), location: ${location || 'none'}`);
         
         // Expert prompt to produce a canonical, human-style product name and word suggestions
         const prompt = `You are a product identification expert. Your job is to identify consumer products from images with high accuracy. Identify the on-pack product and produce a single, canonical product name people would naturally use when referring to it in conversation or search.
@@ -212,7 +206,9 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
             }
           }
     };
+        const prep_time_ms = Date.now() - prepStart;
 
+        const sendStart = Date.now();
         const response = await safeFetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
           {
@@ -224,6 +220,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
             signal: newAbortController.signal // Add abort signal for cancellation
           }
         );
+        const ttfb_ms = Date.now() - sendStart;
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -273,7 +270,9 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
           throw new Error(`AI analysis failed: ${response.status} - ${errorText.substring(0, 200)}`);
         }
 
+        const jsonStart = Date.now();
         const json = await response.json();
+        const response_json_time_ms = Date.now() - jsonStart;
         const responseText = json.candidates?.[0]?.content?.parts?.[0]?.text;
         const elapsed = Date.now() - startTime;
         
@@ -288,6 +287,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
 
         // Parse the guaranteed valid JSON response (no cleanup needed!)
         let aiData;
+        const innerParseStart = Date.now();
         try {
           aiData = JSON.parse(responseText);
         } catch (parseError) {
@@ -295,6 +295,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
           console.error('🤖 [AI] Raw response text: ' + responseText.substring(0, 500));
           throw new Error('Invalid JSON response from AI');
         }
+        const result_parse_time_ms = Date.now() - innerParseStart;
 
         // Normalize product naming for consistency across AI variations
         const normalizeProductName = (brand, product, name) => {
@@ -353,8 +354,8 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
         };
 
         // Add manual value/quality and would-I fields
-        const vq_pos = "good value:poor value,high quality:low quality,worth it:not worth it,delicious:tasteless,natural:artificial";
-        const vq_neg = "overpriced:affordable,low quality:high quality,not worth it:worth it,tasteless:delicious,artificial:natural";
+        const vq_pos = "good value:poor value,high quality:low quality,worth it:not worth it,natural:artificial";
+        const vq_neg = "overpriced:affordable,low quality:high quality,not worth it:worth it,artificial:natural";
         const wi_pos = "would recommend:wouldn't recommend,would buy again:wouldn't buy again,would repurchase:wouldn't repurchase";
         const wi_neg = "wouldn't recommend:would recommend,wouldn't buy again:would buy again,wouldn't repurchase:would repurchase";
 
@@ -409,8 +410,24 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
           throw new Error(`AI result not reliable: ${reason}`);
         }
 
-        setResult(aiResult);
-        return aiResult;
+        const timingBreakdown = {
+          prep_time_ms,
+          ttfb_ms,
+          response_json_time_ms,
+          result_parse_time_ms,
+          total_elapsed_ms: elapsed,
+          retries_count: attempt - 1,
+          backoff_total_ms: totalBackoffDelayMs,
+          timeout_ms: timeoutMs
+        };
+
+        const enrichedResult = { 
+          ...aiResult, 
+          __ai_timings: timingBreakdown,
+          __compressed_size: compressedFile.size // Track actual size sent to Gemini
+        };
+        setResult(enrichedResult);
+        return enrichedResult;
       } catch (err) {
         const elapsed = Date.now() - startTime;
         
@@ -428,6 +445,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
             const delay = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
             console.log(`🤖 [AI] Retrying after timeout in ${delay/1000}s...`);
             await new Promise(resolve => setTimeout(resolve, delay));
+            totalBackoffDelayMs += delay;
             return makeRequest(attempt + 1, maxAttempts);
           } else {
             throw new Error(`AI analysis timed out after ${maxAttempts} attempts (${elapsed}ms total)`);
@@ -461,6 +479,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
           const delay = Math.min(1500 * Math.pow(2, attempt - 1), 8000);
           console.log(`🤖 [AI] Network error, retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
+          totalBackoffDelayMs += delay;
           return makeRequest(attempt + 1, maxAttempts);
         }
         
@@ -470,11 +489,20 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
     
     try {
       // Track AI request performance using existing system
-      const source = imageFile.name?.includes('upload') ? 'gallery' : 'camera';
+      // Determine source from filename or capturedImage context
+      let source = 'camera'; // default
+      if (imageFile.name?.includes('upload') || imageFile.name?.includes('gallery')) {
+        source = 'gallery';
+      } else if (imageFile.name?.includes('retry-camera')) {
+        source = 'camera';
+      } else if (imageFile.name?.includes('retry-gallery')) {
+        source = 'gallery';
+      }
       
+      // Track AI request with actual compressed size sent to Gemini
       const ai = await trackAIRequest(
         async () => await makeRequest(),
-        imageFile.size,
+        imageFile.size, // Will be updated with compressed size in makeRequest
         imageFile.type || 'unknown',
         source,
         location
@@ -529,7 +557,7 @@ Word suggestion keys (each is a single comma-separated list of **pairs** in the 
       setAbortController(null); // Clear the abort controller
       console.log('🧹 [AI] Processing flag cleared');
     }
-  }, [encodeImageToBase64, abortController]);
+  }, [compressImageForAI, abortController]);
 
   // Function to cancel any ongoing request
   const cancelRequest = useCallback(() => {

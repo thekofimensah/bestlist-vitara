@@ -487,7 +487,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           {/* Notes */}
           {post.items?.notes && (
             <div className="mb-6">
-              <h3 className="font-medium text-gray-900 mb-2">Notes</h3>
+              <h3 className="font-base text-gray-900 mb-2">Notes</h3>
               <p className="text-gray-700 leading-relaxed">{post.items.notes}</p>
             </div>
           )}
@@ -610,9 +610,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
                   )}
                 </div>
               ))
-            ) : (
-              <p className="text-gray-500 text-center py-4">No comments yet. Be the first to comment!</p>
-            )}
+            ) : null}
           </div>
 
           {/* Add Comment */}
@@ -705,7 +703,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
               {post.profiles?.username} made history!
               <br />
               <br />
-              {post.profiles?.username} was the very first person to find and rate this product, and that's theirs forever.
+              {post.profiles?.username} was the first person to find and rate this product, and that's theirs forever.
             </p>
           </div>
         </div>

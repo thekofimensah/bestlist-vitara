@@ -412,9 +412,10 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
               </div>
               <div className="text-left">
                 <p className="font-medium text-gray-900 text-left">{post.profiles?.username}</p>
-                <p className="text-sm text-gray-500 text-left">{post.lists?.name}</p>
+                <p className="text-sm text-gray-400 font-medium uppercase tracking-wider text-left">{post.lists?.name}</p>
               </div>
             </button>
+           
             
             {/* First in World Badge - positioned all the way to the right */}
             {(post.items?.is_first_in_world || post.items?.first_in_world_achievement_id) && (
@@ -437,7 +438,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
 
           {/* Product Name + Edit (for owner) */}
           <div className="mb-3 flex items-start gap-2">
-            <h1 className="flex-1 min-w-0 text-base font-semibold text-gray-900 leading-tight" style={{
+            <h1 className="flex-1 min-w-0 text-xl sm:text-2xl font-semibold text-gray-900 leading-tight" style={{
               wordBreak: 'break-word',
               overflowWrap: 'break-word',
               hyphens: 'auto',
@@ -487,7 +488,7 @@ const PostDetailView = ({ postId, onBack, onEdit, currentUser, onNavigateToUser,
           {/* Notes */}
           {post.items?.notes && (
             <div className="mb-6">
-              <h3 className="font-base text-gray-900 mb-2">Notes</h3>
+              <h3 className="text-lg text-gray-900 mb-2">Notes</h3>
               <p className="text-gray-700 leading-relaxed">{post.items.notes}</p>
             </div>
           )}

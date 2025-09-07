@@ -98,6 +98,10 @@ Brand field rules (MUST follow):
 - If you see generic placeholders like "unbranded", "generic", "store brand", "house brand", "brandless", "unknown", "n/a", etc., return an EMPTY string for brand.
 - Do not fabricate brand names.
 
+Description field rules (MUST follow):
+- For mass-produced items: provide a concise one line factual description of what the product is.
+- For specialty/artisanal products: include fascinating details that would delight and surprise readers about the product itself - unexpected origins, remarkable production secrets, surprising historical connections, or extraordinary characteristics that make people say "I had no idea!" DO NOT describe packaging, bottle colors, label designs, or visual elements visible in the image. Focus exclusively on the product content, ingredients, production methods, or usage experience that would be relevant to someone considering this product. For cheese for example, what makes this specific cheese different from similar cheeses, the most interesting facts about it.
+
 ---
 
 ### Word Suggestion Generation Task

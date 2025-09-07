@@ -36,7 +36,7 @@ const AchievementGlow = ({ achievement, variant = 'shadow', intensity = 'normal'
   const borderIntensity = {
     subtle: '1px',
     normal: '2px',
-    strong: '3px',
+    strong: '2px',
   };
 
   if (!isGlowing) {

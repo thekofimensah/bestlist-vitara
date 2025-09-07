@@ -287,7 +287,7 @@ const SearchModal = ({
                 value={searchQuery}
                 onChange={handleSearchChange}
                 placeholder={searchTab === 'content' ? 'Search lists and items...' : 'Search users...'}
-                className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100 transition-all duration-200"
+                className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100 transition-all duration-200"
                 autoFocus
                 autoComplete="on"
                 autoCorrect="on"
@@ -434,13 +434,13 @@ const SearchModal = ({
                         {userData.id !== user?.id && (
                           <button
                             onClick={() => handleFollowToggle(userData.id, userData.username)}
-                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                               followingUsers.has(userData.id)
                                 ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                 : 'bg-teal-600 text-white hover:bg-teal-700'
                             }`}
                           >
-                            {followingUsers.has(userData.id) ? 'Following' : 'Follow'}
+                            {followingUsers.has(userData.id) ? 'Following' : '+Follow'}
                           </button>
                         )}
                       </div>

@@ -1015,7 +1015,7 @@ const App = () => {
         console.log('🎉 [App] App initialization complete - showing app!');
         
         // 🏆 Trigger any pending sign-in achievements now that app is fully loaded
-        if (typeof window.triggerPendingSignInAchievements === 'function') {
+        if (typeof window !== 'undefined' && typeof window.triggerPendingSignInAchievements === 'function') {
           window.triggerPendingSignInAchievements();
         }
       }
@@ -1612,6 +1612,8 @@ const App = () => {
     setRefreshing(true);
     
     try {
+      // Ensure app is marked active so feed refresh doesn't get skipped
+      try { window.__APP_ACTIVE__ = true; } catch (_) {}
       // It is critical to await the data loading before setting refreshing to false
       await Promise.all([
         refreshLists(false),
@@ -1812,6 +1814,98 @@ const App = () => {
         >
           {currentScreen === 'home' && ( // Only render when actually on home tab
             <PullToRefresh onRefresh={handleHomeRefresh} disabled={refreshing}>
+              <div 
+                className="sticky bg-stone-50 z-10 pb-2" 
+                style={{ 
+                  backgroundColor: '#F6F6F4',
+                  top: (connectionError || isRetrying) ? '48px' : '0',
+                  paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
+                  paddingLeft: 'env(safe-area-inset-left)',
+                  paddingRight: 'env(safe-area-inset-right)'
+                }}
+              >
+                <div className="px-4 mb-3 flex items-baseline justify-between">
+                  <div className="flex items-baseline gap-3 pl-2">
+                    <span className="text-5xl md:text-6xl font-lateef text-gray-600 leading-none pb-4">
+                      bestlist
+                    </span>
+
+                    {/* Offline Status Indicator */}
+                    {!queueStatus.isOnline && (
+                      <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 rounded-full">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                        <span className="text-[9px] font-medium text-orange-700">Offline</span>
+                      </div>
+                    )}
+
+                    {/* Sync Status Indicator */}
+                    {queueStatus.pendingItems > 0 && (
+                      <button
+                        onClick={async () => {
+                          if (!queueStatus.isSyncing) {
+                            console.log('🔄 [UI] Manual sync triggered by user');
+                            try {
+                              await syncOfflineQueue();
+                              console.log('✅ [UI] Manual sync completed');
+                            } catch (error) {
+                              console.error('❌ [UI] Manual sync failed:', error);
+                            }
+                          }
+                        }}
+                        disabled={queueStatus.isSyncing}
+                        className="flex items-center gap-1 px-2 py-1 bg-blue-100 rounded-full hover:bg-blue-200 transition-colors disabled:cursor-not-allowed"
+                      >
+                        {queueStatus.isSyncing ? (
+                          <>
+                            <div className="w-2 h-2 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-[9px] font-medium text-blue-700">Syncing</span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="text-[9px] font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={handleSearch}
+                      className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
+                    >
+                      <Search className="w-4 h-4 text-gray-700" />
+                    </button>
+                    {/* Achievements header icon removed per redesign */}
+                    <div className="relative">
+                      <button 
+                        onClick={handleNotifications}
+                        className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
+                      >
+                        <Bell className="w-4 h-4 text-gray-700" />
+                        {unreadCount > 0 && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                            <span className="text-[10px] font-medium text-white">{unreadCount}</span>
+                          </div>
+                        )}
+                      </button>
+                      <div className="relative z-30">
+                        <NotificationsDropdown
+                          notifications={notifications}
+                          unreadCount={unreadCount}
+                          isOpen={isOpen}
+                          onClose={toggleOpen}
+                          onMarkRead={markAsRead}
+                          onMarkAllRead={markAllAsRead}
+                          onNavigateToPost={handleNavigateToPost}
+                          onNavigateToUser={handleNavigateToUser}
+                        />
+                      </div>
+                    </div>
+                    {/* Dropdown removed */}
+                  </div>
+                </div>
+              </div>
               <MainScreen
                 ref={mainScreenRef}
                 lists={lists}
@@ -1834,7 +1928,7 @@ const App = () => {
                 imagesLoaded={imagesLoaded}
                 onUpdateFeedPosts={handleUpdateFeedPosts}
                 onCameraReady={handleCameraReady}
-                isActive={currentScreen === 'home' && !appLoading && !isNavigating} // Pass active state, but not during app loading or navigation
+                isActive={currentScreen === 'home' && !appLoading} // Pass active state, but not during app loading
               />
             </PullToRefresh>
           )}
@@ -2013,102 +2107,7 @@ const App = () => {
       
 
       
-      {/* Header - Only show on MainScreen (home) */}
-      {currentScreen === 'home' && (
-        <div 
-          className="sticky bg-stone-50 z-10 pb-2" 
-          style={{ 
-            backgroundColor: '#F6F6F4',
-            top: (connectionError || isRetrying) ? '48px' : '0',
-            paddingTop: 'calc(env(safe-area-inset-top) + 48px)',
-            paddingLeft: 'env(safe-area-inset-left)',
-            paddingRight: 'env(safe-area-inset-right)'
-          }}
-        >
-                      <div className="px-4 mb-3 flex items-baseline justify-between">
-              <div className="flex items-baseline gap-3 pl-2">
-                <span className="text-5xl md:text-6xl font-lateef text-gray-600 leading-none pb-4">
-                  bestlist
-                </span>
-
-              
-              {/* Offline Status Indicator */}
-              {!queueStatus.isOnline && (
-                <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 rounded-full">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                  <span className="text-[9px] font-medium text-orange-700">Offline</span>
-                </div>
-              )}
-              
-              {/* Sync Status Indicator */}
-              {queueStatus.pendingItems > 0 && (
-                <button
-                  onClick={async () => {
-                    if (!queueStatus.isSyncing) {
-                      console.log('🔄 [UI] Manual sync triggered by user');
-                      try {
-                        await syncOfflineQueue();
-                        console.log('✅ [UI] Manual sync completed');
-                      } catch (error) {
-                        console.error('❌ [UI] Manual sync failed:', error);
-                      }
-                    }
-                  }}
-                  disabled={queueStatus.isSyncing}
-                  className="flex items-center gap-1 px-2 py-1 bg-blue-100 rounded-full hover:bg-blue-200 transition-colors disabled:cursor-not-allowed"
-                >
-                  {queueStatus.isSyncing ? (
-                    <>
-                      <div className="w-2 h-2 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-[9px] font-medium text-blue-700">Syncing</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-[9px] font-medium text-blue-700">{queueStatus.pendingItems} pending</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={handleSearch}
-                className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm"
-              >
-                <Search className="w-4 h-4 text-gray-700" />
-              </button>
-              {/* Achievements header icon removed per redesign */}
-              <div className="relative">
-                <button 
-                  onClick={handleNotifications}
-                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm relative"
-                >
-                  <Bell className="w-4 h-4 text-gray-700" />
-                  {unreadCount > 0 && (
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                      <span className="text-[10px] font-medium text-white">{unreadCount}</span>
-                    </div>
-                  )}
-                </button>
-                <div className="relative z-30">
-                  <NotificationsDropdown
-                    notifications={notifications}
-                    unreadCount={unreadCount}
-                    isOpen={isOpen}
-                    onClose={toggleOpen}
-                    onMarkRead={markAsRead}
-                    onMarkAllRead={markAllAsRead}
-                    onNavigateToPost={handleNavigateToPost}
-                    onNavigateToUser={handleNavigateToUser}
-                  />
-                </div>
-              </div>
-              {/* Dropdown removed */}
-            </div>
-          </div>
-        </div>
-      )}
+      
 
       {/* Main Content */}
       <main className="relative flex-1">

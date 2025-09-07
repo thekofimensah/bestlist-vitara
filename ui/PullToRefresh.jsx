@@ -174,11 +174,18 @@ const PullToRefresh = ({
         setIsRefreshing(true);
         setIsPulling(false);
         
-        // Trigger refresh and emit camera reset for MainScreen to handle safely
+        // Trigger refresh and reset camera state
         Promise.resolve(onRefresh()).finally(() => {
-          // Emit a custom event that MainScreen can listen for to restart camera
-          const resetEvent = new CustomEvent('feed:reset-camera');
+          // Reset camera state to guarantee it works even if failing
+          console.log('🔄 PullToRefresh: Resetting camera state');
+          
+          // Emit camera reset event for the camera manager
+          const resetEvent = new CustomEvent('camera:reset');
           window.dispatchEvent(resetEvent);
+
+          // Also emit the legacy event for backward compatibility
+          const legacyResetEvent = new CustomEvent('feed:reset-camera');
+          window.dispatchEvent(legacyResetEvent);
 
           setTimeout(() => {
             console.log('🔄 PullToRefresh: Refresh completed');

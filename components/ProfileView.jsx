@@ -18,6 +18,7 @@ import { uploadImageToStorage } from '../lib/imageStorage';
 import { saveAvatarUrl, getAvatarUrl, saveBasicProfile, getBasicProfile } from '../lib/localUserCache';
 import { Preferences } from '@capacitor/preferences';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
+import firstWorldIcon from '../assets/first-world-icon.svg';
 import useUserStats from '../hooks/useUserStats';
 
 // Helper functions for caching social counts
@@ -592,30 +593,30 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
 
             {/* Counts row (aligned with username/email) */}
             <div className="col-start-2 mt-2">
-              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] justify-items-start items-start text-center">
-                <div>
+              <div className="grid grid-cols-3 gap-6 w-full max-w-[320px] items-start mx-auto">
+                <div className="justify-self-start text-left">
                   {countsLoading || postsCount === null ? (
                     <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
                   ) : (
-                    <div className="text-2xl font-bold leading-none text-center">{postsCount}</div>
+                    <div className="text-2xl font-bold leading-none">{postsCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Items</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight">Items</div>
                 </div>
-                <button className="text-center" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
+                <button className="justify-self-center text-center" onClick={() => { setShowFollowing(false); setShowFollowers(true); loadPeople('followers'); }}>
                   {countsLoading || followersCount === null ? (
                     <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
                   ) : (
                     <div className="text-2xl font-bold leading-none text-gray-900">{followersCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Followers</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight">Followers</div>
                 </button>
-                <button className="text-center" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
+                <button className="justify-self-center text-center" onClick={() => { setShowFollowers(false); setShowFollowing(true); loadPeople('following'); }}>
                   {countsLoading || followingCount === null ? (
                     <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
                   ) : (
                     <div className="text-2xl font-bold leading-none text-gray-900">{followingCount}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-0.5 leading-tight text-center">Following</div>
+                  <div className="text-xs text-gray-500 mt-0.5 leading-tight">Following</div>
                 </button>
               </div>
             </div>
@@ -626,7 +627,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         <div>
           <div className="mb-2">
             <div className="relative inline-flex items-center">
-                              <span className="text-2xl text-gray-900 font-lateef">Achievements</span>
+                <span className="text-2xl text-gray-900 font-lateef">Achievements</span>
               {hadNewOnEnter && (
                 <span className="ml-2 w-2 h-2 bg-red-500 rounded-full"></span>
               )}
@@ -645,7 +646,16 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
                       className="flex flex-col items-center"
                     >
                       <div className="w-14 h-14 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-xl relative" style={{ lineHeight: '1', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-                        {ua.achievements?.icon || '🏆'}
+                        {ua.achievements?.name === 'First in World' ? (
+                          <img
+                            src={firstWorldIcon}
+                            alt="First in World"
+                            className="w-6 h-6"
+                            style={{ objectFit: 'contain' }}
+                          />
+                        ) : (
+                          ua.achievements?.icon || '🏆'
+                        )}
                         {ua.count > 1 && (
                           <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[10px] bg-teal-600 text-white">x{ua.count}</span>
                         )}

@@ -4,6 +4,55 @@ import { Star, Heart, MessageCircle, Share, X, UserPlus, UserMinus } from 'lucid
 import ProgressiveImage from './ui/ProgressiveImage';
 import { likePost, unlikePost, followUser, unfollowUser, supabase } from '../lib/supabase';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
+import { Preferences } from '@capacitor/preferences';
+
+// Follow state cache functions
+const FOLLOW_STATE_KEY = (followerId, followingId) => `follow_state_${followerId}_${followingId}`;
+
+const saveFollowStateCache = async (followerId, followingId, isFollowing) => {
+  if (!followerId || !followingId) return;
+  try {
+    const key = FOLLOW_STATE_KEY(followerId, followingId);
+    const cacheData = {
+      isFollowing,
+      timestamp: Date.now()
+    };
+    await Preferences.set({
+      key,
+      value: JSON.stringify(cacheData)
+    });
+  } catch (error) {
+    console.warn('Failed to save follow state to cache:', error);
+  }
+};
+
+const getFollowStateCache = async (followerId, followingId) => {
+  if (!followerId || !followingId) return null;
+  try {
+    const key = FOLLOW_STATE_KEY(followerId, followingId);
+    const { value } = await Preferences.get({ key });
+    if (value) {
+      const parsed = JSON.parse(value);
+      // Cache for 24 hours
+      if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+        return parsed.isFollowing;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load follow state from cache:', error);
+  }
+  return null;
+};
+
+const clearFollowStateCache = async (followerId, followingId) => {
+  if (!followerId || !followingId) return;
+  try {
+    const key = FOLLOW_STATE_KEY(followerId, followingId);
+    await Preferences.remove({ key });
+  } catch (error) {
+    console.warn('Failed to clear follow state cache:', error);
+  }
+};
 
 // Enhanced StarRating component using Lucide icons
 const StarRating = memo(({ rating, size = 'lg' }) => {
@@ -26,7 +75,7 @@ const StarRating = memo(({ rating, size = 'lg' }) => {
 const PostCardSkeleton = memo(() => (
   <div className="bg-white mb-4 shadow-sm overflow-hidden animate-pulse">
     {/* Header */}
-    <div className="flex items-center gap-3 px-5 pt-4 mb-3">
+    <div className="flex items-center gap-3 px-4 pt-4 mb-3">
       <div className="w-8 h-8 rounded-full bg-gray-200" />
       <div className="flex-1">
         <div className="h-4 bg-gray-200 rounded mb-1 w-24" />
@@ -42,7 +91,7 @@ const PostCardSkeleton = memo(() => (
     <div className="w-full aspect-square bg-gray-200 mb-3" />
 
     {/* Content */}
-    <div className="px-5 space-y-2">
+    <div className="px-4 space-y-2">
       <div className="h-5 bg-gray-200 rounded w-3/4" />
       <div className="h-4 bg-gray-200 rounded w-full" />
       <div className="h-4 bg-gray-200 rounded w-1/2" />
@@ -77,23 +126,82 @@ const OptimizedPostCard = memo(({
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
   
-  // Initialize follow state to match PublicUserProfile behavior
+  // Initialize follow state with caching
   useEffect(() => {
     (async () => {
       try {
         const user = (await supabase.auth.getUser()).data.user;
         if (!user || !post?.user_id) return;
+
+        // First check cache
+        const cachedFollowState = await getFollowStateCache(user.id, post.user_id);
+        if (cachedFollowState !== null) {
+          setIsFollowing(cachedFollowState);
+          return;
+        }
+
+        // If not in cache, fetch from database
         const { data, error } = await supabase
           .from('follows')
           .select('id')
           .eq('follower_id', user.id)
           .eq('following_id', post.user_id)
           .limit(1);
+
         if (!error) {
-          setIsFollowing((data || []).length > 0);
+          const isFollowingUser = (data || []).length > 0;
+          setIsFollowing(isFollowingUser);
+          // Save to cache
+          await saveFollowStateCache(user.id, post.user_id, isFollowingUser);
         }
+      } catch (error) {
+        console.warn('Error initializing follow state:', error);
+      }
+    })();
+  }, [post?.user_id]);
+
+  // Listen for global follow/unfollow events to keep state in sync across app
+  useEffect(() => {
+    let currentUserId = null;
+    let targetUserId = post?.user_id || null;
+    (async () => {
+      try {
+        const authUser = (await supabase.auth.getUser()).data.user;
+        currentUserId = authUser?.id || null;
       } catch (_) {}
     })();
+
+    const handleFollowed = (e) => {
+      const followerId = e?.detail?.followerId;
+      const followingId = e?.detail?.followingId;
+      if (!currentUserId || !targetUserId) return;
+      if (followerId === currentUserId && followingId === targetUserId) {
+        setIsFollowing(true);
+        saveFollowStateCache(currentUserId, targetUserId, true).catch(() => {});
+      }
+    };
+
+    const handleUnfollowed = (e) => {
+      const followerId = e?.detail?.followerId;
+      const followingId = e?.detail?.followingId;
+      if (!currentUserId || !targetUserId) return;
+      if (followerId === currentUserId && followingId === targetUserId) {
+        setIsFollowing(false);
+        saveFollowStateCache(currentUserId, targetUserId, false).catch(() => {});
+      }
+    };
+
+    try {
+      window.addEventListener('user:followed', handleFollowed);
+      window.addEventListener('user:unfollowed', handleUnfollowed);
+    } catch (_) {}
+
+    return () => {
+      try {
+        window.removeEventListener('user:followed', handleFollowed);
+        window.removeEventListener('user:unfollowed', handleUnfollowed);
+      } catch (_) {}
+    };
   }, [post?.user_id]);
 
   // Show skeleton while loading
@@ -157,11 +265,18 @@ const OptimizedPostCard = memo(({
       // Optimistic update
       setIsFollowing(newFollowState);
 
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return;
+
       if (newFollowState) {
         await followUser(post.user_id);
       } else {
         await unfollowUser(post.user_id);
       }
+
+      // Update cache with new follow state
+      await saveFollowStateCache(user.id, post.user_id, newFollowState);
+
     } catch (error) {
       console.error('Follow/unfollow error:', error);
       // Revert optimistic update on error
@@ -179,37 +294,35 @@ const OptimizedPostCard = memo(({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Header - Product name, list name left; Follow button right */}
-      <div className="px-5 pt-4 mb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1" style={{ maxWidth: '75%' }}>
-            <div className="text-xl font-normal text-gray-900 line-clamp-1">
-              {post.item_name}
-            </div>
-            {post.list_name && (
-              <div className="pt-0.1 px-0.5">
-                <div className="text-sm text-gray-450">
-                  {post.list_name}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* (Follow button moved below) */}
-        </div>
+     {/* Header - Product name and list name with elegant hierarchy */}
+    <div className="px-4 pt-4 mb-2">
+      {/* Product name - primary emphasis */}
+      <div
+        className="text-[1.35rem] font-medium text-gray-900 line-clamp-1"
+        style={{ maxWidth: '90%' }}
+      >
+        {post.item_name}
       </div>
-
-      {/* Follow button row, right-aligned, above image */}
+      
+      {/* List name and follow button row */}
       {post.list_name && (
-        <div className="px-5 -mt-2 mb-1 flex justify-end">
+        <div className="flex items-center justify-between">
+          {/* List name with subtle styling */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400 font-medium uppercase tracking-wider -mt-1">
+              {post.list_name}
+            </span>
+          </div>
+          
+          {/* Follow button */}
           <button
             onClick={handleFollowToggle}
             disabled={isFollowLoading}
-            className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors flex items-center gap-1 ${
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 flex items-center gap-1.5 ${
               isFollowing
-                ? 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                : 'border border-teal-700 text-teal-700 hover:bg-teal-50'
-            } disabled:opacity-50`}
+                ? 'bg-gray-100 text-gray-600 hover:bg-gray-150 border border-gray-200'
+                : 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+            } disabled:opacity-50 shadow-sm hover:shadow-md`}
           >
             {isFollowLoading ? (
               <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div>
@@ -227,6 +340,7 @@ const OptimizedPostCard = memo(({
           </button>
         </div>
       )}
+    </div>
 
       {/* Image with user avatar overlay in TOP RIGHT */}
       <div 
@@ -263,7 +377,7 @@ const OptimizedPostCard = memo(({
               thumbnailUrl={post.user?.avatar}
               fullUrl={post.user?.avatar}
               alt={post.user?.name}
-              className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-lg"
+              className="w-10 h-10 rounded-full object-cover border-1 border-white shadow-lg"
               priority="high"
               lazyLoad={false}
               useThumbnail={false}
@@ -287,7 +401,7 @@ const OptimizedPostCard = memo(({
       </div>
 
       {/* Stars + Share/Trophy in the same row */}
-      <div className="px-5 mb-1">
+      <div className="px-4 mb-1">
         <div className="flex items-center justify-between">
           <StarRating rating={post.rating} size="lg" />
           <div className="flex items-center gap-2">
@@ -321,10 +435,10 @@ const OptimizedPostCard = memo(({
 
       {/* User's product description (post.notes) directly under image */}
       {post.snippet && (
-        <div className="px-5 mb-3">
+        <div className="px-4 mb-3">
           <div className="flex items-start justify-between gap-3">
             {/* Snippet text on the left - 75% width */}
-            <div className="flex-1" style={{ maxWidth: '75%' }}>
+            <div className="flex-1" style={{ maxWidth: '85%' }}>
               <p className="text-base text-gray-700 font-normal line-clamp-2">"{post.snippet}"</p>
               {/* Location under snippet if exists */}
               {post.location && (
@@ -341,7 +455,7 @@ const OptimizedPostCard = memo(({
       )}
 
       {/* Actions */}
-      <div className="flex items-center justify-between px-5 py-2">
+      <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-4">
           <button
             onClick={handleLike}
@@ -367,7 +481,7 @@ const OptimizedPostCard = memo(({
 
       {/* Likes count */}
       {likeCount > 0 && (
-        <div className="px-5">
+        <div className="px-4">
           <p className="text-sm font-medium text-gray-900 mb-1">
             {likeCount} {likeCount === 1 ? 'like' : 'likes'}
           </p>
@@ -375,7 +489,7 @@ const OptimizedPostCard = memo(({
       )}
 
       {/* Comments */}
-      <div className="px-5 pb-3">
+      <div className="px-4 pb-3">
         {post.comments > 0 && (
           <button
             onClick={(e) => {
@@ -396,7 +510,7 @@ const OptimizedPostCard = memo(({
 
       {/* First in World Achievement Popup */}
       {showFirstInWorldPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-5">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl p-8 max-w-xs mx-auto relative text-center">
             {/* Close button */}
             <button

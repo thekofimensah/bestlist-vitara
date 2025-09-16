@@ -261,10 +261,21 @@ Addd share button on feed
 
 Slide to delete deosn't change the listsview instantly
 
+
 Intro sequence?
+
+Keep all of your bests in one place
+
+Capture and review them
+
+Let your friends see them too
+
+
 
 Add shared lists feature
 
 Tracking
 Share buttons clicked
 Invite buttons clicked
+
+Change suggestions for the "woulds" to be last

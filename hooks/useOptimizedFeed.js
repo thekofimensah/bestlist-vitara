@@ -14,6 +14,33 @@ const feedPostsCache = new Map();
 // Map<userId, { posts: any[] }>
 const offlinePostsCache = new Map();
 const FEED_CACHE_MAX_POSTS = 300;
+const MAX_CACHE_ENTRIES = 10; // Limit number of cached feeds/profiles to prevent memory leak
+const CACHE_CLEANUP_INTERVAL = 60000; // Clean up every minute
+
+// Cache cleanup functions to prevent memory leaks
+const cleanupCache = (cache, maxEntries) => {
+  if (cache.size > maxEntries) {
+    const entries = Array.from(cache.entries());
+    const toDelete = entries.slice(0, Math.floor(maxEntries / 2));
+    toDelete.forEach(([key]) => cache.delete(key));
+    console.log(`🧹 [FeedCache] Cleaned up ${toDelete.length} cache entries`);
+  }
+};
+
+// Periodic cleanup
+let cleanupTimer = null;
+const startCacheCleanup = () => {
+  if (!cleanupTimer) {
+    cleanupTimer = setInterval(() => {
+      cleanupCache(profilePostsCache, MAX_CACHE_ENTRIES);
+      cleanupCache(feedPostsCache, MAX_CACHE_ENTRIES);
+      cleanupCache(offlinePostsCache, MAX_CACHE_ENTRIES);
+    }, CACHE_CLEANUP_INTERVAL);
+  }
+};
+
+// Start cleanup on module load
+startCacheCleanup();
 // Simple offline detector (Capacitor-aware would be nicer, but this is safe & synchronous)
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
@@ -26,11 +53,26 @@ const FEED_POSTS_CACHE_KEY = (feedType) => `feed_posts_${feedType}`;
 const saveProfilePostsLocal = async (userId, cacheData) => {
   if (!userId || !cacheData) return;
   try {
+    // Limit cache size to prevent OOM from large Capacitor bridge payloads
+    const limitedCache = {
+      ...cacheData,
+      posts: cacheData.posts?.slice(0, 30) || [] // Limit to 30 posts max for profiles
+    };
+    
+    const serialized = JSON.stringify(limitedCache);
+    const sizeMB = (serialized.length / (1024 * 1024)).toFixed(2);
+    
+    // Don't save if payload is too large (>3MB)
+    if (serialized.length > 3 * 1024 * 1024) {
+      console.warn(`⚠️ [ProfileCache] Skipping save - payload too large: ${sizeMB}MB`);
+      return;
+    }
+    
     await Preferences.set({ 
       key: PROFILE_POSTS_CACHE_KEY(userId), 
-      value: JSON.stringify(cacheData) 
+      value: serialized
     });
-    console.log('💾 [ProfileCache] Saved profile posts to persistent storage');
+    console.log(`💾 [ProfileCache] Saved profile posts to persistent storage for userId: ${userId} (${sizeMB}MB, ${limitedCache.posts.length} posts)`);
   } catch (error) {
     console.warn('⚠️ [ProfileCache] Failed to save to persistent storage:', error);
   }
@@ -55,11 +97,26 @@ const getProfilePostsLocal = async (userId) => {
 const saveFeedPostsLocal = async (feedType, cacheData) => {
   if (!feedType || !cacheData) return;
   try {
+    // Limit cache size to prevent OOM from large Capacitor bridge payloads
+    const limitedCache = {
+      ...cacheData,
+      posts: cacheData.posts?.slice(0, 50) || [] // Limit to 50 posts max
+    };
+    
+    const serialized = JSON.stringify(limitedCache);
+    const sizeMB = (serialized.length / (1024 * 1024)).toFixed(2);
+    
+    // Don't save if payload is too large (>5MB)
+    if (serialized.length > 5 * 1024 * 1024) {
+      console.warn(`⚠️ [FeedCache] Skipping save - payload too large: ${sizeMB}MB`);
+      return;
+    }
+    
     await Preferences.set({ 
       key: FEED_POSTS_CACHE_KEY(feedType), 
-      value: JSON.stringify(cacheData) 
+      value: serialized
     });
-    console.log('💾 [FeedCache] Saved feed posts to persistent storage for feedType:', feedType);
+    console.log(`💾 [FeedCache] Saved feed posts to persistent storage for feedType: ${feedType} (${sizeMB}MB, ${limitedCache.posts.length} posts)`);
   } catch (error) {
     console.warn('⚠️ [FeedCache] Failed to save to persistent storage:', error);
   }
@@ -407,6 +464,14 @@ export const useOptimizedFeed = (feedType = 'following', options = {}) => {
         ...prev,
         [postId]: state
       };
+      
+      // Cleanup old image states to prevent memory leak (keep last 200)
+      const stateEntries = Object.entries(newStates);
+      if (stateEntries.length > 200) {
+        const recentStates = Object.fromEntries(stateEntries.slice(-200));
+        console.log(`🧹 [FeedImageStates] Cleaned up ${stateEntries.length - 200} old image states`);
+        return recentStates;
+      }
       
       // Check if all images are loaded
       const allStates = Object.values(newStates);

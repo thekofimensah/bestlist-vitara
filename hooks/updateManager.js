@@ -32,6 +32,14 @@ export async function checkForUpdate() {
       console.log('[Update] No local update found, proceeding with remote update check');
     }
 
+    // Guard: On native without streaming download support, skip remote update to avoid OOM from large bridge payloads
+    const isNative = Capacitor.isNativePlatform?.();
+    const canDownloadNatively = isNative && typeof Filesystem.downloadFile === 'function';
+    if (isNative && !canDownloadNatively) {
+      console.log('[Update] Skipping remote update on native (no streaming download support)');
+      return;
+    }
+
     const res = await fetch(VERSION_URL);
     if (!res.ok) throw new Error(`Failed to fetch version: ${res.status}`);
     
@@ -95,22 +103,38 @@ async function downloadUpdateFiles(baseUrl, retryCount = 0) {
     const assets = await bundleRes.json();
     if (!assets || !assets.files) throw new Error('Invalid assets.json format');
 
+    const isNative = Capacitor.isNativePlatform?.();
+    const canDownloadNatively = isNative && typeof Filesystem.downloadFile === 'function';
+
     // Download each file in the bundle
     for (const file of assets.files) {
-      const fileRes = await fetch(`${baseUrl}${file}`);
-      if (!fileRes.ok) throw new Error(`Failed to fetch ${file}: ${fileRes.status}`);
-      
-      const fileContent = await fileRes.text();
-      if (!fileContent) throw new Error(`Empty file: ${file}`);
-
-      // Verify file integrity
-      if (fileContent.length < 10) throw new Error(`Suspiciously small file: ${file}`);
-
-      await Filesystem.writeFile({
-        path: `${UPDATE_DIR}/${file}`,
-        data: fileContent,
-        directory: Directory.Data,
-      });
+      const destPath = `${UPDATE_DIR}/${file}`;
+      if (canDownloadNatively) {
+        // Ensure nested directories exist
+        const parts = file.split('/');
+        if (parts.length > 1) {
+          const nestedDir = `${UPDATE_DIR}/${parts.slice(0, -1).join('/')}`;
+          try {
+            await Filesystem.mkdir({ path: nestedDir, directory: Directory.Data, recursive: true });
+          } catch (_) {}
+        }
+        await Filesystem.downloadFile({
+          url: `${baseUrl}${file}`,
+          path: destPath,
+          directory: Directory.Data,
+        });
+      } else {
+        const fileRes = await fetch(`${baseUrl}${file}`);
+        if (!fileRes.ok) throw new Error(`Failed to fetch ${file}: ${fileRes.status}`);
+        const fileContent = await fileRes.text();
+        if (!fileContent) throw new Error(`Empty file: ${file}`);
+        if (fileContent.length < 10) throw new Error(`Suspiciously small file: ${file}`);
+        await Filesystem.writeFile({
+          path: destPath,
+          data: fileContent,
+          directory: Directory.Data,
+        });
+      }
     }
 
     return true;

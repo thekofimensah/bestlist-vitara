@@ -2,8 +2,18 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { getLocalFirstUrl, getCachedLocalUrl } from '../../lib/localImageCache';
 
-// Image cache to prevent re-loading images
+// Image cache to prevent re-loading images (with size limit to prevent memory leak)
 const ImageCache = new Map();
+const MAX_CACHE_SIZE = 100; // Limit cache to 100 images
+
+const cleanupImageCache = () => {
+  if (ImageCache.size > MAX_CACHE_SIZE) {
+    const entries = Array.from(ImageCache.entries());
+    const toDelete = entries.slice(0, Math.floor(MAX_CACHE_SIZE / 2));
+    toDelete.forEach(([key]) => ImageCache.delete(key));
+    console.log(`🧹 [ProgressiveImage] Cleaned up ${toDelete.length} cached images`);
+  }
+};
 
 const ProgressiveImage = ({
   thumbnailUrl,
@@ -27,8 +37,12 @@ const ProgressiveImage = ({
   const imgRef = useRef(null);
   const imageElRef = useRef(null);
   const observerRef = useRef(null);
+  const loadingImageRef = useRef(null); // Track loading Image objects for cleanup
   const [isIntersecting, setIsIntersecting] = useState(!lazyLoad);
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+  // Cleanup hook to prevent memory leaks
+  useImageCleanup(loadingImageRef);
 
   // Determine which URL to use
   const actualThumbnailUrl = useThumbnail && thumbnailUrl ? thumbnailUrl : null;
@@ -75,7 +89,16 @@ const ProgressiveImage = ({
     console.log('🔄 [ProgressiveImage] Loading new image:', url.substring(0, 50) + '...');
 
     return new Promise((resolve, reject) => {
+      // Clean up any existing loading image
+      if (loadingImageRef.current) {
+        loadingImageRef.current.onload = null;
+        loadingImageRef.current.onerror = null;
+        loadingImageRef.current.src = '';
+        loadingImageRef.current = null;
+      }
+      
       const img = new Image();
+      loadingImageRef.current = img; // Store reference for cleanup
       
       // Set CORS for Supabase storage URLs
       if (url.includes('supabase')) {
@@ -94,10 +117,12 @@ const ProgressiveImage = ({
       img.onload = () => {
         console.log('✅ [ProgressiveImage] Image loaded successfully:', url.substring(0, 50) + '...');
         ImageCache.set(url, true);
+        cleanupImageCache(); // Clean up cache to prevent memory leak
         setCurrentSrc(url);
         setLoadState('loaded');
         onLoad?.(url);
         onLoadStateChange?.(postId, 'loaded');
+        loadingImageRef.current = null; // Clear reference
         resolve();
       };
 
@@ -106,6 +131,7 @@ const ProgressiveImage = ({
         setLoadState('error');
         onError?.(url);
         onLoadStateChange?.(postId, 'error');
+        loadingImageRef.current = null; // Clear reference
         reject(new Error(`Failed to load image: ${url}`));
       };
 
@@ -364,6 +390,21 @@ const ProgressiveImage = ({
       )}
     </div>
   );
+};
+
+// Cleanup effect to prevent memory leaks
+const useImageCleanup = (loadingImageRef) => {
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      if (loadingImageRef.current) {
+        loadingImageRef.current.onload = null;
+        loadingImageRef.current.onerror = null;
+        loadingImageRef.current.src = '';
+        loadingImageRef.current = null;
+      }
+    };
+  }, [loadingImageRef]);
 };
 
 export default ProgressiveImage;

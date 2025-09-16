@@ -5,10 +5,20 @@ import App from './App.jsx';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 import { checkForUpdate } from './hooks/updateManager';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { initStartupProfiler } from './lib/startupProfiler';
 
 defineCustomElements(window);
 
-// Check for updates on app start
+// Profiler disabled - causing startup issues
+// setTimeout(() => {
+//   try { 
+//     initStartupProfiler(); 
+//   } catch (e) { 
+//     console.error('Profiler failed:', e); 
+//   }
+// }, 100);
+
+// Check for updates on app start (non-blocking)
 checkForUpdate().catch(console.error);
 
 createRoot(document.getElementById('root')).render(

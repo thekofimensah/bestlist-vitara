@@ -236,12 +236,12 @@ export const useNotifications = (userId) => {
           }
         };
         
-        // Check every few seconds, but only when document is visible
+        // Check less frequently to save memory
         const intervalId = setInterval(() => {
           if (document.visibilityState === 'visible') {
             checkAppState();
           }
-        }, 2000);
+        }, 10000); // Reduced from 2s to 10s
         
         // Additional cleanup on visibility change to prevent background requests
         const handleVisibilityChange = () => {

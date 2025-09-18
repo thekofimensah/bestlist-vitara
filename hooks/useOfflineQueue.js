@@ -179,7 +179,7 @@ export const useOfflineQueue = () => {
   // Auto-update status periodically when there are pending items
   useEffect(() => {
     if (queueStatus.pendingItems > 0) {
-      let interval = setInterval(updateStatus, 5000); // Update every 5 seconds
+      let interval = setInterval(updateStatus, 15000); // Update every 15 seconds (reduced from 5s)
       
       // Stop the interval when app goes to background to prevent network requests
       const handleVisibilityChange = () => {
@@ -189,7 +189,7 @@ export const useOfflineQueue = () => {
         } else if (document.visibilityState === 'visible' && queueStatus.pendingItems > 0) {
           console.log('📡 [useOfflineQueue] App foregrounded - resuming status updates');
           clearInterval(interval); // Clear any existing interval
-          interval = setInterval(updateStatus, 5000);
+          interval = setInterval(updateStatus, 15000);
           
           // Try to sync when app comes back to foreground if online
           if (navigator.onLine) {

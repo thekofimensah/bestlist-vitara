@@ -24,10 +24,10 @@ const logErrorEventSafely = async (errorData) => {
 const useUserTracking = () => {
   const { user } = useAuth();
   const [isTracking, setIsTracking] = useState(false);
-  // Session tracking (separate from sign-in count)
+  // Session tracking (separate from sign-in count) - optimized for memory
   const INACTIVITY_MS = 15 * 60 * 1000; // 15 minutes
-  const TICK_MS = 5000; // accumulate every 5s
-  const FLUSH_MS = 60000; // send to server once per minute
+  const TICK_MS = 15000; // accumulate every 15s (reduced from 5s)
+  const FLUSH_MS = 120000; // send to server every 2 minutes (reduced from 1 minute)
 
 
   // Refs/state for session lifecycle

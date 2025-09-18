@@ -13,9 +13,9 @@ const feedPostsCache = new Map();
 // Offline posts cache for immediate display before sync
 // Map<userId, { posts: any[] }>
 const offlinePostsCache = new Map();
-const FEED_CACHE_MAX_POSTS = 300;
+const FEED_CACHE_MAX_POSTS = 50; // Reduced from 300 to prevent memory issues
 const MAX_CACHE_ENTRIES = 10; // Limit number of cached feeds/profiles to prevent memory leak
-const CACHE_CLEANUP_INTERVAL = 60000; // Clean up every minute
+const CACHE_CLEANUP_INTERVAL = 300000; // Clean up every 5 minutes (reduced frequency)
 
 // Cache cleanup functions to prevent memory leaks
 const cleanupCache = (cache, maxEntries) => {

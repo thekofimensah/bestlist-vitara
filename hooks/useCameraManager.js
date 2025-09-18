@@ -1,149 +1,149 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import cameraManager from '../lib/cameraManager';
 
 /**
- * React hook for camera management integration
+ * Simplified React hook for camera management
+ * 
+ * @param {Object} videoRef - React ref to video element
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.shouldBeActive - Whether camera should be active
+ * @returns {Object} Camera state and control functions
  */
-export const useCameraManager = (videoRef, containerRef, options = {}) => {
+export const useCameraManager = (videoRef, options = {}) => {
+  const { shouldBeActive = true } = options;
+  
+  // Track camera state
   const [state, setState] = useState(cameraManager.getState());
-  const [videoReady, setVideoReady] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  
+  // Track if we've initialized
   const initializeRef = useRef(false);
-
-  // Initialize camera manager
+  const cleanupRef = useRef(false);
+  
+  // Initialize camera manager with video element
   useEffect(() => {
-    if (!videoRef.current || !containerRef.current || initializeRef.current) {
+    if (!videoRef?.current || initializeRef.current) {
       return;
     }
-
-    const initialize = async () => {
-      try {
-        await cameraManager.initialize(videoRef.current, containerRef.current);
-        initializeRef.current = true;
-        console.log('📷 [useCameraManager] Camera manager initialized');
-      } catch (error) {
-        console.error('📷 [useCameraManager] Initialization failed:', error);
-      }
-    };
-
-    initialize();
-
-    // Cleanup on unmount
-    return () => {
-      if (initializeRef.current) {
-        cameraManager.destroy();
-        initializeRef.current = false;
-      }
-    };
-  }, [videoRef, containerRef]);
-
-  // Listen to camera manager events
+    
+    console.log('📷 [useCameraManager] Initializing camera manager');
+    cameraManager.initialize(videoRef.current);
+    initializeRef.current = true;
+  }, [videoRef]);
+  
+  // Listen to camera events
   useEffect(() => {
     const handleCameraEvent = (event, data) => {
-      console.log('📷 [useCameraManager] Event:', event, data);
+      console.log(`📷 [useCameraManager] Event: ${event}`, data);
+      setState(data.state);
       
-      switch (event) {
-        case 'started':
-          setState(cameraManager.getState());
-          break;
-        case 'ready':
-          setVideoReady(true);
-          setState(cameraManager.getState());
-          break;
-        case 'stopped':
-          setVideoReady(false);
-          setState(cameraManager.getState());
-          break;
-        case 'error':
-          setState(cameraManager.getState());
-          break;
-        case 'flashToggled':
-          setState(cameraManager.getState());
-          break;
+      // Clear restarting flag when camera starts or errors
+      if (event === 'started' || event === 'error') {
+        setIsRestarting(false);
       }
     };
-
-    const removeListener = cameraManager.addEventListener(handleCameraEvent);
     
-    return removeListener;
+    const unsubscribe = cameraManager.addEventListener(handleCameraEvent);
+    
+    // Get initial state
+    setState(cameraManager.getState());
+    
+    return () => {
+      unsubscribe();
+    };
   }, []);
-
-  // Update camera manager conditions based on props
+  
+  // Handle camera activation based on shouldBeActive prop
   useEffect(() => {
-    if (options.appActive !== undefined) {
-      cameraManager.updateCondition('appActive', options.appActive);
-    }
-  }, [options.appActive]);
-
-  useEffect(() => {
-    if (options.modalOpen !== undefined) {
-      cameraManager.updateCondition('modalOpen', options.modalOpen);
-    }
-  }, [options.modalOpen]);
-
-  useEffect(() => {
-    if (options.capturing !== undefined) {
-      cameraManager.updateCondition('capturing', options.capturing);
-    }
-  }, [options.capturing]);
-
-  useEffect(() => {
-    if (options.hasImage !== undefined) {
-      cameraManager.updateCondition('hasImage', options.hasImage);
-    }
-  }, [options.hasImage]);
-
-  // Camera control functions with safety checks
-  const toggleFlash = () => {
     if (!initializeRef.current) {
-      console.warn('📷 [useCameraManager] toggleFlash called before initialization');
+      return;
+    }
+    
+    const handleActivation = async () => {
+      try {
+        if (shouldBeActive && !state.isActive && !state.isStarting) {
+          console.log('📷 [useCameraManager] Activating camera (shouldBeActive=true)');
+          await cameraManager.start();
+        } else if (!shouldBeActive && (state.isActive || state.isStarting)) {
+          console.log('📷 [useCameraManager] Deactivating camera (shouldBeActive=false)');
+          await cameraManager.stop();
+        }
+      } catch (error) {
+        console.error('📷 [useCameraManager] Activation error:', error);
+      }
+    };
+    
+    handleActivation();
+  }, [shouldBeActive, state.isActive, state.isStarting]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (!cleanupRef.current) {
+        cleanupRef.current = true;
+        console.log('📷 [useCameraManager] Component unmounting - stopping camera');
+        // Use synchronous stop to avoid issues during unmount
+        cameraManager.stop().catch(error => {
+          console.warn('📷 [useCameraManager] Error stopping camera during unmount:', error);
+        });
+      }
+    };
+  }, []);
+  
+  // Control functions
+  const toggleFlash = useCallback(async () => {
+    try {
+      return await cameraManager.toggleFlash();
+    } catch (error) {
+      console.error('📷 [useCameraManager] Flash toggle error:', error);
       return false;
     }
-    return cameraManager.toggleFlash();
-  };
+  }, []);
   
-  const flipCamera = () => {
-    if (!initializeRef.current) {
-      console.warn('📷 [useCameraManager] flipCamera called before initialization');
-      return;
+  const flipCamera = useCallback(async () => {
+    try {
+      setIsRestarting(true);
+      await cameraManager.flipCamera();
+    } catch (error) {
+      console.error('📷 [useCameraManager] Flip camera error:', error);
+      setIsRestarting(false);
     }
-    return cameraManager.flipCamera();
-  };
+  }, []);
   
-  const captureImage = () => {
-    if (!initializeRef.current) {
-      console.warn('📷 [useCameraManager] captureImage called before initialization');
-      throw new Error('Camera manager not initialized');
+  const captureImage = useCallback(() => {
+    try {
+      return cameraManager.captureImage();
+    } catch (error) {
+      console.error('📷 [useCameraManager] Capture error:', error);
+      return null;
     }
-    return cameraManager.captureImage();
-  };
+  }, []);
   
-  const forceRestart = () => {
-    if (!initializeRef.current) {
-      console.warn('📷 [useCameraManager] forceRestart called before initialization');
-      return;
+  const forceRestart = useCallback(async () => {
+    try {
+      console.log('📷 [useCameraManager] Force restart requested');
+      setIsRestarting(true);
+      await cameraManager.restart();
+    } catch (error) {
+      console.error('📷 [useCameraManager] Restart error:', error);
+      setIsRestarting(false);
     }
-    return cameraManager.forceRestart();
-  };
-
-
+  }, []);
+  
   return {
     // State
     isActive: state.isActive,
     isStarting: state.isStarting,
-    videoReady,
+    videoReady: state.videoReady,
     error: state.error,
     facingMode: state.facingMode,
     flashEnabled: state.flashEnabled,
+    isRestarting,
     
-    // Controls
+    // Control functions
     toggleFlash,
     flipCamera,
     captureImage,
-    forceRestart,
-    
-    // Manager instance (for advanced usage)
-    manager: cameraManager
+    forceRestart
   };
 };
-
-export default useCameraManager;

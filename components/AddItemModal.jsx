@@ -580,95 +580,36 @@ const AddItemModal = ({
       setIsSearchingPlaces(true);
       setIsSearchingLocation(true);
 
-      // Search places (Google Places API)
+      // Search places (Supabase Edge Function - Google Places API)
       const searchPlaces = async () => {
         try {
-          const apiKey = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
-          console.log('🔍 [Places Search] API Key check:', apiKey ? 'Found' : 'Missing');
+          console.log('🔍 [Places Search] Calling Edge Function...');
+          console.log('🔍 [Places Search] Query:', query);
+          console.log('🔍 [Places Search] Current coords:', currentCoords);
 
-          if (!apiKey) {
-            console.error('⚠️ Google Places API key not found in VITE_GOOGLE_PLACES_API_KEY');
+          const { data, error } = await supabase.functions.invoke('search-places', {
+            body: {
+              query: query,
+              latitude: currentCoords?.lat,
+              longitude: currentCoords?.lon
+            }
+          });
+
+          if (error) {
+            console.error('🔍 [Places Search] Edge Function error:', error);
             setPlaceResults([]);
             return;
           }
 
-          // Use Google Places API Text Search (New) for food establishments
-          const url = `https://places.googleapis.com/v1/places:searchText`;
+          console.log('🔍 [Places Search] Edge Function response:', data);
 
-          const requestBody = {
-            textQuery: query,
-            maxResultCount: 6,
-            locationBias: currentCoords ? {
-              circle: {
-                center: {
-                  latitude: currentCoords.lat,
-                  longitude: currentCoords.lon
-                },
-                radius: 50000 // 50km radius
-              }
-            } : undefined
-          };
-
-          console.log('🔍 [Places Search] Request URL:', url);
-          console.log('🔍 [Places Search] Request body:', JSON.stringify(requestBody, null, 2));
-          console.log('🔍 [Places Search] Using coords:', currentCoords);
-
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Goog-Api-Key': apiKey,
-              'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types,places.primaryType'
-            },
-            body: JSON.stringify(requestBody)
-          });
-
-          console.log('🔍 [Places Search] Response status:', response.status, response.statusText);
-
-          if (!response.ok) {
-            console.log('🔍 [Places Search] New API failed, trying fallback...');
-            // Fallback to legacy Text Search if new API fails
-            const types = 'restaurant|cafe|bakery|supermarket|grocery_or_supermarket|meal_takeaway|food';
-            const legacyUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&type=${types}&key=${apiKey}`;
-            console.log('🔍 [Places Search] Fallback URL:', legacyUrl);
-            const legacyResponse = await fetch(legacyUrl);
-            const legacyData = await legacyResponse.json();
-            console.log('🔍 [Places Search] Fallback response:', legacyData);
-
-            if (legacyData.status === 'OK' && legacyData.results) {
-              const results = legacyData.results.slice(0, 6).map(result => ({
-                name: result.name,
-                display: result.formatted_address,
-                lat: result.geometry?.location?.lat,
-                lon: result.geometry?.location?.lng,
-                types: result.types || [],
-                rating: result.rating
-              })).filter(r => r.lat && r.lon);
-
-              setPlaceResults(results);
-            } else {
-              setPlaceResults([]);
-            }
+          if (data && data.results) {
+            console.log(`🔍 [Places Search] Found ${data.results.length} places using ${data.apiUsed} API`);
+            console.log('🔍 [Places Search] Final results:', data.results);
+            setPlaceResults(data.results);
           } else {
-            const data = await response.json();
-            console.log('🔍 [Places Search] Main API response:', data);
-
-            if (data.places && data.places.length > 0) {
-              const results = data.places.map(place => ({
-                name: place.displayName?.text || 'Unknown Place',
-                display: place.formattedAddress || 'Address not available',
-                lat: place.location?.latitude,
-                lon: place.location?.longitude,
-                types: place.types || [],
-                primaryType: place.primaryType
-              })).filter(r => r.lat && r.lon);
-
-              console.log('🔍 [Places Search] Final results:', results);
-              setPlaceResults(results);
-            } else {
-              console.log('🔍 [Places Search] No places found in response');
-              setPlaceResults([]);
-            }
+            console.log('🔍 [Places Search] No places found in Edge Function response');
+            setPlaceResults([]);
           }
         } catch (error) {
           console.error('🔍 [Places Search] Error:', error);
@@ -1038,6 +979,8 @@ const AddItemModal = ({
   // Show toast when AI fails
   useEffect(() => {
     if (aiError && !isAIProcessing) {
+      // Handle both old string format and new object format
+      const errorMessage = typeof aiError === 'string' ? aiError : aiError.message;
       setAiToastMessage('Analysis failed');
       setShowAIToast(true);
       setTimeout(() => setShowAIToast(false), 4000);
@@ -2317,6 +2260,16 @@ const AddItemModal = ({
                   )}
                 </div>
                 <div className="flex items-center gap-2 select-none" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
+                  {/* AI Error Message for 4xx/5xx errors */}
+                  {!isAIProcessing && aiError && (
+                    (typeof aiError === 'object' && aiError.statusCode && aiError.statusCode >= 400) ||
+                    (typeof aiError === 'string' && (aiError.includes('HTTP 4') || aiError.includes('HTTP 5')))
+                  ) && (
+                    <div className="text-xs text-red-500 font-medium">
+                      Whoops Google had an error, please try again later
+                    </div>
+                  )}
+                  
                   {/* AI Status/Retry Button */}
                   {!isAIProcessing && aiMetadata && (
                     <button 

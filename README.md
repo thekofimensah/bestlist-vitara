@@ -270,6 +270,9 @@ Capture and review them
 
 Let your friends see them too
 
+Discover new prodcuts that other connessuris rate
+
+Make it so only foods are public, other products are private
 
 
 Add shared lists feature

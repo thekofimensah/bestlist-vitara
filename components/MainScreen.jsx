@@ -172,14 +172,22 @@ const MainScreen = React.forwardRef(({
   const [capturedImage, setCapturedImage] = useState(null);
   const [wasSaved, setWasSaved] = useState(false);
   const wasSavedRef = useRef(false); // Immediate reference that doesn't wait for state updates
-  const modalClosedRef = useRef(false); // Track if modal was closed to prevent background updates
   
   // Modal states - declared before camera manager to avoid temporal dead zone
   const [showModal, setShowModal] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('Community'); // Commented out - using Following only for now
+  const [selectedTab, setSelectedTab] = useState('Community'); 
   // const [selectedTab, setSelectedTab] = useState('Following');
   
-  // Camera manager integration
+  // Track if camera is visible on screen (for scroll-based control)
+  const [cameraVisible, setCameraVisible] = useState(true);
+  
+  // Determine if camera should be active based on clear conditions:
+  // 1. App is active (tab is visible)
+  // 2. Modal is NOT open
+  // 3. Camera section is visible on screen (not scrolled away)
+  const shouldCameraBeActive = isActive && !showModal && cameraVisible;
+  
+  // Camera manager integration with simplified control
   const {
     isActive: cameraActive,
     isStarting: cameraStarting,
@@ -191,12 +199,11 @@ const MainScreen = React.forwardRef(({
     flipCamera,
     captureImage: captureImageFromManager,
     forceRestart: restartCamera
-  } = useCameraManager(videoRef, cameraContainerRef, {
-    appActive: isActive,
-    modalOpen: showModal,
-    capturing: isCapturing,
-    hasImage: !!capturedImage
+  } = useCameraManager(videoRef, {
+    shouldBeActive: shouldCameraBeActive
   });
+
+  // REMOVED: Complex screen activation restart logic - let camera manager handle this automatically
   const [isTabTransitioning, setIsTabTransitioning] = useState(false);
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   const [feedInlineNotice, setFeedInlineNotice] = useState(null);
@@ -270,10 +277,17 @@ const MainScreen = React.forwardRef(({
       console.error('🔄 [Retry AI] Analysis failed:', error);
       
       // Update captured image with error state
+      // Extract status code from error message if available
+      const statusMatch = error.message?.match(/HTTP (\d+)/);
+      const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+      
       setCapturedImage(prev => ({
         ...prev,
         aiProcessing: false,
-        aiError: error,
+        aiError: {
+          message: error.message,
+          statusCode: statusCode
+        },
         aiMetadata: null
       }));
     }
@@ -427,11 +441,35 @@ const MainScreen = React.forwardRef(({
 
 
 
-  // Cleanup on unmount - cancel AI requests
+  // Track camera visibility on scroll
+  useEffect(() => {
+    if (!cameraContainerRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Camera is visible if more than 10% is showing
+        const isVisible = entry.intersectionRatio > 0.1;
+        if (isVisible !== cameraVisible) {
+          console.log(`📷 [MainScreen] Camera visibility changed: ${isVisible}`);
+          setCameraVisible(isVisible);
+        }
+      },
+      { threshold: [0, 0.1, 0.5, 1] }
+    );
+    
+    observer.observe(cameraContainerRef.current);
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, [cameraVisible]);
+  
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log('📷 [MainScreen] Component unmounting - cleaning up AI requests');
-      // Cancel any ongoing AI requests
+      console.log('📷 [MainScreen] Component unmounting');
+      
+      // Cancel AI requests if needed
       if (cancelAIRequest) {
         try {
           cancelAIRequest();
@@ -545,7 +583,6 @@ const MainScreen = React.forwardRef(({
       console.log('📸 [Fast] Opening modal immediately with original image');
       setCapturedImage(capturedImageData);
       setShowModal(true); // Open modal immediately - no waiting!
-      modalClosedRef.current = false; // Reset flag when opening modal
       setIsCapturing(false);
       
       // Compress image in background and update when ready
@@ -697,13 +734,10 @@ const MainScreen = React.forwardRef(({
               }
               
               // Store the achievement info to be used for glow effect
-              // Only update if modal hasn't been closed
-              if (!modalClosedRef.current) {
-                setCapturedImage(prev => ({ 
-                  ...prev, 
-                  aiTriggeredAchievements: newAchievements
-                }));
-              }
+              setCapturedImage(prev => ({ 
+                ...prev, 
+                aiTriggeredAchievements: newAchievements
+              }));
             } else {
               console.log('🏆 [First in World] No achievements detected for this product');
             }
@@ -724,16 +758,19 @@ const MainScreen = React.forwardRef(({
           
           console.log('📷 [Photo] Photo metadata created:', JSON.stringify(photoMetadata, null, 2));
 
-          // Only update if modal hasn't been closed
-          if (!modalClosedRef.current) {
-            setCapturedImage(prev => ({ 
-              ...prev, 
-              uploading: false,
-              aiProcessing: false,
-              aiMetadata: aiResult,
-              photoMetadata
-            }));
-          }
+          // Update the state with AI results
+          setCapturedImage(prev => ({ 
+            ...prev, 
+            uploading: false,
+            aiProcessing: false,
+            aiMetadata: aiResult,
+            photoMetadata
+          }));
+          
+          console.log('✅ [Camera] AI result updated successfully:', {
+            productName: aiResult?.productName,
+            certainty: aiResult?.certainty
+          });
 
 
         } catch (error) {
@@ -781,15 +818,19 @@ const MainScreen = React.forwardRef(({
             }, 4000);
           } else {
             // Regular error handling for other issues (network, API failures, etc.)
-            // Only update if modal hasn't been closed
-            if (!modalClosedRef.current) {
-              setCapturedImage(prev => ({ 
-                ...prev, 
-                uploading: false, 
-                aiProcessing: false,
-                aiError: error.message 
-              }));
-            }
+            // Extract status code from error message if available
+            const statusMatch = error.message?.match(/HTTP (\d+)/);
+            const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+            
+            setCapturedImage(prev => ({ 
+              ...prev, 
+              uploading: false, 
+              aiProcessing: false,
+              aiError: {
+                message: error.message,
+                statusCode: statusCode
+              }
+            }));
           }
         }
       }, 100);
@@ -817,79 +858,51 @@ const MainScreen = React.forwardRef(({
     setShowModal(true);
   };
 
-  // Handle closing modals
+  // Handle closing modals - simplified
   const handleModalClose = async (reason, itemWasSaved = null) => {
-    // Avoid double-close
-    if (!showModal) {
-      return;
-    }
-    // Use explicit parameter, ref (immediate), or state (fallback) 
+    if (!showModal) return;
+    
     const actualWasSaved = itemWasSaved !== null ? itemWasSaved : wasSavedRef.current;
     
-    console.log('🚪 [Modal] Closing modal:', JSON.stringify({
+    console.log('🚪 [Modal] Closing modal:', {
       reason,
-      hasCapturedImage: !!capturedImage,
-      wasSaved,
-      wasSavedRef: wasSavedRef.current,
-      itemWasSaved,
-      actualWasSaved,
+      wasSaved: actualWasSaved,
       hasStoragePath: !!capturedImage?.storagePath
-    }));
+    });
     
-    if (capturedImage && !actualWasSaved) {
-      console.log('🗑️ [Cleanup] Item not saved, cleaning up files...');
-      // Clean up uploaded file if it exists
-      if (capturedImage.storagePath) {
-        console.log('🗑️ [Cleanup] Deleting storage file:', capturedImage.storagePath);
-        await deletePhotoEverywhere(capturedImage.storagePath);
-      }
-    } else if (capturedImage && actualWasSaved) {
-      console.log('✅ [Modal] Item was saved, keeping files');
-    }
-    
-
-    
-    // NEW: Set flag to prevent background updates after modal close
-    modalClosedRef.current = true;
-    
-    // NEW: Reset ALL camera-related states immediately
-    setShowModal(false);
-    setCapturedImage(null);
-    setIsCapturing(false);
-    
-    // Cancel any ongoing AI request when closing modal
+    // Cancel any ongoing AI request
     if (cancelAIRequest) {
       try {
         cancelAIRequest();
-        console.log('📷 [Modal] AI request cancelled successfully');
       } catch (e) {
         console.warn('📷 [Modal] Error cancelling AI request:', e);
       }
     }
-    // Reset both state and ref AFTER cleanup decisions are made
+    
+    // Clean up files if not saved
+    if (capturedImage && !actualWasSaved && capturedImage.storagePath) {
+      console.log('🗑️ [Cleanup] Deleting storage file:', capturedImage.storagePath);
+      await deletePhotoEverywhere(capturedImage.storagePath);
+    }
+    
+    // Reset states
+    setShowModal(false);
+    setCapturedImage(null);
+    setIsCapturing(false);
     setWasSaved(false);
     wasSavedRef.current = false;
     
-    // Show AI error notification if needed
+    // Show error notification if needed
     if (reason === 'ai_error') {
       setInvalidImageNotification({
         message: 'AI analysis failed',
         subMessage: 'Network issue or image couldn\'t be processed. Please try again.'
       });
-      
-      // Auto-hide notification after 4 seconds
-      setTimeout(() => {
-        setInvalidImageNotification(null);
-      }, 4000);
+      setTimeout(() => setInvalidImageNotification(null), 4000);
     }
-
-    // NEW: Explicitly restart camera after modal close if not saved (with longer timeout for state to settle)
-    if (!actualWasSaved) {
-      setTimeout(() => {
-        console.log('📷 [MainScreen] Requesting camera restart after unsaved modal close');
-        restartCamera();
-      }, 1000); // Increased to 1000ms to ensure all state updates have propagated
-    }
+    
+    // Camera will automatically restart when modal closes due to shouldCameraBeActive logic
+    console.log('📷 [MainScreen] Modal closed - camera will restart automatically');
   };
 
   const handleSave = (...args) => {
@@ -949,7 +962,6 @@ const MainScreen = React.forwardRef(({
           };
           setCapturedImage(uploadImageData);
           setShowModal(true); // Open modal immediately
-          modalClosedRef.current = false; // Reset flag when opening modal
           
           // Upload to Supabase Storage in background
           setTimeout(async () => {
@@ -1070,6 +1082,7 @@ const MainScreen = React.forwardRef(({
               
               console.log('📷 [Photo] Gallery photo metadata created:', JSON.stringify(photoMetadata, null, 2));
 
+              // Update the state with AI results
               setCapturedImage(prev => ({ 
                 ...prev, 
                 uploading: false,
@@ -1077,6 +1090,11 @@ const MainScreen = React.forwardRef(({
                 aiMetadata: aiResult,
                 photoMetadata
               }));
+              
+              console.log('✅ [Gallery] AI result updated successfully:', {
+                productName: aiResult?.productName,
+                certainty: aiResult?.certainty
+              });
 
 
             } catch (error) {
@@ -1124,11 +1142,18 @@ const MainScreen = React.forwardRef(({
                 }, 4000);
               } else {
                 // Regular error handling for other issues (network, API failures, etc.)
+                // Extract status code from error message if available
+                const statusMatch = error.message?.match(/HTTP (\d+)/);
+                const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+                
                 setCapturedImage(prev => ({ 
                   ...prev, 
                   uploading: false, 
                   aiProcessing: false,
-                  aiError: error.message 
+                  aiError: {
+                    message: error.message,
+                    statusCode: statusCode
+                  }
                 }));
               }
             }

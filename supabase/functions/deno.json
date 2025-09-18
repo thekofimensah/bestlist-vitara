@@ -1,7 +1,8 @@
 {
   "imports": {
     "std/": "https://deno.land/std@0.224.0/",
-    "supabase": "https://esm.sh/@supabase/supabase-js@2.45.4"
+    "supabase": "https://esm.sh/@supabase/supabase-js@2.45.4",
+    "browser-image-compression": "https://esm.sh/browser-image-compression@2.0.2"
   },
   "compilerOptions": {
     "strict": true

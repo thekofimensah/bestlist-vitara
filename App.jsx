@@ -524,28 +524,28 @@ const App = () => {
     console.log('🔔 Navigating to post:', postId);
   };
 
-  // Handle opening a shared link when not following author: route to public profile
-  const handleOpenSharedPost = async (postId) => {
-    try {
-      // We need the post's author. Fetch minimal data.
-      const { data, error } = await supabase
-        .from('posts')
-        .select('user_id')
-        .eq('id', postId)
-        .single();
-      if (error || !data?.user_id) return;
-      setSelectedUsername(null);
-      // Navigate to public profile view by username if available
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', data.user_id)
-        .single();
-      if (profile?.username) {
-        handleNavigateToUser(profile.username);
-      }
-    } catch (_) {}
-  };
+  // Handle opening a shared link when not following author: route to public profile (I think not used)
+  // const handleOpenSharedPost = async (postId) => {
+  //   try {
+  //     // We need the post's author. Fetch minimal data.
+  //     const { data, error } = await supabase
+  //       .from('posts')
+  //       .select('user_id')
+  //       .eq('id', postId)
+  //       .single();
+  //     if (error || !data?.user_id) return;
+  //     setSelectedUsername(null);
+  //     // Navigate to public profile view by username if available
+  //     const { data: profile } = await supabase
+  //       .from('profiles')
+  //       .select('username')
+  //       .eq('id', data.user_id)
+  //       .single();
+  //     if (profile?.username) {
+  //       handleNavigateToUser(profile.username);
+  //     }
+  //   } catch (_) {}
+  // };
 
   const handleImageTap = (postId) => {
     console.log('🔍 handleImageTap called with postId:', postId);

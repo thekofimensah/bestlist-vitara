@@ -174,24 +174,27 @@ const PullToRefresh = ({
         setIsRefreshing(true);
         setIsPulling(false);
         
-        // Trigger refresh and reset camera state
+        // Trigger refresh and reset camera state with improved Android Camera2 API handling
         Promise.resolve(onRefresh()).finally(() => {
           // Reset camera state to guarantee it works even if failing
           console.log('🔄 PullToRefresh: Resetting camera state');
           
-          // Emit camera reset event for the camera manager
-          const resetEvent = new CustomEvent('camera:reset');
-          window.dispatchEvent(resetEvent);
+          // Extended delay for Android Camera2 API to properly cleanup before reset
+          setTimeout(() => {
+            // Emit camera reset event for the camera manager
+            const resetEvent = new CustomEvent('camera:reset');
+            window.dispatchEvent(resetEvent);
 
-          // Also emit the legacy event for backward compatibility
-          const legacyResetEvent = new CustomEvent('feed:reset-camera');
-          window.dispatchEvent(legacyResetEvent);
+            // Also emit the legacy event for backward compatibility
+            const legacyResetEvent = new CustomEvent('feed:reset-camera');
+            window.dispatchEvent(legacyResetEvent);
+          }, 1000); // Wait 1s before triggering camera reset
 
           setTimeout(() => {
             console.log('🔄 PullToRefresh: Refresh completed');
             setIsRefreshing(false);
             setPullDistance(0);
-          }, 500);
+          }, 1500); // Extended completion delay to allow camera reset to process
         });
       } else {
         // Smooth reset animation

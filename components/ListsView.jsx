@@ -36,7 +36,9 @@ const ItemTile = ({
   onImageTap,
   onLongPress,
   showSelection = false,
-  isSelected = false
+  isSelected = false,
+  isSavedList = false,
+  isClickLocked = false
 }) => {
   if (isAddTile) {
     return (
@@ -97,6 +99,7 @@ const ItemTile = ({
   };
 
   const handleClick = (e) => {
+    if (isClickLocked) return;
     // If we just did a long press, prevent the click
     if (hasLongPressedRef.current) {
       hasLongPressedRef.current = false;
@@ -133,13 +136,14 @@ const ItemTile = ({
         <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
-          className="w-20 h-20 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
+          className={`w-20 h-20 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all ${isClickLocked ? 'opacity-60' : ''}`}
           style={{ width: '170px', height: '170px', userSelect: 'none' }}
           useThumbnail={true}
           size="small"
           lazyLoad={true}
           draggable={false}
           onClick={(e) => {
+            if (isClickLocked) return;
             if (hasLongPressedRef.current) {
               hasLongPressedRef.current = false;
               return;
@@ -155,11 +159,12 @@ const ItemTile = ({
         {showSelection && isSelected && (
           <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
         )}
-        {item.rating && <StarRating rating={item.rating} />}
+        {/* Rating overlay removed per design; moved inline with title below */}
         {/* Pending sync indicator for offline items */}
         {item.pending_sync && (
           <div className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full border border-white" title="Pending sync" />
         )}
+        {/* Saved item indicator removed from image overlay per design */}
         {/* First in World Badge removed in ListsView */}
       </div>
       <div 
@@ -173,7 +178,16 @@ const ItemTile = ({
           onTap?.(); 
         }}
       >
-        <p className="text-xs text-gray-700 font-medium truncate pl-2">{item.name}</p>
+        <div className="pl-2 text-sm text-gray-700 font-medium leading-snug whitespace-normal break-words line-clamp-2">
+          {item.rating && (
+            <span className="inline-flex items-center">
+              <span className="text-gray-700">{item.rating}</span>
+              <StarIcon className="w-3 h-3 text-yellow-500 fill-current ml-0.5" />
+            </span>
+          )}
+          {item.rating && <span className="inline-block w-1" />}
+          <span>{item.name}</span>
+        </div>
       </div>
     </div>
   );
@@ -193,8 +207,9 @@ const ListRow = ({
   onShareList,
   isReorderMode = false,
   sortMode = 'recent',
-  onEnterReorderMode
+  onEnterReorderMode,
 }) => {
+  const isSavedItemsList = list.name === 'Saved Items';
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
   const mode = list.__sortMode || sortMode;
   const sortedItems = [...allItems].sort((a, b) => {
@@ -285,9 +300,16 @@ const ListRow = ({
           disabled={isReorderMode}
         >
           <div className="flex items-center gap-2 pl-2">
+            {isSavedItemsList && (
+              <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                </svg>
+              </div>
+            )}
             <div>
-              <h3 className="text-base font-medium text-gray-900">{list.name}</h3>
-              <p className="text-xs text-gray-500">{allItems.length} items</p>
+              <h3 className={`text-lg font-medium text-gray-900`}>{list.name}</h3>
+              <p className="text-sm text-gray-500">{allItems.length} items</p>
             </div>
             {/* Pending sync indicator for offline lists */}
             {list.pending_sync && (
@@ -330,12 +352,16 @@ const ListRow = ({
               onLongPress={onItemLongPress}
               showSelection={selectionEnabled}
               isSelected={selectedIds?.includes(item.id)}
+              isSavedList={isSavedItemsList}
+              isClickLocked={isSavedItemsList && clickLockedItemIds.has(item.id)}
             />
           ))}
-          <ItemTile
-            isAddTile
-            onTap={() => onAddItem(list.id)}
-          />
+          {!isSavedItemsList && (
+            <ItemTile
+              isAddTile
+              onTap={() => onAddItem(list.id)}
+            />
+          )}
         </div>
       </div>
     </motion.div>
@@ -368,6 +394,8 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   // AddItemModal state for AI processing
   const [editingItem, setEditingItem] = useState(null);
+  // Track temporarily click-locked saved items (IDs) for 10s after saving
+  const [clickLockedItemIds, setClickLockedItemIds] = useState(new Set());
 
   // Location state for AI context
   const [deviceLocation, setDeviceLocation] = useState(null);
@@ -484,13 +512,14 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   }, [selectionEnabled]);
 
   const handleItemTap = (item) => {
+    // If the item is in Saved Items and is currently click-locked, ignore taps
+    if (clickLockedItemIds.has(item.id)) return;
+
     // Open AddItemModal for editing by finding the parent list
     const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
-    if (parentList && onEditItem) {
-      onEditItem(item, parentList);
-    }
+    if (parentList && onEditItem) onEditItem(item, parentList);
   };
 
   const handleItemLongPress = (item) => {
@@ -598,13 +627,13 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   };
 
   const handleItemImageTap = (item) => {
+    if (clickLockedItemIds.has(item.id)) return;
+
     // Open AddItemModal for editing by finding the parent list
     const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
-    if (parentList && onEditItem) {
-      onEditItem(item, parentList);
-    }
+    if (parentList && onEditItem) onEditItem(item, parentList);
   };
 
   const handleGalleryUpload = async (listId) => {
@@ -805,6 +834,62 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
+  // Listen for saved/unsaved events to update Saved Items list in place
+  useEffect(() => {
+    const handleItemSaved = (e) => {
+      const item = e?.detail?.item;
+      const listId = e?.detail?.listId;
+      if (!item || !listId) return;
+      setReorderedLists(prev => prev.map(l => {
+        if (l.id !== listId) return l;
+        const exists = (l.items || []).some(it => it.id === item.id);
+        if (exists) return l;
+        return {
+          ...l,
+          items: [item, ...(l.items || [])]
+        };
+      }));
+
+      // If saved into Saved Items list, temporarily lock click for this new item
+      try {
+        const savedList = lists?.find(l => (l?.name || '').toLowerCase() === 'saved items');
+        if (savedList && savedList.id === listId && item.id) {
+          setClickLockedItemIds(prev => {
+            const next = new Set(prev);
+            next.add(item.id);
+            return next;
+          });
+          setTimeout(() => {
+            setClickLockedItemIds(prev => {
+              const next = new Set(prev);
+              next.delete(item.id);
+              return next;
+            });
+          }, 10000); // 10 seconds
+        }
+      } catch (_) {}
+    };
+    const handleItemUnsaved = (e) => {
+      const postId = e?.detail?.postId;
+      if (!postId) return;
+      setReorderedLists(prev => prev.map(l => ({
+        ...l,
+        items: (l.items || []).filter(it => it.saved_from_post_id !== postId),
+        stayAways: (l.stayAways || []).filter(it => it.saved_from_post_id !== postId)
+      })));
+    };
+    try {
+      window.addEventListener('bestlist:item-saved', handleItemSaved);
+      window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
+    } catch (_) {}
+    return () => {
+      try {
+        window.removeEventListener('bestlist:item-saved', handleItemSaved);
+        window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
+      } catch (_) {}
+    };
+  }, []);
+
   const handleCreateList = async () => {
     if (isCreatingList) return;
     const subject = newListSubject.trim();
@@ -853,6 +938,32 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   const handleReorder = (newOrder) => {
     setReorderedLists(newOrder);
   };
+
+  // Compute lists order: most recently added-to first (by latest item/stay-away created_at)
+  const getListLastUpdatedAt = (list) => {
+    const items = [...(list?.items || []), ...(list?.stayAways || [])];
+    let latest = 0;
+    for (const it of items) {
+      const t = it?.created_at ? new Date(it.created_at).getTime() : 0;
+      if (t > latest) latest = t;
+    }
+    // Fallback to list updated_at/created_at
+    const listUpdated = list?.updated_at ? new Date(list.updated_at).getTime() : 0;
+    const listCreated = list?.created_at ? new Date(list.created_at).getTime() : 0;
+    return Math.max(latest, listUpdated, listCreated);
+  };
+
+  const listsForDisplay = isReorderMode
+    ? (reorderedLists || [])
+    : ([...(reorderedLists || [])]
+        .sort((a, b) => {
+          const aIsSaved = (a?.name || '').toLowerCase() === 'saved items';
+          const bIsSaved = (b?.name || '').toLowerCase() === 'saved items';
+          if (aIsSaved && !bIsSaved) return 1; // push Saved Items down
+          if (!aIsSaved && bIsSaved) return -1;
+          return getListLastUpdatedAt(b) - getListLastUpdatedAt(a);
+        })
+      );
 
   return (
     <div 
@@ -1003,7 +1114,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                 </Reorder.Group>
               ) : (
                 <div>
-                  {(reorderedLists || []).map((list) => (
+                  {listsForDisplay.map((list) => (
                     <ListRow
                       key={list.id}
                       list={list}

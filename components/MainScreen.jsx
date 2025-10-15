@@ -531,7 +531,7 @@ const MainScreen = React.forwardRef(({
       setCapturedImage(null);
       setShowModal(false);
     };
-  }, [cancelAIRequest]);
+  }, []); // Empty dependency array - only run on unmount
 
   // Get location on component mount - with error handling
   useEffect(() => {
@@ -587,6 +587,41 @@ const MainScreen = React.forwardRef(({
       }
     }
   };
+
+  // Sync bookmark saved state across feed (listen to global events)
+  useEffect(() => {
+    const handleSavedChanged = (e) => {
+      const postId = e?.detail?.postId;
+      const saved = e?.detail?.saved === true;
+      if (!postId || !onUpdateFeedPosts || !Array.isArray(feedPosts)) return;
+      const updated = feedPosts.map(p => p.id === postId ? { ...p, user_saved: saved } : p);
+      onUpdateFeedPosts(updated);
+    };
+    const handleItemDeleted = (e) => {
+      // when list deletes saved item, unset saved state on feed
+      const itemId = e?.detail?.itemId;
+      // We only have postId in our other flow; if only itemId, we can't map without extra query
+      // Rely on unsaved event for postId mapping
+    };
+    const handleItemUnsaved = (e) => {
+      const postId = e?.detail?.postId;
+      if (!postId || !onUpdateFeedPosts || !Array.isArray(feedPosts)) return;
+      const updated = feedPosts.map(p => p.id === postId ? { ...p, user_saved: false } : p);
+      onUpdateFeedPosts(updated);
+    };
+    try {
+      window.addEventListener('bestlist:post-saved-changed', handleSavedChanged);
+      window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
+      window.addEventListener('bestlist:item-deleted', handleItemDeleted);
+    } catch (_) {}
+    return () => {
+      try {
+        window.removeEventListener('bestlist:post-saved-changed', handleSavedChanged);
+        window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
+        window.removeEventListener('bestlist:item-deleted', handleItemDeleted);
+      } catch (_) {}
+    };
+  }, [feedPosts, onUpdateFeedPosts]);
 
   // Expose refresh function to parent component via ref
   useImperativeHandle(ref, () => ({
@@ -843,23 +878,20 @@ const MainScreen = React.forwardRef(({
                                 errorMessage.includes('not food') ||
                                 errorMessage.includes('invalid');
           
+          // Don't immediately close modal - let user see the error and decide
+          // The modal will show the AI error state and allow retry or manual entry
           if (isInvalidImage) {
-            // Close modal and show notification
-            setShowModal(false);
-            setCapturedImage(null);
-            // Cancel any ongoing AI request
-            if (cancelAIRequest) {
-              cancelAIRequest();
-            }
-            setInvalidImageNotification({
-              message: 'Photo doesn\'t show a product',
-              subMessage: 'Please take a photo of food, drinks, or consumer products'
-            });
-            
-            // Auto-hide notification after 4 seconds
-            setTimeout(() => {
-              setInvalidImageNotification(null);
-            }, 4000);
+            // Update captured image with specific invalid image error
+            setCapturedImage(prev => ({ 
+              ...prev, 
+              uploading: false, 
+              aiProcessing: false,
+              aiError: {
+                message: 'No product detected in image',
+                statusCode: null,
+                isInvalidImage: true
+              }
+            }));
           } else {
             // Regular error handling for other issues (network, API failures, etc.)
             // Extract status code from error message if available
@@ -872,7 +904,8 @@ const MainScreen = React.forwardRef(({
               aiProcessing: false,
               aiError: {
                 message: error.message,
-                statusCode: statusCode
+                statusCode: statusCode,
+                isInvalidImage: false
               }
             }));
           }
@@ -1167,23 +1200,20 @@ const MainScreen = React.forwardRef(({
                                     errorMessage.includes('not food') ||
                                     errorMessage.includes('invalid');
               
+              // Don't immediately close modal - let user see the error and decide
+              // The modal will show the AI error state and allow retry or manual entry
               if (isInvalidImage) {
-                // Close modal and show notification
-                setShowModal(false);
-                setCapturedImage(null);
-                // Cancel any ongoing AI request
-                if (cancelAIRequest) {
-                  cancelAIRequest();
-                }
-                setInvalidImageNotification({
-                  message: 'Photo doesn\'t show a product',
-                  subMessage: 'Please select a photo of food, drinks, or consumer products'
-                });
-                
-                // Auto-hide notification after 4 seconds
-                setTimeout(() => {
-                  setInvalidImageNotification(null);
-                }, 4000);
+                // Update captured image with specific invalid image error
+                setCapturedImage(prev => ({ 
+                  ...prev, 
+                  uploading: false, 
+                  aiProcessing: false,
+                  aiError: {
+                    message: 'No product detected in image',
+                    statusCode: null,
+                    isInvalidImage: true
+                  }
+                }));
               } else {
                 // Regular error handling for other issues (network, API failures, etc.)
                 // Extract status code from error message if available
@@ -1196,7 +1226,8 @@ const MainScreen = React.forwardRef(({
                   aiProcessing: false,
                   aiError: {
                     message: error.message,
-                    statusCode: statusCode
+                    statusCode: statusCode,
+                    isInvalidImage: false
                   }
                 }));
               }

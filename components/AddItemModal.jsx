@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, Sparkles, ArrowLeft,ArrowRight, SkipForward,  Plus, Star, ChevronDown, ChevronUp, Share } from 'lucide-react';
 import { buildItem } from '../hooks/itemUtils';
@@ -20,9 +20,8 @@ import {
   getCurrencyDisplay,
   getCurrencyFromCountryName
 } from '../lib/currencyUtils';
-import { createPost, deleteItemAndRelated } from '../lib/supabase';
+import { createPost, deleteItemAndRelated, supabase } from '../lib/supabase';
 import { prependProfilePost } from '../hooks/useOptimizedFeed';
-import { supabase } from '../lib/supabase';
 import { getInstagramClassicFilter } from '../lib/imageUtils';
 import AchievementGlow from './gamification/AchievementGlow';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
@@ -202,6 +201,10 @@ const AddItemModal = ({
   onRetryAI,
   aiTriggeredAchievements
 }) => {
+  // Exclude Saved Items list from selection; it can only be populated via bookmarking in feed
+  const availableLists = useMemo(() => {
+    return (lists || []).filter(l => (l?.name || '').toLowerCase() !== 'saved items');
+  }, [lists]);
   
   // Removed verbose init logs to avoid noise on each re-render
   
@@ -379,32 +382,22 @@ const AddItemModal = ({
   const [selectedLists, setSelectedLists] = useState(() => {
     if (initialState && initialState.selectedLists) return initialState.selectedLists;
     if (item && (item.list_id || item.listId)) return [item.list_id || item.listId];
-    
-    // Default to the list that was most recently added to
-    if (lists && lists.length > 0) {
-      // Find the most recent item across all lists
+    // Default to the most recently used non-saved list
+    if (availableLists && availableLists.length > 0) {
       let mostRecentItem = null;
       let mostRecentListId = null;
-      
-      lists.forEach(list => {
+      availableLists.forEach(list => {
         const allItems = [...(list.items || []), ...(list.stayAways || [])];
-        allItems.forEach(item => {
-          if (!mostRecentItem || new Date(item.created_at) > new Date(mostRecentItem.created_at)) {
-            mostRecentItem = item;
+        allItems.forEach(it => {
+          if (!mostRecentItem || new Date(it.created_at) > new Date(mostRecentItem.created_at)) {
+            mostRecentItem = it;
             mostRecentListId = list.id;
           }
         });
       });
-      
-      // If we found a recent item, use that list; otherwise use the first list
-      if (mostRecentListId) {
-        return [mostRecentListId];
-      } else if (lists.length > 0) {
-        return [lists[0].id];
-      }
+      if (mostRecentListId) return [mostRecentListId];
+      return [availableLists[0].id];
     }
-    
-    // Fallback to empty array
     return [];
   });
   const [rating, setRating] = useState(initialState?.rating ?? item?.rating ?? 3);
@@ -902,34 +895,50 @@ const AddItemModal = ({
       setActiveTags(tags);
     }
   }, [tags]);
+  
+  // Load original creator info if this is a saved item
+  useEffect(() => {
+    const loadOriginalCreator = async () => {
+      if (item?.is_saved_item && item?.original_creator_id) {
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('username, display_name, avatar_url')
+            .eq('id', item.original_creator_id)
+            .single();
+          
+          if (!error && profile) {
+            setOriginalCreator(profile);
+          }
+        } catch (error) {
+          console.error('Error loading original creator:', error);
+        }
+      }
+    };
+    
+    loadOriginalCreator();
+  }, [item?.is_saved_item, item?.original_creator_id]);
 
 
 
   // Update selectedLists when lists change and none are selected
   useEffect(() => {
-    if (selectedLists.length === 0 && lists && lists.length > 0) {
-      // Find the most recent item across all lists
+    if (selectedLists.length === 0 && availableLists && availableLists.length > 0) {
       let mostRecentItem = null;
       let mostRecentListId = null;
-      
-      lists.forEach(list => {
+      availableLists.forEach(list => {
         const allItems = [...(list.items || []), ...(list.stayAways || [])];
-        allItems.forEach(item => {
-          if (!mostRecentItem || new Date(item.created_at) > new Date(mostRecentItem.created_at)) {
-            mostRecentItem = item;
+        allItems.forEach(it => {
+          if (!mostRecentItem || new Date(it.created_at) > new Date(mostRecentItem.created_at)) {
+            mostRecentItem = it;
             mostRecentListId = list.id;
           }
         });
       });
-      
-      // If we found a recent item, use that list; otherwise use the first list
-      if (mostRecentListId) {
-        setSelectedLists([mostRecentListId]);
-      } else if (lists.length > 0) {
-        setSelectedLists([lists[0].id]);
-      }
+      if (mostRecentListId) setSelectedLists([mostRecentListId]);
+      else setSelectedLists([availableLists[0].id]);
     }
-  }, [lists, selectedLists.length]);
+  }, [availableLists, selectedLists.length]);
 
   // Handle rating selection from overlay
   const handleRatingSelect = (rating) => {
@@ -1326,7 +1335,7 @@ const AddItemModal = ({
   const getSelectedListName = () => {
     if (selectedLists.length === 0) return 'Select lists';
     if (selectedLists.length === 1) {
-      const list = lists.find(l => l.id === selectedLists[0]);
+      const list = availableLists.find(l => l.id === selectedLists[0]);
       return list?.name || 'Unknown list';
     }
     return `${selectedLists.length} lists selected`;
@@ -1719,6 +1728,9 @@ const AddItemModal = ({
   
   // Tab state for notes/details
   const [activeTab, setActiveTab] = useState('notes'); // 'notes' or 'details'
+  
+  // Original creator info for saved items
+  const [originalCreator, setOriginalCreator] = useState(null);
 
   // --- Word Suggestions (Phase 3 - AI Integration) ---
   const notesTextareaRef = useRef(null);
@@ -2052,6 +2064,39 @@ const AddItemModal = ({
             onClick={handlePhotoClick}
           />
         </div>
+        
+        {/* Original creator avatar for saved items */}
+        {originalCreator && item?.is_saved_item && (
+          <div className="absolute bottom-4 right-4 z-20">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Navigate to original creator's profile
+                if (originalCreator.username) {
+                  window.location.href = `/profile/${originalCreator.username}`;
+                }
+              }}
+              className="flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-2 hover:bg-black/70 transition-colors"
+            >
+              {originalCreator.avatar_url ? (
+                <img
+                  src={originalCreator.avatar_url}
+                  alt={originalCreator.display_name || originalCreator.username}
+                  className="w-6 h-6 rounded-full border-2 border-white"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 border-2 border-white flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">
+                    {(originalCreator.display_name || originalCreator.username || '?')[0].toUpperCase()}
+                  </span>
+                </div>
+              )}
+              <span className="text-white text-xs font-medium">
+                Saved from @{originalCreator.username}
+              </span>
+            </button>
+          </div>
+        )}
 
 
         {/* Back Button */}
@@ -2752,7 +2797,7 @@ const AddItemModal = ({
                       
                       {/* List options */}
                       <div className="py-2">
-                        {lists.length === 0 ? (
+                        {availableLists.length === 0 ? (
                           <div className="p-3 text-center">
                             <button
                               onClick={() => setShowCreateListDialog(true)}
@@ -2764,7 +2809,7 @@ const AddItemModal = ({
                           </div>
                         ) : (
                           <>
-                            {lists.map((list) => (
+                            {availableLists.map((list) => (
                               <label key={list.id} className="flex items-center p-3 hover:bg-gray-50 cursor-pointer">
                                 <input
                                   type="checkbox"

@@ -208,6 +208,7 @@ const ListRow = ({
   isReorderMode = false,
   sortMode = 'recent',
   onEnterReorderMode,
+  clickLockedItemIds,
 }) => {
   const isSavedItemsList = list.name === 'Saved Items';
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
@@ -353,7 +354,7 @@ const ListRow = ({
               showSelection={selectionEnabled}
               isSelected={selectedIds?.includes(item.id)}
               isSavedList={isSavedItemsList}
-              isClickLocked={isSavedItemsList && clickLockedItemIds.has(item.id)}
+              isClickLocked={isSavedItemsList && clickLockedItemIds?.has && clickLockedItemIds.has(item.id)}
             />
           ))}
           {!isSavedItemsList && (
@@ -1108,6 +1109,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         onShareList={handleShareList}
                         isReorderMode={isReorderMode}
                         onEnterReorderMode={handleEnterReorderMode}
+                        clickLockedItemIds={clickLockedItemIds}
                       />
                     </Reorder.Item>
                   ))}
@@ -1130,6 +1132,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                       onShareList={handleShareList}
                       isReorderMode={isReorderMode}
                       onEnterReorderMode={handleEnterReorderMode}
+                      clickLockedItemIds={clickLockedItemIds}
                     />
                   ))}
                 </div>

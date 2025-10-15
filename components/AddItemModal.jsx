@@ -3679,6 +3679,13 @@ const AddItemModal = ({
                   setIsDeleting(true);
 
                   try {
+                    // 🔔 Immediately inform ListsView to optimistically remove this item
+                    try {
+                      if (item?.id) {
+                        window.dispatchEvent(new CustomEvent('bestlist:item-deleted', { detail: { itemId: item.id } }));
+                      }
+                    } catch (_) {}
+
                     // 🚀 IMMEDIATE UI RESPONSE: Close modal immediately for better UX
                     onClose();
 

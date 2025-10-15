@@ -200,7 +200,8 @@ const MainScreen = React.forwardRef(({
     captureImage: captureImageFromManager,
     forceRestart: restartCamera
   } = useCameraManager(videoRef, {
-    shouldBeActive: shouldCameraBeActive
+    shouldBeActive: shouldCameraBeActive,
+    defaultFacingMode: 'environment'
   });
 
   // REMOVED: Complex screen activation restart logic - let camera manager handle this automatically

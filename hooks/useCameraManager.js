@@ -10,7 +10,7 @@ import cameraManager from '../lib/cameraManager';
  * @returns {Object} Camera state and control functions
  */
 export const useCameraManager = (videoRef, options = {}) => {
-  const { shouldBeActive = true } = options;
+  const { shouldBeActive = true, defaultFacingMode } = options;
   
   // Track camera state
   const [state, setState] = useState(cameraManager.getState());
@@ -28,6 +28,10 @@ export const useCameraManager = (videoRef, options = {}) => {
     
     console.log('📷 [useCameraManager] Initializing camera manager');
     cameraManager.initialize(videoRef.current);
+    // Apply default facing mode if provided
+    if (defaultFacingMode === 'environment' || defaultFacingMode === 'user') {
+      cameraManager.setFacingMode(defaultFacingMode);
+    }
     initializeRef.current = true;
   }, [videoRef]);
   

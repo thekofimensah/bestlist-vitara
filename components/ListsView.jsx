@@ -424,6 +424,22 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   }, [deviceLocation]);
 
+  // Listen for single-item deletion events from AddItemModal to optimistically update UI
+  useEffect(() => {
+    const handleItemDeleted = (e) => {
+      const itemId = e?.detail?.itemId;
+      if (!itemId) return;
+      setReorderedLists((prev) => prev.map((l) => ({
+        ...l,
+        items: (l.items || []).filter((it) => it.id !== itemId),
+        stayAways: (l.stayAways || []).filter((it) => it.id !== itemId)
+      })));
+      setSelectedItemIds((prev) => prev.filter((id) => id !== itemId));
+    };
+    window.addEventListener('bestlist:item-deleted', handleItemDeleted);
+    return () => window.removeEventListener('bestlist:item-deleted', handleItemDeleted);
+  }, []);
+
   // Notify parent when reorder mode changes
   useEffect(() => {
     onReorderModeChange?.(isReorderMode);

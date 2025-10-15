@@ -186,6 +186,16 @@ Bestist
 Bestest
 yumary/yumery/yumory
 bestly
+tastemaker
+aftertaste
+curate
+tried it
+trydit
+alemint
+tasteat
+tryed
+Nomable X millenial
+
 
 
 
@@ -282,3 +292,14 @@ Share buttons clicked
 Invite buttons clicked
 
 Change suggestions for the "woulds" to be last
+
+
+[2025-09-21, 12:38:37 AM] Kofi Bartlett: The next iteration of best lists should think of things, I think, a little bit differently. So I think it'd be a good idea to make the feed, instead of being photo-centric, it should be list-centric. And so you can essentially discover people's lists of best this or best that. And it should then take it should then follow this path where you're like, it's almost like incentivizing people. It'd be interesting to do a the name would be three or something like that.
+[2025-09-21, 12:39:53 AM] Kofi Bartlett: List, everything list centric, and maybe have like a mega list for each category to see what people vote.. so like average ratings of each. It's like a list app
+[2025-09-21, 12:48:37 AM] Kofi Bartlett: Just raw: so in order to go public, you need to put 3 on your list. 
+
+Feed shows the lists being generated. Then you can like track the progress of the list creation to see and get notifications when they add more to the list. And then from list view, you can see little avatars (up to 3, then it says "and x more").. so then people get amped to see people following and then get motivated to add more to the list. Maybe your list view can also show lists you're following as well.
+[2025-09-21, 7:14:28 AM] Kofi Bartlett: Lists need to have one winner.. Maybe like a blue star to say the best
+
+
+When creating a list you should be able to make it private, and it will force all items to be private

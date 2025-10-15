@@ -204,8 +204,7 @@ const MainScreen = React.forwardRef(({
     defaultFacingMode: 'environment'
   });
 
-  // REMOVED: Complex screen activation restart logic - let camera manager handle this automatically
-  const [isTabTransitioning, setIsTabTransitioning] = useState(false);
+  // UI state management
   const [invalidImageNotification, setInvalidImageNotification] = useState(null);
   const [feedInlineNotice, setFeedInlineNotice] = useState(null);
   const [userFollowingAnyone, setUserFollowingAnyone] = useState(null); // null = loading, true/false = result
@@ -221,6 +220,9 @@ const MainScreen = React.forwardRef(({
   
   // Location state for AI context
   const [deviceLocation, setDeviceLocation] = useState(null);
+  
+  // Legacy error state for compatibility
+  const [error, setError] = useState(null);
   
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
@@ -360,6 +362,31 @@ const MainScreen = React.forwardRef(({
     window.addEventListener('feed:offline-required', handler);
     return () => window.removeEventListener('feed:offline-required', handler);
   }, []);
+  
+  // Handle app focus/blur events for better state management
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log('📱 [MainScreen] App went to background');
+      } else {
+        console.log('📱 [MainScreen] App came to foreground');
+        // Clear any stale error states when app comes back
+        if (error || cameraError) {
+          setError(null);
+          // Give camera a moment to settle before restart
+          setTimeout(() => {
+            if (!videoReady && shouldCameraBeActive) {
+              console.log('📷 [MainScreen] Restarting camera after app resume');
+              restartCamera();
+            }
+          }, 500);
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [error, cameraError, videoReady, shouldCameraBeActive, restartCamera]);
 
   // No post-load resizing; height remains fixed per mount/orientation
 
@@ -429,31 +456,46 @@ const MainScreen = React.forwardRef(({
     }
   };
 
-  // Legacy error state for compatibility
-  const [error, setError] = useState(null);
-
   // Camera ready callback for parent component
   useEffect(() => {
     if (videoReady && onCameraReady) {
       onCameraReady();
     }
   }, [videoReady, onCameraReady]);
+  
+  // Auto-recovery for stuck camera after 10 seconds
+  useEffect(() => {
+    if (!videoReady && cameraStarting && shouldCameraBeActive) {
+      const recoveryTimer = setTimeout(() => {
+        console.warn('📷 [MainScreen] Camera stuck in starting state, attempting recovery');
+        restartCamera();
+      }, 10000);
+      
+      return () => clearTimeout(recoveryTimer);
+    }
+  }, [videoReady, cameraStarting, shouldCameraBeActive, restartCamera]);
 
 
 
 
-  // Track camera visibility on scroll
+  // Track camera visibility on scroll with debouncing
   useEffect(() => {
     if (!cameraContainerRef.current) return;
     
+    let timeoutId;
     const observer = new IntersectionObserver(
       ([entry]) => {
         // Camera is visible if more than 10% is showing
         const isVisible = entry.intersectionRatio > 0.1;
-        if (isVisible !== cameraVisible) {
-          console.log(`📷 [MainScreen] Camera visibility changed: ${isVisible}`);
-          setCameraVisible(isVisible);
-        }
+        
+        // Debounce visibility changes to prevent rapid toggling
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          if (isVisible !== cameraVisible) {
+            console.log(`📷 [MainScreen] Camera visibility changed: ${isVisible}`);
+            setCameraVisible(isVisible);
+          }
+        }, 100);
       },
       { threshold: [0, 0.1, 0.5, 1] }
     );
@@ -461,6 +503,7 @@ const MainScreen = React.forwardRef(({
     observer.observe(cameraContainerRef.current);
     
     return () => {
+      clearTimeout(timeoutId);
       observer.disconnect();
     };
   }, [cameraVisible]);
@@ -478,19 +521,39 @@ const MainScreen = React.forwardRef(({
           console.warn('📷 [MainScreen] Error canceling AI request:', e);
         }
       }
+      
+      // Clear any pending notifications
+      setInvalidImageNotification(null);
+      setFeedInlineNotice(null);
+      
+      // Reset camera-related states
+      setIsCapturing(false);
+      setCapturedImage(null);
+      setShowModal(false);
     };
   }, [cancelAIRequest]);
 
   // Get location on component mount - with error handling
   useEffect(() => {
-    // Only get location if we don't have it yet
-    if (!deviceLocation) {
-      getCurrentLocation().catch(error => {
-        console.warn('🌍 [Location] Failed to get location:', error);
-        // Don't block the app if location fails
-      });
-    }
-  }, [deviceLocation]);
+    let isMounted = true;
+    
+    const fetchLocation = async () => {
+      if (!deviceLocation && isMounted) {
+        try {
+          await getCurrentLocation();
+        } catch (error) {
+          console.warn('🌍 [Location] Failed to get location:', error);
+          // Don't block the app if location fails
+        }
+      }
+    };
+    
+    fetchLocation();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Remove deviceLocation dependency to prevent infinite loop
 
 
   // Check if user is following anyone when component mounts or tab changes
@@ -501,14 +564,7 @@ const MainScreen = React.forwardRef(({
           const { isFollowing } = await isUserFollowingAnyone();
           setUserFollowingAnyone(isFollowing);
         } catch (error) {
-          console.error('Error checking following status:', JSON.stringify({
-          message: error.message,
-          name: error.name,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: error
-        }, null, 2));
+          console.error('Error checking following status:', error);
           setUserFollowingAnyone(false);
         }
       }
@@ -517,37 +573,24 @@ const MainScreen = React.forwardRef(({
     checkFollowingStatus();
   }, [selectedTab]);
 
-  // Clear transition state when feed loading completes
-  useEffect(() => {
-    if (isTabTransitioning && textLoaded && !isLoadingFeed) {
-      console.log('🔄 [MainScreen] Feed loaded, clearing transition state');
-      setIsTabTransitioning(false);
-    }
-  }, [isTabTransitioning, textLoaded, isLoadingFeed]);
-
-  // Load feed data only once - never reload on navigation
-  useEffect(() => {
-    // This useEffect is no longer needed as feed data is passed as a prop
-    // The parent App component will manage its own state and pass it down.
-  }, []);
-
-  // Add a function to refresh feed data (for pull-to-refresh)
-  const refreshFeedData = async () => {
+  // Handle feed refresh
+  const handleFeedRefresh = async () => {
     console.log('🔄 MainScreen: Starting feed refresh...');
-    
-    // Clear any legacy error states
     setError(null);
+    setFeedInlineNotice(null);
     
-    // Camera manager will handle the reset via the camera:reset event
-    console.log('✅ MainScreen: Feed refresh completed - camera manager will handle camera reset');
+    if (onRefreshFeed) {
+      try {
+        await onRefreshFeed();
+      } catch (error) {
+        console.error('Feed refresh error:', error);
+      }
+    }
   };
 
-  // Use the passed refresh function if available, otherwise use local one
-  const handleFeedRefresh = onRefreshFeed || refreshFeedData;
-
-  // Expose refreshFeedData to parent component via ref
+  // Expose refresh function to parent component via ref
   useImperativeHandle(ref, () => ({
-    refreshFeedData
+    refreshFeedData: handleFeedRefresh
   }));
 
   const handleCapture = async () => {
@@ -1312,12 +1355,29 @@ const MainScreen = React.forwardRef(({
           
           {/* Loading overlay */}
           {!videoReady && !error && !cameraError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white">
-              <div className="text-center">
-                <div className="text-sm opacity-70 animate-pulse mb-2">
-                  {cameraStarting ? 'Starting camera...' : 'Camera loading...'}
-                </div>
-                
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-2.5 h-2.5 bg-white rounded-full" 
+                  style={{ 
+                    animation: 'cameraLoadingDot 1.4s ease-in-out infinite',
+                    animationDelay: '0s' 
+                  }}
+                />
+                <div 
+                  className="w-2.5 h-2.5 bg-white rounded-full" 
+                  style={{ 
+                    animation: 'cameraLoadingDot 1.4s ease-in-out infinite',
+                    animationDelay: '0.2s' 
+                  }}
+                />
+                <div 
+                  className="w-2.5 h-2.5 bg-white rounded-full" 
+                  style={{ 
+                    animation: 'cameraLoadingDot 1.4s ease-in-out infinite',
+                    animationDelay: '0.4s' 
+                  }}
+                />
               </div>
             </div>
           )}
@@ -1432,15 +1492,13 @@ const MainScreen = React.forwardRef(({
                 key={tab}
                 onClick={() => {
                   if (selectedTab !== tab) {
-                    setIsTabTransitioning(true);
                     setSelectedTab(tab);
+                    setFeedInlineNotice(null); // Clear any notices
                     // Notify parent component of tab change
                     if (onTabChange) {
                       const feedType = tab === 'Following' ? 'following' : 'for_you';
                       onTabChange(feedType);
                     }
-                    // Clear transition state after the hook has had time to load new data
-                    setTimeout(() => setIsTabTransitioning(false), 600);
                   }
                 }}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
@@ -1467,31 +1525,13 @@ const MainScreen = React.forwardRef(({
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="space-y-4"
             >
-              {feedInlineNotice && (
-                <div className="px-6">
-                  {/* empty holder to keep notice at bottom */}
-                </div>
-              )}
-              
-              {/* Tab Transition Loading State */}
-              {isTabTransitioning && (
-                <div className="px-6 py-8 text-center">
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
-                    <div className="text-gray-500 text-sm">
-                      Loading {selectedTab.toLowerCase()} feed...
-                    </div>
-                  </div>
-                </div>
-              )}
-              
               {/* Loading State */}
-              {!isTabTransitioning && isLoadingFeed && !textLoaded && (
+              {isLoadingFeed && !textLoaded && (
                 <FeedSkeleton />
               )}
 
               {/* Error State */}
-              {!isTabTransitioning && feedError && !isLoadingFeed && (
+              {feedError && !isLoadingFeed && (
                 <div className="text-center py-8 px-6">
                   <div className="text-gray-500 mb-4">Failed to load feed</div>
                   <button
@@ -1505,7 +1545,7 @@ const MainScreen = React.forwardRef(({
               )}
 
               {/* Empty State */}
-              {!isTabTransitioning && !isLoadingFeed && !feedError && feedPosts.length === 0 && (
+              {!isLoadingFeed && !feedError && feedPosts.length === 0 && textLoaded && (
                 <div className="text-center py-8 px-6">
                   <div className="text-gray-500 mb-2">
                     {selectedTab === 'Following' ? 'No posts from followed users' : 'No posts yet'}
@@ -1532,7 +1572,7 @@ const MainScreen = React.forwardRef(({
               )}
 
               {/* Real Feed Posts - Show text immediately, load images progressively */}
-              {!isTabTransitioning && textLoaded && feedPosts.map((post, index) => {
+              {textLoaded && feedPosts.map((post, index) => {
               // Normalize post data for OptimizedPostCard (prefer HTTPS storage URL over Base64)
               const preferredUrl =
                 (post.items?.image_url && post.items.image_url.startsWith('http'))
@@ -1567,7 +1607,7 @@ const MainScreen = React.forwardRef(({
             })}
               
               {/* Loading more skeleton posts */}
-              {!isTabTransitioning && isLoadingMore && (
+              {isLoadingMore && (
                 <div className="space-y-4">
                   <FeedSkeleton count={3} />
                 </div>
@@ -1575,7 +1615,7 @@ const MainScreen = React.forwardRef(({
               
               {/* Infinite scroll trigger */}
               {/* Bottom area containing load trigger and any inline offline notice */}
-              {!isTabTransitioning && feedPosts.length > 0 && (
+              {feedPosts.length > 0 && (
                 <div className="px-6">
                   {feedInlineNotice && (
                     <div className="mb-2 text-center">

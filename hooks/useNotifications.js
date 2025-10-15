@@ -1,412 +1,286 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { shouldRetrySubscription, isOffline, useOnlineStatus } from '../lib/onlineDetection';
+import { useOnlineStatus } from '../lib/onlineDetection';
 
-// Check if app is active (same as useUserStats)
-const isAppActive = () => (typeof window !== 'undefined' && window.__APP_ACTIVE__ !== false);
-
-// Helper function to log to Android Studio with context
-const logToAndroid = (message, data = null) => {
-  const context = {
-    isDev: window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'),
-    isCapacitor: !!window.Capacitor,
-    timestamp: new Date().toISOString()
-  };
-  
-  const logMessage = data ? `${message}: ${JSON.stringify(data)}` : message;
-  const fullMessage = `[${context.isDev ? 'DEV' : 'PROD'}] ${logMessage}`;
-  
-  console.log(fullMessage);
-  
-  // Also try to use Capacitor's logging if available
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Console) {
-    window.Capacitor.Plugins.Console.log({ message: fullMessage });
-  }
-};
+// Achievement-related notification types that should NOT appear in the bell
+const ACHIEVEMENT_TYPES = new Set([
+  'achievement',
+  'achievement_awarded',
+  'first_achievement',
+  'first_action',
+  'first_follow_achievement',
+  'global_first',
+  'global_first_achievement'
+]);
 
 export const useNotifications = (userId) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
-  
-  // Online status tracking
-  const { isOnline } = useOnlineStatus();
-  
-  // Retry logic for realtime subscriptions
-  const [subscriptionRetryCount, setSubscriptionRetryCount] = useState(0);
-  const [lastSubscriptionAttempt, setLastSubscriptionAttempt] = useState(0);
-  const MAX_SUBSCRIPTION_RETRIES = 3;
-  const SUBSCRIPTION_RETRY_DELAY = 5000; // 5 seconds
   const [ready, setReady] = useState(false);
   
-  // Track timeout IDs for proper cleanup
-  const activeTimeouts = useRef(new Set());
-  const isUnmountedRef = useRef(false);
-
-  // Helper to create tracked timeouts that can be properly cleaned up
-  const createTrackedTimeout = (callback, delay) => {
-    const timeoutId = setTimeout(() => {
-      activeTimeouts.current.delete(timeoutId);
-      if (!isUnmountedRef.current && isAppActive()) {
-        callback();
-      }
-    }, delay);
-    activeTimeouts.current.add(timeoutId);
-    return timeoutId;
-  };
-
-  // Helper to clear all tracked timeouts
-  const clearAllTimeouts = () => {
-    activeTimeouts.current.forEach(timeoutId => clearTimeout(timeoutId));
-    activeTimeouts.current.clear();
-  };
-
-  // Achievement-related notification types that should NOT appear in the bell
-  const ACHIEVEMENT_TYPES = new Set([
-    'achievement',
-    'achievement_awarded',
-    'first_achievement',
-    'first_action',
-    'first_follow_achievement',
-    'global_first',
-    'global_first_achievement'
-  ]);
-
-  useEffect(() => {
-    if (!userId) {
-      logToAndroid('🔔 No userId provided to useNotifications');
-      setReady(false);
-      return;
-    }
-
-    logToAndroid('🔔 Setting up notifications for user:', userId);
-    
-    // Load initial notifications
-    setReady(false);
-    loadNotifications();
-
-    let subscription;
-    let appStateHandler;
-
-    // Clean up subscription function
-    const cleanupSubscription = () => {
-      if (subscription) {
-        logToAndroid('🔔 Cleaning up notifications subscription');
-        subscription.unsubscribe();
-        subscription = null;
-      }
-    };
-
-    // Set up subscription only if app is active and online
-    const setupSubscription = () => {
-      if (!isAppActive()) {
-        return; // Silent - no logging when app inactive
-      }
-      
-      if (!isOnline) {
-        return; // Silent - no logging when offline
-      }
-      
-      // Check if we've exceeded retry limit
-      if (subscriptionRetryCount >= MAX_SUBSCRIPTION_RETRIES) {
-        logToAndroid(`🔔 Max subscription retries (${MAX_SUBSCRIPTION_RETRIES}) exceeded - giving up`);
-        logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
-        return;
-      }
-      
-      // Implement exponential backoff
-      const now = Date.now();
-      const timeSinceLastAttempt = now - lastSubscriptionAttempt;
-      const minDelay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, subscriptionRetryCount);
-      
-      if (timeSinceLastAttempt < minDelay && subscriptionRetryCount > 0) {
-        logToAndroid(`🔔 Too soon to retry (${Math.round((minDelay - timeSinceLastAttempt) / 1000)}s remaining)`);
-        createTrackedTimeout(setupSubscription, minDelay - timeSinceLastAttempt);
-        return;
-      }
-      
-      setLastSubscriptionAttempt(now);
-
-      // Clean up existing subscription first
-      cleanupSubscription();
-
-      // Subscribe to new notifications (with error handling for Realtime)
-      try {
-        logToAndroid(`🔔 Setting up notifications subscription (attempt ${subscriptionRetryCount + 1})`);
-        
-        subscription = supabase
-          .channel(`notifications:${userId}_${now}`) // Unique channel name to avoid conflicts
-          .on('postgres_changes', {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${userId}`
-          }, (payload) => {
-            logToAndroid('🔔 Received new notification:', payload.new);
-            
-            // Reset retry count on successful message
-            setSubscriptionRetryCount(0);
-            
-            // Ignore achievement-related notifications in the bell
-            if (payload?.new?.type && ACHIEVEMENT_TYPES.has(payload.new.type)) {
-              logToAndroid('🔔 Ignoring achievement-type notification for bell:', payload.new.type);
-              return;
-            }
-            setNotifications(prev => {
-              logToAndroid('🔔 Adding notification to existing:', prev.length, 'notifications');
-              return [payload.new, ...prev];
-            });
-            setUnreadCount(prev => prev + 1);
-          })
-          .subscribe((status) => {
-            // Only log subscription status when online to reduce noise
-            if (isOnline) {
-              logToAndroid('🔔 Notifications subscription status:', status);
-            }
-            
-            if (status === 'SUBSCRIBED') {
-              logToAndroid('🔔 Successfully subscribed to notifications channel');
-              // Reset retry count on successful subscription
-              setSubscriptionRetryCount(0);
-            } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-              // Only log if we're online to reduce noise when offline
-              if (isOnline) {
-                logToAndroid(`🔔 Subscription failed (${status}) - will retry if under limit`);
-              }
-              
-              // Increment retry count and attempt to reconnect
-              setSubscriptionRetryCount(prev => {
-                const newCount = prev + 1;
-                if (shouldRetrySubscription(newCount, MAX_SUBSCRIPTION_RETRIES)) {
-                  const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
-                  if (isOnline) {
-                    logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
-                  }
-                  createTrackedTimeout(setupSubscription, delay);
-                } else {
-                  if (isOnline) {
-                    logToAndroid('🔔 Max retries exceeded - realtime updates disabled');
-                    logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
-                  }
-                }
-                return newCount;
-              });
-            }
-          });
-
-      } catch (error) {
-        logToAndroid('🔔 Error setting up notifications subscription:', error.message);
-        logToAndroid('🔔 Notifications will still work, but won\'t update in real-time');
-        
-        // Increment retry count on error
-        setSubscriptionRetryCount(prev => {
-          const newCount = prev + 1;
-          if (newCount < MAX_SUBSCRIPTION_RETRIES) {
-            const delay = SUBSCRIPTION_RETRY_DELAY * Math.pow(2, newCount - 1);
-            logToAndroid(`🔔 Scheduling retry ${newCount}/${MAX_SUBSCRIPTION_RETRIES} in ${delay/1000}s`);
-            createTrackedTimeout(setupSubscription, delay);
-          }
-          return newCount;
-        });
-      }
-    };
-
-    // Set up app state listener to handle background/foreground
-    const setupAppStateListener = () => {
-      appStateHandler = () => {
-        if (isAppActive()) {
-          logToAndroid('🔔 App became active - resetting retry count and setting up notifications subscription');
-          // Reset retry count when app becomes active to give users a fresh chance
-          setSubscriptionRetryCount(0);
-          setupSubscription();
-        } else {
-          logToAndroid('🔔 App became inactive - cleaning up notifications subscription');
-          cleanupSubscription();
-        }
-      };
-
-      // Listen for app state changes via the global variable
-      if (typeof window !== 'undefined') {
-        const checkAppState = () => {
-          const currentActive = isAppActive();
-          const wasActive = window.__NOTIFICATIONS_LAST_ACTIVE__ !== false;
-          if (currentActive !== wasActive) {
-            window.__NOTIFICATIONS_LAST_ACTIVE__ = currentActive;
-            appStateHandler();
-          }
-        };
-        
-        // Check less frequently to save memory
-        const intervalId = setInterval(() => {
-          if (document.visibilityState === 'visible') {
-            checkAppState();
-          }
-        }, 10000); // Reduced from 2s to 10s
-        
-        // Additional cleanup on visibility change to prevent background requests
-        const handleVisibilityChange = () => {
-          if (document.visibilityState === 'hidden') {
-            logToAndroid('🔔 [useNotifications] App backgrounded - pausing interval');
-            clearInterval(intervalId);
-          }
-        };
-        
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        
-        // Store cleanup function
-        appStateHandler.cleanup = () => {
-          clearInterval(intervalId);
-          document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-      }
-    };
-
-    if (isOnline) {
-      setupSubscription();
-    }
-    setupAppStateListener();
-
-    return () => {
-      logToAndroid('🔔 Unsubscribing from notifications');
-      isUnmountedRef.current = true;
-      clearAllTimeouts();
-      cleanupSubscription();
-      if (appStateHandler?.cleanup) {
-        appStateHandler.cleanup();
-      }
-    };
-  }, [userId, isOnline]); // Add isOnline dependency
+  const { isOnline } = useOnlineStatus();
+  const subscriptionRef = useRef(null);
+  const notificationCacheRef = useRef(new Map()); // For deduplication
+  const lastActionRef = useRef(new Map()); // Track last actions to prevent duplicates
   
-  // Separate effect to handle online/offline transitions
-  useEffect(() => {
+  // Simplified deduplication key generator
+  const getDedupeKey = useCallback((notification) => {
+    // Create unique key based on type, actor, and reference
+    return `${notification.type}-${notification.actor_id}-${notification.reference_id || ''}`;
+  }, []);
+  
+  // Check if we should show this notification (with debouncing)
+  const shouldShowNotification = useCallback((notification) => {
+    // Skip achievement types
+    if (ACHIEVEMENT_TYPES.has(notification.type)) {
+      console.log('🔔 Skipping achievement notification:', notification.type);
+      return false;
+    }
+    
+    const key = getDedupeKey(notification);
+    const now = Date.now();
+    const lastAction = lastActionRef.current.get(key);
+    
+    // Debounce: If same action within 5 seconds, skip it
+    const DEBOUNCE_TIME = 5000; // 5 seconds
+    if (lastAction && (now - lastAction) < DEBOUNCE_TIME) {
+      console.log('🔔 Debouncing duplicate notification:', key);
+      return false;
+    }
+    
+    // Update last action time
+    lastActionRef.current.set(key, now);
+    
+    // Clean up old entries (older than 1 minute)
+    for (const [k, time] of lastActionRef.current.entries()) {
+      if (now - time > 60000) {
+        lastActionRef.current.delete(k);
+      }
+    }
+    
+    return true;
+  }, [getDedupeKey]);
+  
+  // Process and deduplicate notifications
+  const processNotifications = useCallback((rawNotifications) => {
+    const processed = [];
+    const seen = new Set();
+    
+    for (const notification of rawNotifications) {
+      const key = getDedupeKey(notification);
+      
+      // Skip if we've already seen this notification in this batch
+      if (seen.has(key)) continue;
+      
+      // Skip achievement types
+      if (ACHIEVEMENT_TYPES.has(notification.type)) continue;
+      
+      seen.add(key);
+      processed.push(notification);
+    }
+    
+    return processed;
+  }, [getDedupeKey]);
+
+  // Load initial notifications
+  const loadNotifications = useCallback(async () => {
     if (!userId) return;
     
-    if (isOnline) {
-      // Reset retry count when coming back online
-      setSubscriptionRetryCount(0);
-      logToAndroid('🌐 [useNotifications] Device back online - setting up subscription');
-    } else {
-      // Clean up subscription when going offline
-      logToAndroid('🌐 [useNotifications] Device offline - cleaning up subscription');
-    }
-  }, [isOnline, userId]);
-
-  const loadNotifications = async () => {
-    logToAndroid('🔔 Loading initial notifications for user:', userId);
+    console.log('🔔 Loading notifications for user:', userId);
+    setReady(false);
     
     try {
-      // First, get notifications without the join
-      const { data: notificationsData, error: notificationsError } = await supabase
+      // Get notifications
+      const { data: notificationsData, error } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', userId)
+        .not('type', 'in', `(${Array.from(ACHIEVEMENT_TYPES).join(',')})`) // Filter server-side
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (notificationsError) {
-        logToAndroid('🔔 Error loading notifications:', notificationsError);
+      if (error) {
+        console.error('🔔 Error loading notifications:', error);
         setReady(true);
         return;
       }
 
-      logToAndroid('🔔 Raw notifications data:', notificationsData);
+      if (!notificationsData || notificationsData.length === 0) {
+        setNotifications([]);
+        setUnreadCount(0);
+        setReady(true);
+        return;
+      }
 
-      if (notificationsData && notificationsData.length > 0) {
-        // Filter out achievement-related types so they show only under Achievements
-        const filtered = notificationsData.filter(n => !ACHIEVEMENT_TYPES.has(n?.type));
-        logToAndroid('🔔 Filtered notifications count (excluding achievements):', filtered.length);
-
-        // Get unique actor IDs
-        const actorIds = [...new Set(filtered.map(n => n.actor_id))];
-        logToAndroid('🔔 Actor IDs to fetch:', actorIds);
-
-        // Fetch profiles for all actors
-        const { data: profilesData, error: profilesError } = await supabase
+      // Process and deduplicate
+      const processed = processNotifications(notificationsData);
+      
+      // Get unique actor IDs
+      const actorIds = [...new Set(processed.map(n => n.actor_id).filter(Boolean))];
+      
+      if (actorIds.length > 0) {
+        // Fetch profiles
+        const { data: profiles } = await supabase
           .from('profiles')
           .select('id, username, avatar_url')
           .in('id', actorIds);
 
-        if (profilesError) {
-          logToAndroid('🔔 Error loading profiles:', profilesError);
-          return;
-        }
-
-        logToAndroid('🔔 Profiles data:', profilesData);
-
-        // Create a map of actor_id to profile data
+        // Create profiles map
         const profilesMap = {};
-        profilesData?.forEach(profile => {
+        profiles?.forEach(profile => {
           profilesMap[profile.id] = profile;
         });
 
-        // Combine notifications with profile data
-        const enrichedNotifications = filtered.map(notification => ({
+        // Enrich notifications
+        const enriched = processed.map(notification => ({
           ...notification,
           profiles: profilesMap[notification.actor_id] || null
         }));
 
-        logToAndroid('🔔 Enriched notifications:', enrichedNotifications);
-        
-        setNotifications(enrichedNotifications);
-        const unreadNotifications = enrichedNotifications.filter(n => !n.read);
-        logToAndroid('🔔 Unread notifications:', unreadNotifications.length);
-        setUnreadCount(unreadNotifications.length);
-        setReady(true);
+        setNotifications(enriched);
+        setUnreadCount(enriched.filter(n => !n.read).length);
       } else {
-        logToAndroid('🔔 No notification data returned');
-        setNotifications([]);
-        setUnreadCount(0);
-        setReady(true);
+        setNotifications(processed);
+        setUnreadCount(processed.filter(n => !n.read).length);
       }
+      
+      setReady(true);
     } catch (err) {
-      logToAndroid('🔔 Exception loading notifications:', JSON.stringify({
-        message: err.message,
-        name: err.name,
-        details: err.details,
-        hint: err.hint,
-        code: err.code,
-        fullError: err
-      }, null, 2));
+      console.error('🔔 Exception loading notifications:', err);
       setReady(true);
     }
-  };
+  }, [userId, processNotifications]);
 
-  const markAsRead = async (notificationId) => {
-    logToAndroid('🔔 Marking notification as read:', notificationId);
+  // Set up realtime subscription (simplified)
+  const setupSubscription = useCallback(() => {
+    if (!userId || !isOnline) return;
+    
+    // Clean up existing subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current.unsubscribe();
+      subscriptionRef.current = null;
+    }
+    
+    console.log('🔔 Setting up notifications subscription');
+    
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`
+      }, async (payload) => {
+        const newNotification = payload.new;
+        
+        // Check if we should show this notification
+        if (!shouldShowNotification(newNotification)) {
+          return;
+        }
+        
+        console.log('🔔 New notification:', newNotification);
+        
+        // Fetch profile data for the new notification
+        if (newNotification.actor_id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .eq('id', newNotification.actor_id)
+            .single();
+          
+          newNotification.profiles = profile;
+        }
+        
+        // Add to notifications (deduplicated)
+        setNotifications(prev => {
+          // Check if this exact notification already exists
+          const exists = prev.some(n => 
+            n.id === newNotification.id || 
+            (getDedupeKey(n) === getDedupeKey(newNotification) && 
+             Math.abs(new Date(n.created_at) - new Date(newNotification.created_at)) < 5000)
+          );
+          
+          if (exists) {
+            console.log('🔔 Notification already exists, skipping');
+            return prev;
+          }
+          
+          return [newNotification, ...prev];
+        });
+        
+        if (!newNotification.read) {
+          setUnreadCount(prev => prev + 1);
+        }
+      })
+      .subscribe((status) => {
+        console.log('🔔 Subscription status:', status);
+      });
+    
+    subscriptionRef.current = channel;
+  }, [userId, isOnline, shouldShowNotification, getDedupeKey]);
+
+  // Main effect for loading and subscription
+  useEffect(() => {
+    if (!userId) {
+      setReady(false);
+      return;
+    }
+    
+    loadNotifications();
+    
+    if (isOnline) {
+      // Small delay to ensure initial load completes first
+      const timer = setTimeout(setupSubscription, 1000);
+      return () => {
+        clearTimeout(timer);
+        if (subscriptionRef.current) {
+          subscriptionRef.current.unsubscribe();
+          subscriptionRef.current = null;
+        }
+      };
+    }
+  }, [userId, isOnline, loadNotifications, setupSubscription]);
+
+  // Mark notification as read
+  const markAsRead = useCallback(async (notificationId) => {
+    console.log('🔔 Marking as read:', notificationId);
+    
+    // Optimistic update
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+    
+    // Update in database
     await supabase
       .from('notifications')
       .update({ read: true })
       .eq('id', notificationId);
-    
-    // Remove from list when swiped/acted on
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    setUnreadCount(prev => Math.max(0, prev - 1));
-  };
+  }, []);
 
-  const markAllAsRead = async () => {
-    logToAndroid('🔔 Marking all notifications as read');
+  // Mark all as read
+  const markAllAsRead = useCallback(async () => {
+    console.log('🔔 Marking all as read');
+    
+    // Optimistic update
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
+    
+    // Update in database
     await supabase
       .from('notifications')
       .update({ read: true })
       .eq('user_id', userId)
       .eq('read', false);
+  }, [userId]);
 
-    setNotifications(prev => 
-      prev.map(n => ({ ...n, read: true }))
-    );
-    setUnreadCount(0);
-  };
+  // Toggle dropdown
+  const toggleOpen = useCallback(() => {
+    setIsOpen(prev => !prev);
+  }, []);
 
-  const toggleOpen = () => {
-    logToAndroid('🔔 Toggling notifications dropdown:', !isOpen);
-    logToAndroid('🔔 Current notifications in state:', notifications);
-    logToAndroid('🔔 Current unread count:', unreadCount);
-    setIsOpen(!isOpen);
-  };
-
-  return { 
-    notifications, 
-    unreadCount, 
+  return {
+    notifications,
+    unreadCount,
     isOpen,
     toggleOpen,
     markAsRead,

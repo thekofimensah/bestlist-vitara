@@ -65,14 +65,14 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
         >
           <img 
             src={iconUrl} 
-            alt="Bestlist Logo"
+            alt="CURATE Logo"
             width="320" 
             height="320" 
             className="drop-shadow-lg w-72 h-72 md:w-80 md:h-80"
             style={{ filter: splashScreenTokens.iconFilter }}
           />
         </motion.div>
-        <h1 className="text-5xl md:text-6xl lg:text-7xl font-lateef text-white mt-4 text-shadow tracking-widest font-normal">
+        <h1 className="text-5xl md:text-6xl lg:text-7xl font-arsenal-sc text-white mt-4 text-shadow tracking-widest font-normal">
           {splashScreenTokens.appName}
         </h1>
       </motion.div>

@@ -872,7 +872,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         }}
       >
         <div className="px-6 mb-3 flex items-center justify-between">
-          <span className="text-5xl text-gray-600 font-lateef">Lists</span>
+          <span className="text-title-header text-gray-600 font-arsenal-sc">lists</span>
           <div className="flex items-center gap-3">
             {isReorderMode ? (
               <button

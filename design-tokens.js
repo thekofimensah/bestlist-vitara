@@ -14,8 +14,8 @@ export const splashScreenTokens = {
   textColor: '#FFFFFF',
   
   // Typography
-  fontFamily: 'lateef',
-  appName: 'bestlist',
+  fontFamily: 'arsenal-sc',
+  appName: 'curate',
   fontSize: {
     mobile: '5xl', // text-5xl in Tailwind
     tablet: '6xl', // text-6xl 

@@ -1,10 +1,18 @@
 /*@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');*/
-@import url('https://fonts.googleapis.com/css2?family=Jua&family=Reenie+Beanie&family=Sen:wght@400..800&family=Katibeh&family=Lateef:wght@200;300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Jua&family=Reenie+Beanie&family=Sen:wght@400..800&family=Katibeh&family=Lateef:wght@200;300;400;500;600;700;800&family=Arsenal+SC:wght@400;700&family=Outfit:wght@100..900&display=swap');
 @import "tailwindcss";
 
 @layer base {
   .font-lateef {
     font-family: var(--font-family-lateef);
+  }
+  
+  .font-arsenal {
+    font-family: var(--font-family-arsenal);
+  }
+  
+  .font-outfit {
+    font-family: var(--font-family-outfit);
   }
 }
 
@@ -32,9 +40,11 @@
     --color-error: #EF4444;              /* Error states */
     
     /* 🎨 MOST USED TYPOGRAPHY */
-    --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-family-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-family-katibeh: 'Katibeh', cursive;
     --font-family-lateef: 'Lateef', serif;
+    --font-family-arsenal-sc: 'Arsenal SC', sans-serif;
+    --font-family-outfit: 'Outfit', sans-serif;
     
     /* 🎨 MOST USED SPACING */
     --spacing-sm: 0.5rem;    /* 8px - small gaps */
@@ -986,8 +996,24 @@
   .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
   .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
   
+  /* Custom App Title Sizes */
+  .text-title-main { font-size: 56px; line-height: 1.1; font-weight: 400; } /* Main app title */
+  .text-title-header { font-size: 42px; line-height: 1.2; font-weight: 400; } /* Section headers */
+  
+  /* Responsive variants for smaller screens */
+  @media (max-width: 640px) {
+    .text-title-main { font-size: 56px; }
+    .text-title-header { font-size: 48px; }
+  }
+  @media (min-width: 641px) and (max-width: 768px) {
+    .text-title-main { font-size: 56px; }
+    .text-title-header { font-size: 48px; }
+  }
+  
   /* Font Family Utilities */
   .font-katibeh { font-family: var(--font-family-katibeh); }
+  .font-arsenal-sc { font-family: var(--font-family-arsenal-sc); }
+  .font-outfit { font-family: var(--font-family-outfit); }
   
   /* Font Weight Utilities */
   .font-light { font-weight: 300; }

@@ -1824,11 +1824,11 @@ const App = () => {
                   paddingRight: 'env(safe-area-inset-right)'
                 }}
               >
-                <div className="px-4 mb-3 flex items-baseline justify-between">
-                  <div className="flex items-baseline gap-3 pl-2">
-                    <span className="text-5xl md:text-6xl font-lateef text-gray-600 leading-none pb-4">
-                      bestlist
-                    </span>
+              <div className="px-4 mb-3 flex items-baseline justify-between">
+                <div className="flex items-baseline gap-3 pl-2">
+                  <span className="text-title-main font-arsenal-sc text-gray-600 leading-none pb-4">
+                    curate
+                  </span>
 
                     {/* Offline Status Indicator */}
                     {!queueStatus.isOnline && (

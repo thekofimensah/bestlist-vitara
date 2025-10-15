@@ -222,28 +222,29 @@ const PullToRefresh = ({
         {(pullDistance > 0 || isRefreshing) && (
           <motion.div 
             className="fixed top-0 left-0 right-0 z-50 pointer-events-none"
-            initial={{ y: -50, opacity: 0 }}
+            initial={{ y: -60, opacity: 0 }}
             animate={{
-              y: Math.min(pullDistance * 0.5, 40),
+              y: Math.min(pullDistance * 0.6, 50),
               opacity: opacity,
             }}
-            exit={{ y: -50, opacity: 0 }}
+            exit={{ y: -60, opacity: 0 }}
             transition={{
               type: "spring",
               stiffness: 400,
               damping: 30,
             }}
           >
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center justify-center">
               <div className="relative">
+                {/* White background circle */}
                 <motion.div
                   className="bg-white rounded-full shadow-lg flex items-center justify-center"
                   style={{
-                    width: 40,
-                    height: 40,
+                    width: 46,
+                    height: 46,
                   }}
                   animate={{
-                    scale: isRefreshing ? 1 : 0.9 + (progress * 0.1),
+                    scale: isRefreshing ? 1 : 0.85 + (progress * 0.15),
                   }}
                   transition={{
                     type: "spring",
@@ -251,105 +252,122 @@ const PullToRefresh = ({
                     damping: 20,
                   }}
                 >
-                  {isRefreshing ? (
-                    // Modern loading dots
-                    <div className="flex gap-1">
+                  {/* Inner content - dots or spinner */}
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    {isRefreshing ? (
+                      // Modern circular spinner
                       <motion.div
-                        className="w-1.5 h-1.5 bg-teal-600 rounded-full"
+                        className="absolute inset-0 rounded-full"
+                        style={{
+                          background: `conic-gradient(from 0deg, transparent, #1F6D5A)`,
+                          mask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 3px))',
+                          WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 3px))',
+                        }}
                         animate={{
-                          y: [0, -4, 0],
+                          rotate: 360,
                         }}
                         transition={{
-                          duration: 0.6,
+                          duration: 1,
+                          ease: "linear",
                           repeat: Infinity,
-                          delay: 0,
                         }}
                       />
-                      <motion.div
-                        className="w-1.5 h-1.5 bg-teal-600 rounded-full"
-                        animate={{
-                          y: [0, -4, 0],
-                        }}
-                        transition={{
-                          duration: 0.6,
-                          repeat: Infinity,
-                          delay: 0.2,
-                        }}
-                      />
-                      <motion.div
-                        className="w-1.5 h-1.5 bg-teal-600 rounded-full"
-                        animate={{
-                          y: [0, -4, 0],
-                        }}
-                        transition={{
-                          duration: 0.6,
-                          repeat: Infinity,
-                          delay: 0.4,
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    // Modern pull indicator - just dots that scale
-                    <div className="flex gap-1">
-                      <motion.div
-                        className="w-1.5 h-1.5 bg-teal-600 rounded-full"
-                        style={{
-                          opacity: 0.4 + (progress * 0.6),
-                          scale: 0.8 + (progress * 0.2),
-                        }}
-                      />
-                      <motion.div
-                        className="w-1.5 h-1.5 bg-teal-600 rounded-full"
-                        style={{
-                          opacity: 0.4 + (progress * 0.6),
-                          scale: 0.8 + (progress * 0.2),
-                        }}
-                      />
-                      <motion.div
-                        className="w-1.5 h-1.5 bg-teal-600 rounded-full"
-                        style={{
-                          opacity: 0.4 + (progress * 0.6),
-                          scale: 0.8 + (progress * 0.2),
-                        }}
-                      />
-                    </div>
-                  )}
+                    ) : (
+                      // Dots that scale with progress
+                      <div className="flex gap-1">
+                        <motion.div
+                          className="w-1.5 h-1.5 bg-teal-600 rounded-full"
+                          style={{
+                            opacity: 0.3 + (progress * 0.7),
+                            scale: 0.7 + (progress * 0.3),
+                          }}
+                        />
+                        <motion.div
+                          className="w-1.5 h-1.5 bg-teal-600 rounded-full"
+                          style={{
+                            opacity: 0.3 + (progress * 0.7),
+                            scale: 0.7 + (progress * 0.3),
+                          }}
+                        />
+                        <motion.div
+                          className="w-1.5 h-1.5 bg-teal-600 rounded-full"
+                          style={{
+                            opacity: 0.3 + (progress * 0.7),
+                            scale: 0.7 + (progress * 0.3),
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
 
-                {/* Clean progress ring */}
+                {/* Progress ring */}
                 {!isRefreshing && (
                   <svg
                     className="absolute inset-0 pointer-events-none"
                     style={{ 
-                      width: 40, 
-                      height: 40,
+                      width: 46, 
+                      height: 46,
                       transform: 'rotate(-90deg)',
                     }}
                   >
                     <circle
-                      cx="20"
-                      cy="20"
-                      r="18"
+                      cx="23"
+                      cy="23"
+                      r="20"
                       fill="none"
-                      stroke="#E5E7EB"
-                      strokeWidth="2"
+                      stroke="rgba(229, 231, 235, 0.5)"
+                      strokeWidth="2.5"
                     />
                     <circle
-                      cx="20"
-                      cy="20"
-                      r="18"
+                      cx="23"
+                      cy="23"
+                      r="20"
                       fill="none"
                       stroke="#1F6D5A"
-                      strokeWidth="2"
+                      strokeWidth="2.5"
                       strokeLinecap="round"
-                      strokeDasharray={`${progress * 113} 113`}
+                      strokeDasharray={`${progress * 126} 126`}
                       style={{
-                        transition: 'stroke-dasharray 0.1s ease-out',
+                        transition: 'stroke-dasharray 0.15s ease-out',
+                        filter: 'drop-shadow(0 0 6px rgba(31, 109, 90, 0.3))',
                       }}
                     />
                   </svg>
                 )}
               </div>
+
+              {/* Status text */}
+              <AnimatePresence mode="wait">
+                {!isRefreshing && pullDistance > 5 && (
+                  <motion.div
+                    className="mt-2 text-xs font-medium"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ 
+                      opacity: Math.min(pullDistance / 30, 1),
+                      y: 0,
+                    }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.15 }}
+                    style={{
+                      color: releaseToRefresh ? '#1F6D5A' : '#9CA3AF',
+                    }}
+                  >
+                    {releaseToRefresh ? 'Release to refresh' : 'Pull down to refresh'}
+                  </motion.div>
+                )}
+                {isRefreshing && (
+                  <motion.div
+                    className="mt-2 text-xs font-medium text-teal-600"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    Refreshing...
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}

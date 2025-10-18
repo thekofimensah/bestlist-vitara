@@ -34,7 +34,7 @@ import { updateFeedPosts, addOfflineProfilePost, getProfilePostsLocal, removeUse
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 import LoadingScreen from './components/LoadingScreen';
 import { shouldLoadFromCacheOnly } from './lib/onlineDetection';
-import iconUrl from './assets/icon.svg';
+import iconUrl from './assets/icon.png';
 
 // Helper function to format post data from database (moved from MainScreen)
   const formatPostForDisplay = (post) => {

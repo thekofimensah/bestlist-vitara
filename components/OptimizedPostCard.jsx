@@ -302,19 +302,64 @@ const OptimizedPostCard = memo(({
       const postId = e?.detail?.postId;
       const saved = e?.detail?.saved;
       if (!currentPostId || postId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Syncing saved state:', { postId: currentPostId, saved });
       setIsSaved(saved === true);
+      
       if (currentUserId) {
         saveSavedStateCache(currentUserId, currentPostId, saved === true).catch(() => {});
+      }
+    };
+    
+    const handleItemSaved = (e) => {
+      const postId = e?.detail?.postId;
+      if (!currentPostId || postId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Item saved, updating bookmark:', { postId: currentPostId });
+      setIsSaved(true);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, true).catch(() => {});
+      }
+    };
+    
+    const handleItemUnsaved = (e) => {
+      const postId = e?.detail?.postId;
+      if (!currentPostId || postId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Item unsaved, updating bookmark:', { postId: currentPostId });
+      setIsSaved(false);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, false).catch(() => {});
+      }
+    };
+    
+    const handleItemDeleted = (e) => {
+      const savedFromPostId = e?.detail?.savedFromPostId;
+      if (!currentPostId || savedFromPostId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Saved item deleted, removing bookmark:', { postId: currentPostId });
+      setIsSaved(false);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, false).catch(() => {});
       }
     };
 
     try {
       window.addEventListener('bestlist:post-saved-changed', handlePostSavedChanged);
+      window.addEventListener('bestlist:item-saved', handleItemSaved);
+      window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
+      window.addEventListener('bestlist:item-deleted', handleItemDeleted);
     } catch (_) {}
 
     return () => {
       try {
         window.removeEventListener('bestlist:post-saved-changed', handlePostSavedChanged);
+        window.removeEventListener('bestlist:item-saved', handleItemSaved);
+        window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
+        window.removeEventListener('bestlist:item-deleted', handleItemDeleted);
       } catch (_) {}
     };
   }, [post?.id]);
@@ -450,45 +495,95 @@ const OptimizedPostCard = memo(({
           // Get saved list id
           const { data: savedListId } = await supabase.rpc('get_or_create_saved_items_list', { p_user_id: user.id });
           if (savedListId) {
+            // Ensure we have a valid item ID from the server response
+            const itemId = data.new_item_id || `temp_saved_${post.id}_${Date.now()}`;
+            
             const itemObj = {
-              id: data.new_item_id || `temp_${Date.now()}`,
+              id: itemId,
               list_id: savedListId,
-              name: post.item_name || post.items?.name,
-              image_url: post.image || post.items?.image_url,
-              rating: post.rating || post.items?.rating,
-              notes: post.snippet || post.items?.notes,
+              name: post.item_name || post.items?.name || 'Untitled',
+              image_url: post.image || post.items?.image_url || post.thumbnail_image,
+              image: post.image || post.items?.image_url || post.thumbnail_image, // Duplicate for compatibility
+              rating: post.rating || post.items?.rating || null,
+              notes: post.snippet || post.items?.notes || null,
               is_stay_away: post.items?.is_stay_away || false,
-              place_name: post.items?.place_name,
-              ai_product_name: post.items?.ai_product_name,
-              ai_brand: post.items?.ai_brand,
-              ai_category: post.items?.ai_category,
-              ai_confidence: post.items?.ai_confidence,
-              ai_description: post.items?.ai_description,
-              ai_tags: post.items?.ai_tags,
-              user_product_name: post.items?.user_product_name,
-              user_description: post.items?.user_description,
-              user_tags: post.items?.user_tags,
-              detailed_breakdown: post.items?.detailed_breakdown,
-              price: post.items?.price,
-              currency_code: post.items?.currency_code,
+              place_name: post.items?.place_name || null,
+              ai_product_name: post.items?.ai_product_name || null,
+              ai_brand: post.items?.ai_brand || null,
+              ai_category: post.items?.ai_category || null,
+              ai_confidence: post.items?.ai_confidence || null,
+              ai_description: post.items?.ai_description || null,
+              ai_tags: post.items?.ai_tags || null,
+              user_product_name: post.items?.user_product_name || null,
+              user_description: post.items?.user_description || null,
+              user_tags: post.items?.user_tags || null,
+              detailed_breakdown: post.items?.detailed_breakdown || null,
+              price: post.items?.price || null,
+              currency_code: post.items?.currency_code || null,
               saved_from_post_id: post.id,
               original_creator_id: post.user_id,
               is_saved_item: true,
-              created_at: new Date().toISOString()
+              created_at: new Date().toISOString(),
+              // Additional fields for proper display
+              category: post.items?.category || null,
+              species: post.items?.species || null,
+              certainty: post.items?.certainty || null,
+              tags: post.items?.tags || null,
+              location: post.items?.location || null,
+              latitude: post.items?.latitude || null,
+              longitude: post.items?.longitude || null,
+              rarity: post.items?.rarity || null,
+              photo_date_time: post.items?.photo_date_time || null,
+              photo_location_source: post.items?.photo_location_source || null,
+              is_public: post.items?.is_public || false,
+              ai_allergens: post.items?.ai_allergens || null,
+              ai_lookup_status: post.items?.ai_lookup_status || null,
+              user_allergens: post.items?.user_allergens || null,
+              is_first_in_world: post.items?.is_first_in_world || false,
+              first_in_world_achievement_id: post.items?.first_in_world_achievement_id || null
             };
+            
+            console.log('✅ [OptimizedPostCard] Dispatching item-saved event with complete item data:', {
+              itemId,
+              listId: savedListId,
+              postId: post.id,
+              itemName: itemObj.name
+            });
+            
             try {
+              // Immediate optimistic update for UI responsiveness
               window.dispatchEvent(new CustomEvent('bestlist:item-saved', { 
                 detail: { item: itemObj, listId: savedListId, postId: post.id } 
               }));
+              
+              // Completion event to trigger smart refresh after DB operation
+              window.dispatchEvent(new CustomEvent('bestlist:save-completed', {
+                detail: { 
+                  postId: post.id, 
+                  saved: true, 
+                  listId: savedListId,
+                  itemId: itemId
+                }
+              }));
             } catch (_) {}
           }
-        } catch (_) {}
+        } catch (error) {
+          console.error('⚠️ [OptimizedPostCard] Error creating saved item object:', error);
+        }
       } else {
         // If unsaved, notify ListsView to remove it from Saved Items
         try { 
           window.dispatchEvent(new CustomEvent('bestlist:item-unsaved', { 
             detail: { postId: post.id } 
-          })); 
+          }));
+          
+          // Completion event for unsave operation
+          window.dispatchEvent(new CustomEvent('bestlist:save-completed', {
+            detail: { 
+              postId: post.id, 
+              saved: false
+            }
+          }));
         } catch (_) {}
       }
 

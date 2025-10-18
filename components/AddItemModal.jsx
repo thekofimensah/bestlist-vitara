@@ -1718,6 +1718,7 @@ const AddItemModal = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const isEditingExisting = Boolean(item?.id);
+  const deleteDragActiveRef = useRef(false);
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -3068,7 +3069,39 @@ const AddItemModal = ({
                       min="0"
                       max="100"
                       defaultValue="0"
+                      onMouseDown={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const startThresholdPx = 24; // only allow starting near the left edge
+                        if (x <= startThresholdPx && Number(e.currentTarget.value) === 0) {
+                          deleteDragActiveRef.current = true;
+                        } else {
+                          deleteDragActiveRef.current = false;
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }
+                      }}
+                      onTouchStart={(e) => {
+                        const touch = e.touches && e.touches[0];
+                        if (!touch) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = touch.clientX - rect.left;
+                        const startThresholdPx = 24; // only allow starting near the left edge
+                        if (x <= startThresholdPx && Number(e.currentTarget.value) === 0) {
+                          deleteDragActiveRef.current = true;
+                        } else {
+                          deleteDragActiveRef.current = false;
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }
+                      }}
                       onChange={async (e) => {
+                        if (!deleteDragActiveRef.current) {
+                          const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
+                          if (progressEl) progressEl.style.width = '0%';
+                          e.currentTarget.value = 0;
+                          return;
+                        }
                         const val = Number(e.target.value);
                         // Update progress overlay width as the user swipes
                         const progressEl = e.currentTarget.parentElement.querySelector('#swipeProgress');
@@ -3082,6 +3115,7 @@ const AddItemModal = ({
                         }
                       }}
                   onMouseUp={(e) => {
+                    deleteDragActiveRef.current = false;
                     if (isDeleting) return;
                     const val = Number(e.currentTarget.value);
                     if (val < 100) {
@@ -3091,6 +3125,7 @@ const AddItemModal = ({
                     }
                   }}
                   onTouchEnd={(e) => {
+                    deleteDragActiveRef.current = false;
                     if (isDeleting) return;
                     const val = Number(e.currentTarget.value);
                     if (val < 100) {
@@ -3099,7 +3134,7 @@ const AddItemModal = ({
                       if (progressEl) progressEl.style.width = '0%';
                     }
                   }}
-                  className="w-full h-12 opacity-0"
+                  className="w-full h-12 opacity-0 delete-slider"
                 />
                   </div>
                 </div>
@@ -3692,6 +3727,14 @@ const AddItemModal = ({
               opacity: 0;
             }
           }
+
+          /* Make delete slider start-only from left by disabling track clicks */
+          input.delete-slider::-webkit-slider-runnable-track { pointer-events: none; }
+          input.delete-slider::-webkit-slider-thumb { pointer-events: auto; }
+          input.delete-slider::-moz-range-track { pointer-events: none; }
+          input.delete-slider::-moz-range-thumb { pointer-events: auto; }
+          input.delete-slider::-ms-track { pointer-events: none; }
+          input.delete-slider::-ms-thumb { pointer-events: auto; }
         `
       }} />
 
@@ -3728,6 +3771,13 @@ const AddItemModal = ({
                     try {
                       if (item?.id) {
                         window.dispatchEvent(new CustomEvent('bestlist:item-deleted', { detail: { itemId: item.id } }));
+                      }
+                    } catch (_) {}
+
+                    // 🔔 If this was a saved item, notify feed to unsave corresponding post immediately
+                    try {
+                      if (item?.is_saved_item && item?.saved_from_post_id) {
+                        window.dispatchEvent(new CustomEvent('bestlist:item-unsaved', { detail: { postId: item.saved_from_post_id } }));
                       }
                     } catch (_) {}
 

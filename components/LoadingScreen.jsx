@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import iconUrl from '../assets/icon.svg';
+import iconUrl from '../assets/icon.png';
 import { splashScreenTokens } from '../design-tokens.js';
 
 const LoadingScreen = ({ loadingProgress, appLoading }) => {
@@ -50,41 +50,60 @@ const LoadingScreen = ({ loadingProgress, appLoading }) => {
       {/* Logo and App Name */}
       <motion.div 
         className="text-center"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.5 }}
+        initial={{ opacity: 1, scale: 0.6, y: 20 }} // Start smaller and slightly lower to match splash screen
+        animate={{ opacity: 1, scale: 1, y: 0 }} // Grow to full size and move to center
+        transition={{ 
+          duration: 0.6, 
+          ease: [0.43, 0.13, 0.23, 0.96], // Custom easing for smooth, natural feel
+          delay: 0.1 
+        }}
       >
         <motion.div
-          animate={{ y: splashScreenTokens.logoAnimation.y }}
+          initial={{ scale: 1 }}
+          animate={{ 
+            y: splashScreenTokens.logoAnimation.y,
+            scale: 1 
+          }}
           transition={{ 
-            duration: splashScreenTokens.logoAnimation.duration, 
-            repeat: Infinity, 
-            ease: splashScreenTokens.logoAnimation.ease 
+            y: {
+              duration: splashScreenTokens.logoAnimation.duration, 
+              repeat: Infinity, 
+              ease: splashScreenTokens.logoAnimation.ease,
+              delay: 0.7 // Start floating animation after transition completes
+            }
           }}
           className="mb-4"
         >
-          <img 
-            src={iconUrl} 
-            alt="CURATE Logo"
-            width="320" 
-            height="320" 
-            className="drop-shadow-lg w-72 h-72 md:w-80 md:h-80"
-            style={{ filter: splashScreenTokens.iconFilter }}
-          />
+          <motion.div 
+            className="rounded-full bg-white flex items-center justify-center drop-shadow-lg"
+            initial={{ width: '12rem', height: '12rem' }} // Start at smaller size (w-48 h-48)
+            animate={{ width: '18rem', height: '18rem' }} // Grow to w-72 h-72
+            transition={{ 
+              duration: 0.6, 
+              ease: [0.43, 0.13, 0.23, 0.96],
+              delay: 0.1 
+            }}
+          >
+            <img 
+              src={iconUrl} 
+              alt="CURATE"
+              width="320" 
+              height="320" 
+              className="drop-shadow-lg w-72 h-72 md:w-80 md:h-80"
+              style={{ filter: splashScreenTokens.iconFilter }}
+            />
+          </motion.div>
         </motion.div>
-        <h1 className="text-5xl md:text-6xl lg:text-7xl font-arsenal-sc text-white mt-4 text-shadow tracking-widest font-normal">
-          {splashScreenTokens.appName}
-        </h1>
       </motion.div>
       
       {/* Loading Text */}
       <motion.div 
         className="fixed bottom-12 md:bottom-16 left-0 right-0 text-center"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 1.5 }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.8 }} // Fade in after icon transition
       >
-        <div className="text-white/80 text-sm md:text-base">
+        <div className="text-black/80 text-sm md:text-base">
           {loadingMessages[currentMessageIndex]}
           {currentMessageIndex < 3 && (
             <span className="dots ml-1">...</span>

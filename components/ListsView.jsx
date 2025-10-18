@@ -208,7 +208,6 @@ const ListRow = ({
   isReorderMode = false,
   sortMode = 'recent',
   onEnterReorderMode,
-  clickLockedItemIds,
 }) => {
   const isSavedItemsList = list.name === 'Saved Items';
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
@@ -354,7 +353,7 @@ const ListRow = ({
               showSelection={selectionEnabled}
               isSelected={selectedIds?.includes(item.id)}
               isSavedList={isSavedItemsList}
-              isClickLocked={isSavedItemsList && clickLockedItemIds?.has && clickLockedItemIds.has(item.id)}
+              isClickLocked={false}
             />
           ))}
           {!isSavedItemsList && (
@@ -369,7 +368,7 @@ const ListRow = ({
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange, onAddItem }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange, onAddItem, onRefreshLists }) => {
   // AI processing hook
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
@@ -395,8 +394,6 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
 
   // AddItemModal state for AI processing
   const [editingItem, setEditingItem] = useState(null);
-  // Track temporarily click-locked saved items (IDs) for 10s after saving
-  const [clickLockedItemIds, setClickLockedItemIds] = useState(new Set());
 
   // Location state for AI context
   const [deviceLocation, setDeviceLocation] = useState(null);
@@ -474,9 +471,27 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     onReorderModeChange?.(isReorderMode);
   }, [isReorderMode, onReorderModeChange]);
 
-  // Update reordered lists when lists prop changes
+  // Update reordered lists when lists prop changes - but preserve local updates
   useEffect(() => {
-    setReorderedLists(lists);
+    // Only update if we're not in the middle of a local update
+    // This prevents overwriting optimistic updates
+    setReorderedLists(prev => {
+      // If we have local changes (different from props), preserve them
+      if (JSON.stringify(prev) !== JSON.stringify(lists)) {
+        // Check if this is just a reorder difference or actual content difference
+        const prevIds = prev.flatMap(l => [...(l.items || []), ...(l.stayAways || [])].map(i => i.id));
+        const newIds = lists.flatMap(l => [...(l.items || []), ...(l.stayAways || [])].map(i => i.id));
+        
+        // If the item IDs are the same, it's likely just a reorder, keep local state
+        if (prevIds.sort().join(',') === newIds.sort().join(',')) {
+          console.log('📌 [ListsView] Keeping local reordered state');
+          return prev;
+        }
+      }
+      // Otherwise, accept the new lists from props
+      console.log('📌 [ListsView] Updating lists from props');
+      return lists;
+    });
   }, [lists]);
 
   // Restore scroll position on mount, but only if user has scrolled before
@@ -513,9 +528,6 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   }, [selectionEnabled]);
 
   const handleItemTap = (item) => {
-    // If the item is in Saved Items and is currently click-locked, ignore taps
-    if (clickLockedItemIds.has(item.id)) return;
-
     // Open AddItemModal for editing by finding the parent list
     const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
@@ -564,6 +576,33 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       setSelectionEnabled(false);
       
       console.log('🚀 [ListsView] Items removed from UI, deleting in background...');
+      
+      // Dispatch unsave events for any deleted saved items to sync feed state
+      try {
+        const savedPostIds = new Set();
+        const itemsWithPostIds = [];
+        
+        for (const id of itemsToDelete) {
+          const item = lists?.flatMap(l => [...(l.items || []), ...(l.stayAways || [])]).find(it => it.id === id);
+          if (item?.saved_from_post_id) {
+            savedPostIds.add(item.saved_from_post_id);
+            itemsWithPostIds.push({ itemId: id, savedFromPostId: item.saved_from_post_id });
+          }
+        }
+        
+        // Dispatch unsaved events for feed sync
+        savedPostIds.forEach((postId) => {
+          console.log('🔔 [ListsView] Dispatching unsave event for post:', postId);
+          window.dispatchEvent(new CustomEvent('bestlist:item-unsaved', { detail: { postId } }));
+        });
+        
+        // Also dispatch item-deleted events with post IDs for better tracking
+        itemsWithPostIds.forEach(({ itemId, savedFromPostId }) => {
+          window.dispatchEvent(new CustomEvent('bestlist:item-deleted', { 
+            detail: { itemId, savedFromPostId } 
+          }));
+        });
+      } catch (_) {}
       
       // 🔔 Immediately update Profile "Recent photos" cache for current user
       try {
@@ -628,8 +667,6 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
   };
 
   const handleItemImageTap = (item) => {
-    if (clickLockedItemIds.has(item.id)) return;
-
     // Open AddItemModal for editing by finding the parent list
     const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
@@ -840,53 +877,118 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     const handleItemSaved = (e) => {
       const item = e?.detail?.item;
       const listId = e?.detail?.listId;
+      const postId = e?.detail?.postId;
+      
+      console.log('📌 [ListsView] Item saved event received:', { 
+        itemId: item?.id, 
+        listId, 
+        postId,
+        itemName: item?.name 
+      });
+      
       if (!item || !listId) return;
-      setReorderedLists(prev => prev.map(l => {
-        if (l.id !== listId) return l;
-        const exists = (l.items || []).some(it => it.id === item.id);
-        if (exists) return l;
-        return {
-          ...l,
-          items: [item, ...(l.items || [])]
-        };
-      }));
-
-      // If saved into Saved Items list, temporarily lock click for this new item
-      try {
-        const savedList = lists?.find(l => (l?.name || '').toLowerCase() === 'saved items');
-        if (savedList && savedList.id === listId && item.id) {
-          setClickLockedItemIds(prev => {
-            const next = new Set(prev);
-            next.add(item.id);
-            return next;
-          });
-          setTimeout(() => {
-            setClickLockedItemIds(prev => {
-              const next = new Set(prev);
-              next.delete(item.id);
-              return next;
-            });
-          }, 10000); // 10 seconds
-        }
-      } catch (_) {}
+      
+      // Ensure the item has all necessary properties for immediate interaction
+      const completeItem = {
+        ...item,
+        id: item.id || `saved_${postId}_${Date.now()}`, // Ensure ID exists
+        saved_from_post_id: postId,
+        is_saved_item: true,
+        created_at: item.created_at || new Date().toISOString(),
+        // Ensure image URL is accessible
+        image_url: item.image_url || item.image,
+        // Ensure all display properties are present
+        name: item.name || 'Untitled',
+        rating: item.rating || null,
+        notes: item.notes || null
+      };
+      
+      setReorderedLists(prev => {
+        const updated = prev.map(l => {
+          if (l.id !== listId) return l;
+          
+          // Check if item already exists (by saved_from_post_id to prevent duplicates)
+          const exists = (l.items || []).some(it => 
+            it.saved_from_post_id === postId || it.id === completeItem.id
+          );
+          
+          if (exists) {
+            console.log('📌 [ListsView] Item already exists in list, skipping');
+            return l;
+          }
+          
+          console.log('📌 [ListsView] Adding item to Saved Items list');
+          return {
+            ...l,
+            items: [completeItem, ...(l.items || [])]
+          };
+        });
+        
+        // Note: Do not call setLists here; ListsView manages local optimistic state
+        return updated;
+      });
     };
+    
     const handleItemUnsaved = (e) => {
       const postId = e?.detail?.postId;
+      
+      console.log('📌 [ListsView] Item unsaved event received:', { postId });
+      
       if (!postId) return;
-      setReorderedLists(prev => prev.map(l => ({
-        ...l,
-        items: (l.items || []).filter(it => it.saved_from_post_id !== postId),
-        stayAways: (l.stayAways || []).filter(it => it.saved_from_post_id !== postId)
-      })));
+      
+      setReorderedLists(prev => {
+        const updated = prev.map(l => ({
+          ...l,
+          items: (l.items || []).filter(it => it.saved_from_post_id !== postId),
+          stayAways: (l.stayAways || []).filter(it => it.saved_from_post_id !== postId)
+        }));
+        
+        // Note: Do not call setLists here; ListsView manages local optimistic state
+        return updated;
+      });
     };
+    
     try {
       window.addEventListener('bestlist:item-saved', handleItemSaved);
       window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
     } catch (_) {}
+    
     return () => {
       try {
         window.removeEventListener('bestlist:item-saved', handleItemSaved);
         window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
+      } catch (_) {}
+    };
+  }, []);
+
+  // Smart refresh system - triggers background refresh when save operations complete
+  useEffect(() => {
+    const handleSaveCompleted = async (e) => {
+      const { postId, saved, listId, itemId } = e?.detail || {};
+      
+      console.log('🔄 [ListsView] Save operation completed, triggering smart refresh:', {
+        postId, saved, listId, itemId
+      });
+      
+      // Trigger a background refresh to ensure Lists view is up-to-date
+      // This handles cases where the DB operation took time to complete
+      try {
+        if (typeof onRefreshLists === 'function') {
+          // Use the refresh function passed from parent (App.jsx)
+          await onRefreshLists(true); // true = background refresh
+        }
+      } catch (error) {
+        console.warn('⚠️ [ListsView] Smart refresh failed:', error);
+      }
+    };
+    
+    try {
+      window.addEventListener('bestlist:save-completed', handleSaveCompleted);
+    } catch (_) {}
+    
+    return () => {
+      try {
+        window.removeEventListener('bestlist:save-completed', handleSaveCompleted);
       } catch (_) {}
     };
   }, []);
@@ -1109,7 +1211,6 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                         onShareList={handleShareList}
                         isReorderMode={isReorderMode}
                         onEnterReorderMode={handleEnterReorderMode}
-                        clickLockedItemIds={clickLockedItemIds}
                       />
                     </Reorder.Item>
                   ))}
@@ -1132,7 +1233,6 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                       onShareList={handleShareList}
                       isReorderMode={isReorderMode}
                       onEnterReorderMode={handleEnterReorderMode}
-                      clickLockedItemIds={clickLockedItemIds}
                     />
                   ))}
                 </div>

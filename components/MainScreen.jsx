@@ -593,35 +593,96 @@ const MainScreen = React.forwardRef(({
     const handleSavedChanged = (e) => {
       const postId = e?.detail?.postId;
       const saved = e?.detail?.saved === true;
+      
+      console.log('🔖 [MainScreen] Post saved state changed:', { postId, saved });
+      
       if (!postId || !onUpdateFeedPosts || !Array.isArray(feedPosts)) return;
-      const updated = feedPosts.map(p => p.id === postId ? { ...p, user_saved: saved } : p);
+      
+      const updated = feedPosts.map(p => {
+        if (p.id === postId) {
+          console.log('🔖 [MainScreen] Updating post bookmark state:', p.item_name, 'saved:', saved);
+          return { ...p, user_saved: saved };
+        }
+        return p;
+      });
+      
       onUpdateFeedPosts(updated);
     };
+    
     const handleItemDeleted = (e) => {
-      // when list deletes saved item, unset saved state on feed
+      // When a saved item is deleted from lists, we need to update the feed
       const itemId = e?.detail?.itemId;
-      // We only have postId in our other flow; if only itemId, we can't map without extra query
-      // Rely on unsaved event for postId mapping
+      const savedFromPostId = e?.detail?.savedFromPostId;
+      
+      console.log('🔖 [MainScreen] Item deleted event:', { itemId, savedFromPostId });
+      
+      // If we have the post ID, update that specific post
+      if (savedFromPostId && onUpdateFeedPosts && Array.isArray(feedPosts)) {
+        const updated = feedPosts.map(p => {
+          if (p.id === savedFromPostId) {
+            console.log('🔖 [MainScreen] Unsaving deleted item from post:', p.item_name);
+            return { ...p, user_saved: false };
+          }
+          return p;
+        });
+        onUpdateFeedPosts(updated);
+      }
     };
+    
     const handleItemUnsaved = (e) => {
       const postId = e?.detail?.postId;
+      
+      console.log('🔖 [MainScreen] Item unsaved event:', { postId });
+      
       if (!postId || !onUpdateFeedPosts || !Array.isArray(feedPosts)) return;
-      const updated = feedPosts.map(p => p.id === postId ? { ...p, user_saved: false } : p);
+      
+      const updated = feedPosts.map(p => {
+        if (p.id === postId) {
+          console.log('🔖 [MainScreen] Marking post as unsaved:', p.item_name);
+          return { ...p, user_saved: false };
+        }
+        return p;
+      });
+      
       onUpdateFeedPosts(updated);
     };
+    
+    const handleItemSaved = (e) => {
+      const postId = e?.detail?.postId;
+      
+      console.log('🔖 [MainScreen] Item saved event:', { postId });
+      
+      if (!postId || !onUpdateFeedPosts || !Array.isArray(feedPosts)) return;
+      
+      const updated = feedPosts.map(p => {
+        if (p.id === postId) {
+          console.log('🔖 [MainScreen] Marking post as saved:', p.item_name);
+          return { ...p, user_saved: true };
+        }
+        return p;
+      });
+      
+      onUpdateFeedPosts(updated);
+    };
+    
     try {
       window.addEventListener('bestlist:post-saved-changed', handleSavedChanged);
+      window.addEventListener('bestlist:item-saved', handleItemSaved);
       window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
       window.addEventListener('bestlist:item-deleted', handleItemDeleted);
     } catch (_) {}
+    
     return () => {
       try {
         window.removeEventListener('bestlist:post-saved-changed', handleSavedChanged);
+        window.removeEventListener('bestlist:item-saved', handleItemSaved);
         window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
         window.removeEventListener('bestlist:item-deleted', handleItemDeleted);
       } catch (_) {}
     };
   }, [feedPosts, onUpdateFeedPosts]);
+
+  // Removed broadcasting of saved-state snapshots to avoid overcounting in lists
 
   // Expose refresh function to parent component via ref
   useImperativeHandle(ref, () => ({

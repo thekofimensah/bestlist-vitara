@@ -1,8 +1,8 @@
 {
-  "appId": "com.test.bestlist",
-  "appName": "bestlist",
+  "appId": "com.test.curate",
+  "appName": "Curate",
   "webDir": "dist",
-  "icon": "assets/icon2.svg",
+  "icon": "assets/icon.png",
   "server": {
     "androidScheme": "https"
   },
@@ -18,7 +18,7 @@
   },
   "plugins": {
     "App": {
-      "urlScheme": "bestlist"
+      "urlScheme": "Curate"
     },
     "Keyboard": {
       "resize": "native",

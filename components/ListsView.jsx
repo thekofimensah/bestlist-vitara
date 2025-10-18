@@ -36,7 +36,9 @@ const ItemTile = ({
   onImageTap,
   onLongPress,
   showSelection = false,
-  isSelected = false
+  isSelected = false,
+  isSavedList = false,
+  isClickLocked = false
 }) => {
   if (isAddTile) {
     return (
@@ -97,6 +99,7 @@ const ItemTile = ({
   };
 
   const handleClick = (e) => {
+    if (isClickLocked) return;
     // If we just did a long press, prevent the click
     if (hasLongPressedRef.current) {
       hasLongPressedRef.current = false;
@@ -133,13 +136,14 @@ const ItemTile = ({
         <SmartImage
           src={item.image_url || item.image}
           alt={item.name}
-          className="w-20 h-20 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all"
+          className={`w-20 h-20 object-cover rounded-2xl shadow-sm group-hover:shadow-md transition-all ${isClickLocked ? 'opacity-60' : ''}`}
           style={{ width: '170px', height: '170px', userSelect: 'none' }}
           useThumbnail={true}
           size="small"
           lazyLoad={true}
           draggable={false}
           onClick={(e) => {
+            if (isClickLocked) return;
             if (hasLongPressedRef.current) {
               hasLongPressedRef.current = false;
               return;
@@ -155,11 +159,12 @@ const ItemTile = ({
         {showSelection && isSelected && (
           <div className="absolute inset-0 rounded-2xl bg-red-600/20 pointer-events-none" />
         )}
-        {item.rating && <StarRating rating={item.rating} />}
+        {/* Rating overlay removed per design; moved inline with title below */}
         {/* Pending sync indicator for offline items */}
         {item.pending_sync && (
           <div className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full border border-white" title="Pending sync" />
         )}
+        {/* Saved item indicator removed from image overlay per design */}
         {/* First in World Badge removed in ListsView */}
       </div>
       <div 
@@ -173,7 +178,16 @@ const ItemTile = ({
           onTap?.(); 
         }}
       >
-        <p className="text-xs text-gray-700 font-medium truncate pl-2">{item.name}</p>
+        <div className="pl-2 text-sm text-gray-700 font-medium leading-snug whitespace-normal break-words line-clamp-2">
+          {item.rating && (
+            <span className="inline-flex items-center">
+              <span className="text-gray-700">{item.rating}</span>
+              <StarIcon className="w-3 h-3 text-yellow-500 fill-current ml-0.5" />
+            </span>
+          )}
+          {item.rating && <span className="inline-block w-1" />}
+          <span>{item.name}</span>
+        </div>
       </div>
     </div>
   );
@@ -193,8 +207,9 @@ const ListRow = ({
   onShareList,
   isReorderMode = false,
   sortMode = 'recent',
-  onEnterReorderMode
+  onEnterReorderMode,
 }) => {
+  const isSavedItemsList = list.name === 'Saved Items';
   const allItems = [...(list.items || []), ...(list.stayAways || [])];
   const mode = list.__sortMode || sortMode;
   const sortedItems = [...allItems].sort((a, b) => {
@@ -285,9 +300,16 @@ const ListRow = ({
           disabled={isReorderMode}
         >
           <div className="flex items-center gap-2 pl-2">
+            {isSavedItemsList && (
+              <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                </svg>
+              </div>
+            )}
             <div>
-              <h3 className="text-base font-medium text-gray-900">{list.name}</h3>
-              <p className="text-xs text-gray-500">{allItems.length} items</p>
+              <h3 className={`text-lg font-medium text-gray-900`}>{list.name}</h3>
+              <p className="text-sm text-gray-500">{allItems.length} items</p>
             </div>
             {/* Pending sync indicator for offline lists */}
             {list.pending_sync && (
@@ -330,19 +352,23 @@ const ListRow = ({
               onLongPress={onItemLongPress}
               showSelection={selectionEnabled}
               isSelected={selectedIds?.includes(item.id)}
+              isSavedList={isSavedItemsList}
+              isClickLocked={false}
             />
           ))}
-          <ItemTile
-            isAddTile
-            onTap={() => onAddItem(list.id)}
-          />
+          {!isSavedItemsList && (
+            <ItemTile
+              isAddTile
+              onTap={() => onAddItem(list.id)}
+            />
+          )}
         </div>
       </div>
     </motion.div>
   );
 };
 
-const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange, onAddItem }) => {
+const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDetail, onReorderLists, isRefreshing = false, onDeleteList, onUpdateList, onItemDeleted, onNavigateToCamera, onSearch, onNotifications, unreadCount, notifications = [], isNotificationsOpen = false, onMarkRead, onMarkAllRead, onNavigateToPost, onNavigateToUser, onReorderModeChange, onAddItem, onRefreshLists }) => {
   // AI processing hook
   const { analyzeImage, isProcessing: isAIProcessing, result: aiMetadata, error: aiError, cancelRequest: cancelAIRequest } = useAI();
 
@@ -445,9 +471,27 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     onReorderModeChange?.(isReorderMode);
   }, [isReorderMode, onReorderModeChange]);
 
-  // Update reordered lists when lists prop changes
+  // Update reordered lists when lists prop changes - but preserve local updates
   useEffect(() => {
-    setReorderedLists(lists);
+    // Only update if we're not in the middle of a local update
+    // This prevents overwriting optimistic updates
+    setReorderedLists(prev => {
+      // If we have local changes (different from props), preserve them
+      if (JSON.stringify(prev) !== JSON.stringify(lists)) {
+        // Check if this is just a reorder difference or actual content difference
+        const prevIds = prev.flatMap(l => [...(l.items || []), ...(l.stayAways || [])].map(i => i.id));
+        const newIds = lists.flatMap(l => [...(l.items || []), ...(l.stayAways || [])].map(i => i.id));
+        
+        // If the item IDs are the same, it's likely just a reorder, keep local state
+        if (prevIds.sort().join(',') === newIds.sort().join(',')) {
+          console.log('📌 [ListsView] Keeping local reordered state');
+          return prev;
+        }
+      }
+      // Otherwise, accept the new lists from props
+      console.log('📌 [ListsView] Updating lists from props');
+      return lists;
+    });
   }, [lists]);
 
   // Restore scroll position on mount, but only if user has scrolled before
@@ -488,9 +532,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
-    if (parentList && onEditItem) {
-      onEditItem(item, parentList);
-    }
+    if (parentList && onEditItem) onEditItem(item, parentList);
   };
 
   const handleItemLongPress = (item) => {
@@ -534,6 +576,33 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
       setSelectionEnabled(false);
       
       console.log('🚀 [ListsView] Items removed from UI, deleting in background...');
+      
+      // Dispatch unsave events for any deleted saved items to sync feed state
+      try {
+        const savedPostIds = new Set();
+        const itemsWithPostIds = [];
+        
+        for (const id of itemsToDelete) {
+          const item = lists?.flatMap(l => [...(l.items || []), ...(l.stayAways || [])]).find(it => it.id === id);
+          if (item?.saved_from_post_id) {
+            savedPostIds.add(item.saved_from_post_id);
+            itemsWithPostIds.push({ itemId: id, savedFromPostId: item.saved_from_post_id });
+          }
+        }
+        
+        // Dispatch unsaved events for feed sync
+        savedPostIds.forEach((postId) => {
+          console.log('🔔 [ListsView] Dispatching unsave event for post:', postId);
+          window.dispatchEvent(new CustomEvent('bestlist:item-unsaved', { detail: { postId } }));
+        });
+        
+        // Also dispatch item-deleted events with post IDs for better tracking
+        itemsWithPostIds.forEach(({ itemId, savedFromPostId }) => {
+          window.dispatchEvent(new CustomEvent('bestlist:item-deleted', { 
+            detail: { itemId, savedFromPostId } 
+          }));
+        });
+      } catch (_) {}
       
       // 🔔 Immediately update Profile "Recent photos" cache for current user
       try {
@@ -602,9 +671,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     const parentList = lists?.find(list => 
       [...(list.items || []), ...(list.stayAways || [])].some(listItem => listItem.id === item.id)
     );
-    if (parentList && onEditItem) {
-      onEditItem(item, parentList);
-    }
+    if (parentList && onEditItem) onEditItem(item, parentList);
   };
 
   const handleGalleryUpload = async (listId) => {
@@ -805,6 +872,127 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     }
   };
 
+  // Listen for saved/unsaved events to update Saved Items list in place
+  useEffect(() => {
+    const handleItemSaved = (e) => {
+      const item = e?.detail?.item;
+      const listId = e?.detail?.listId;
+      const postId = e?.detail?.postId;
+      
+      console.log('📌 [ListsView] Item saved event received:', { 
+        itemId: item?.id, 
+        listId, 
+        postId,
+        itemName: item?.name 
+      });
+      
+      if (!item || !listId) return;
+      
+      // Ensure the item has all necessary properties for immediate interaction
+      const completeItem = {
+        ...item,
+        id: item.id || `saved_${postId}_${Date.now()}`, // Ensure ID exists
+        saved_from_post_id: postId,
+        is_saved_item: true,
+        created_at: item.created_at || new Date().toISOString(),
+        // Ensure image URL is accessible
+        image_url: item.image_url || item.image,
+        // Ensure all display properties are present
+        name: item.name || 'Untitled',
+        rating: item.rating || null,
+        notes: item.notes || null
+      };
+      
+      setReorderedLists(prev => {
+        const updated = prev.map(l => {
+          if (l.id !== listId) return l;
+          
+          // Check if item already exists (by saved_from_post_id to prevent duplicates)
+          const exists = (l.items || []).some(it => 
+            it.saved_from_post_id === postId || it.id === completeItem.id
+          );
+          
+          if (exists) {
+            console.log('📌 [ListsView] Item already exists in list, skipping');
+            return l;
+          }
+          
+          console.log('📌 [ListsView] Adding item to Saved Items list');
+          return {
+            ...l,
+            items: [completeItem, ...(l.items || [])]
+          };
+        });
+        
+        // Note: Do not call setLists here; ListsView manages local optimistic state
+        return updated;
+      });
+    };
+    
+    const handleItemUnsaved = (e) => {
+      const postId = e?.detail?.postId;
+      
+      console.log('📌 [ListsView] Item unsaved event received:', { postId });
+      
+      if (!postId) return;
+      
+      setReorderedLists(prev => {
+        const updated = prev.map(l => ({
+          ...l,
+          items: (l.items || []).filter(it => it.saved_from_post_id !== postId),
+          stayAways: (l.stayAways || []).filter(it => it.saved_from_post_id !== postId)
+        }));
+        
+        // Note: Do not call setLists here; ListsView manages local optimistic state
+        return updated;
+      });
+    };
+    
+    try {
+      window.addEventListener('bestlist:item-saved', handleItemSaved);
+      window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
+    } catch (_) {}
+    
+    return () => {
+      try {
+        window.removeEventListener('bestlist:item-saved', handleItemSaved);
+        window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
+      } catch (_) {}
+    };
+  }, []);
+
+  // Smart refresh system - triggers background refresh when save operations complete
+  useEffect(() => {
+    const handleSaveCompleted = async (e) => {
+      const { postId, saved, listId, itemId } = e?.detail || {};
+      
+      console.log('🔄 [ListsView] Save operation completed, triggering smart refresh:', {
+        postId, saved, listId, itemId
+      });
+      
+      // Trigger a background refresh to ensure Lists view is up-to-date
+      // This handles cases where the DB operation took time to complete
+      try {
+        if (typeof onRefreshLists === 'function') {
+          // Use the refresh function passed from parent (App.jsx)
+          await onRefreshLists(true); // true = background refresh
+        }
+      } catch (error) {
+        console.warn('⚠️ [ListsView] Smart refresh failed:', error);
+      }
+    };
+    
+    try {
+      window.addEventListener('bestlist:save-completed', handleSaveCompleted);
+    } catch (_) {}
+    
+    return () => {
+      try {
+        window.removeEventListener('bestlist:save-completed', handleSaveCompleted);
+      } catch (_) {}
+    };
+  }, []);
+
   const handleCreateList = async () => {
     if (isCreatingList) return;
     const subject = newListSubject.trim();
@@ -854,6 +1042,32 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
     setReorderedLists(newOrder);
   };
 
+  // Compute lists order: most recently added-to first (by latest item/stay-away created_at)
+  const getListLastUpdatedAt = (list) => {
+    const items = [...(list?.items || []), ...(list?.stayAways || [])];
+    let latest = 0;
+    for (const it of items) {
+      const t = it?.created_at ? new Date(it.created_at).getTime() : 0;
+      if (t > latest) latest = t;
+    }
+    // Fallback to list updated_at/created_at
+    const listUpdated = list?.updated_at ? new Date(list.updated_at).getTime() : 0;
+    const listCreated = list?.created_at ? new Date(list.created_at).getTime() : 0;
+    return Math.max(latest, listUpdated, listCreated);
+  };
+
+  const listsForDisplay = isReorderMode
+    ? (reorderedLists || [])
+    : ([...(reorderedLists || [])]
+        .sort((a, b) => {
+          const aIsSaved = (a?.name || '').toLowerCase() === 'saved items';
+          const bIsSaved = (b?.name || '').toLowerCase() === 'saved items';
+          if (aIsSaved && !bIsSaved) return 1; // push Saved Items down
+          if (!aIsSaved && bIsSaved) return -1;
+          return getListLastUpdatedAt(b) - getListLastUpdatedAt(a);
+        })
+      );
+
   return (
     <div 
       ref={scrollContainerRef}
@@ -872,7 +1086,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
         }}
       >
         <div className="px-6 mb-3 flex items-center justify-between">
-          <span className="text-5xl text-gray-600 font-lateef">Lists</span>
+          <span className="text-title-header text-gray-600 font-arsenal-sc">lists</span>
           <div className="flex items-center gap-3">
             {isReorderMode ? (
               <button
@@ -1003,7 +1217,7 @@ const ListsView = ({ lists, onSelectList, onCreateList, onEditItem, onViewItemDe
                 </Reorder.Group>
               ) : (
                 <div>
-                  {(reorderedLists || []).map((list) => (
+                  {listsForDisplay.map((list) => (
                     <ListRow
                       key={list.id}
                       list={list}

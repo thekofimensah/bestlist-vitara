@@ -26,8 +26,8 @@ const ShareModal = ({ isOpen, onClose, post, list, isInviteMode = false }) => {
 
   const handleWhatsAppShare = () => {
     const message = isSharingInvite 
-      ? `Join me on bestlist!\n\nI'm using bestlist to discover and share amazing products. Join me!\n\n${shareUrl}`
-      : `Check out this on bestlist!\n\n${shareUrl}`;
+      ? `Join me on curate!\n\nI'm using curate to discover and share amazing products. Join me!\n\n${shareUrl}`
+      : `Check out this on curate!\n\n${shareUrl}`;
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
     onClose();

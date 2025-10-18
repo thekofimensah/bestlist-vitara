@@ -36,7 +36,7 @@ This project uses a **single source of truth** for splash screen design across a
 // design-tokens.js
 export const splashScreenTokens = {
   backgroundColor: '#88b7b5', // Change this
-  appName: 'bestlist',        // Or this
+  appName: 'Curate',        // Or this
   iconFilter: 'brightness(0) saturate(100%) invert(100%)',
   // ... other tokens
 };

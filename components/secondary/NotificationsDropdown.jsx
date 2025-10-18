@@ -1,114 +1,108 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { Bell, X, Heart, MessageSquare, UserPlus } from 'lucide-react';
 
-
-
 const NotificationItem = ({ notification, onMarkRead, onNavigateToPost, onNavigateToUser }) => {
   const controls = useAnimation();
-  const getIcon = () => {
-    switch (notification.type) {
-      case 'like':
-        return <Heart className="w-4 h-4 text-red-500" />;
-      case 'comment':
-        return <MessageSquare className="w-4 h-4 text-blue-500" />;
-      case 'follow':
-        return <UserPlus className="w-4 h-4 text-green-500" />;
-      default:
-        return null;
-    }
-  };
+  
+  const icon = useMemo(() => {
+    const icons = {
+      'like': <Heart className="w-4 h-4 text-red-500" />,
+      'comment': <MessageSquare className="w-4 h-4 text-blue-500" />,
+      'follow': <UserPlus className="w-4 h-4 text-green-500" />
+    };
+    return icons[notification.type] || null;
+  }, [notification.type]);
 
-  const getMessage = () => {
+  const message = useMemo(() => {
     const username = notification.profiles?.username || 'Someone';
-    switch (notification.type) {
-      case 'like':
-        return `${username} liked your post`;
-      case 'comment':
-        return `${username} commented on your post`;
-      case 'follow':
-        return `${username} started following you`;
-      default:
-        return 'New notification';
-    }
-  };
+    const messages = {
+      'like': `${username} liked your post`,
+      'comment': `${username} commented on your post`,
+      'follow': `${username} started following you`
+    };
+    return messages[notification.type] || 'New notification';
+  }, [notification.type, notification.profiles?.username]);
 
-  const handleClick = () => {
-    // Mark as read first
+  const handleClick = useCallback(() => {
+    // Mark as read
     onMarkRead(notification.id);
     
-    // Navigate based on notification type
+    // Navigate based on type
     if (notification.type === 'like' || notification.type === 'comment') {
       onNavigateToPost(notification.reference_id, notification.type);
     } else if (notification.type === 'follow' && notification.profiles?.username) {
-      // Navigate to the follower's profile
       onNavigateToUser(notification.profiles.username);
     }
-  };
+  }, [notification, onMarkRead, onNavigateToPost, onNavigateToUser]);
 
-  const handleDragEnd = async (_, info) => {
-    const distance = info.offset.x;
-    const velocity = info.velocity.x || 0;
-    const threshold = 140;
-    const fast = Math.abs(velocity) > 500;
-    if (Math.abs(distance) > threshold || fast) {
-      const direction = distance >= 0 ? 1 : -1;
+  const handleDragEnd = useCallback(async (_, info) => {
+    const threshold = 100;
+    const velocity = Math.abs(info.velocity.x);
+    const distance = Math.abs(info.offset.x);
+    
+    if (distance > threshold || velocity > 500) {
+      // Animate out
       await controls.start({
-        x: direction * ((typeof window !== 'undefined' ? window.innerWidth : 600) + 120),
+        x: info.offset.x > 0 ? window.innerWidth : -window.innerWidth,
         opacity: 0,
-        transition: { type: 'spring', stiffness: 500, damping: 38 }
+        transition: { duration: 0.2 }
       });
-      // slight pause before removing so list doesn't feel jumpy
-      setTimeout(() => onMarkRead(notification.id), 120);
+      onMarkRead(notification.id);
     } else {
-      controls.start({ x: 0, opacity: 1, transition: { type: 'spring', stiffness: 600, damping: 35, bounce: 0.35 } });
+      // Snap back
+      controls.start({ 
+        x: 0, 
+        opacity: 1, 
+        transition: { type: 'spring', stiffness: 400, damping: 30 } 
+      });
     }
-  };
+  }, [controls, notification.id, onMarkRead]);
 
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ layout: { duration: 0.2 } }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+      transition={{ 
+        layout: { duration: 0.2 },
+        exit: { duration: 0.15 }
+      }}
     >
-      {/* Full-width row with divider */}
       <motion.div
-        layout
         animate={controls}
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.2}
-        dragMomentum={true}
         onDragEnd={handleDragEnd}
-        className="px-4 py-3 flex items-center gap-3 cursor-pointer border-b border-gray-100"
+        className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-100"
         onClick={handleClick}
       >
-        <motion.div className="flex items-center gap-3 w-full" layout>
-      <div className="flex-shrink-0">
-        {notification.profiles?.avatar_url ? (
-          <img
-            src={notification.profiles.avatar_url}
-            alt={notification.profiles?.username}
-            className="w-8 h-8 rounded-full"
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-            {getIcon()}
-          </div>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-900 truncate">{getMessage()}</p>
-        <p className="text-xs text-gray-500">
-          {new Date(notification.created_at).toLocaleDateString()}
-        </p>
-      </div>
+        <div className="flex-shrink-0">
+          {notification.profiles?.avatar_url ? (
+            <img
+              src={notification.profiles.avatar_url}
+              alt={notification.profiles?.username}
+              className="w-8 h-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+              {icon}
+            </div>
+          )}
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-900 truncate">{message}</p>
+          <p className="text-xs text-gray-500">
+            {new Date(notification.created_at).toLocaleDateString()}
+          </p>
+        </div>
+        
         {!notification.read && (
           <div className="w-2 h-2 bg-teal-500 rounded-full flex-shrink-0" />
         )}
-        </motion.div>
       </motion.div>
     </motion.div>
   );
@@ -124,86 +118,93 @@ export const NotificationsDropdown = ({
   onNavigateToPost,
   onNavigateToUser
 }) => {
+  // Memoize filtered notifications to prevent re-renders
+  const displayNotifications = useMemo(() => {
+    if (!notifications) return [];
+    
+    // Additional client-side deduplication just in case
+    const seen = new Set();
+    return notifications.filter(n => {
+      const key = `${n.type}-${n.actor_id}-${n.reference_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [notifications]);
+
+  if (!isOpen) return null;
+
   return (
     <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-500 bg-opacity-20 z-50"
-            onClick={onClose}
-          />
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-gray-500 bg-opacity-20 z-50"
+        onClick={onClose}
+      />
 
-          {/* Dropdown */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            role="dialog"
-            aria-label="Notifications"
-            className="fixed top-16 left-0 right-0 mx-auto w-[420px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
-          >
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">Notifications</h3>
-                <p className="text-xs text-gray-500">{unreadCount} unread · {notifications?.length || 0} total</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={onMarkAllRead}
-                    className="px-3 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  >
-                    Mark all read
-                  </button>
-                )}
-                <button
-                  onClick={onClose}
-                  className="p-1.5 hover:bg-gray-100 rounded-full"
-                  aria-label="Close notifications"
-                >
-                  <X className="w-4 h-4 text-gray-500" />
-                </button>
-              </div>
+      {/* Dropdown */}
+      <motion.div
+        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }}
+        className="fixed top-16 left-1/2 -translate-x-1/2 w-[420px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="px-4 py-3 border-b bg-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">Notifications</h3>
+              <p className="text-xs text-gray-500">
+                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              </p>
             </div>
-
-            {/* Staggered list so new rows pause briefly after a dismiss */}
-            <motion.div className="max-h-[70vh] overflow-y-auto space-y-2 p-2"
-              initial={false}
-              variants={{}}
-            >
-              {notifications && notifications.length > 0 ? (
-                <AnimatePresence initial={false}>
-                  {notifications.map((notification, index) => (
-                    <motion.div
-                      key={notification.id}
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ delay: index === 0 ? 0 : 0.08, type: 'spring', stiffness: 250, damping: 22 }}
-                    >
-                      <NotificationItem
-                        notification={notification}
-                        onMarkRead={onMarkRead}
-                        onNavigateToPost={onNavigateToPost}
-                        onNavigateToUser={onNavigateToUser}
-                      />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              ) : (
-                <div className="p-10 text-center">
-                  <div className="text-sm text-gray-600 mb-1">No notifications yet</div>
-                  <div className="text-xs text-gray-400">You're all caught up</div>
-                </div>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={onMarkAllRead}
+                  className="px-3 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Mark all read
+                </button>
               )}
-            </motion.div>
-          </motion.div>
-        </>
-      )}
+              <button
+                onClick={onClose}
+                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications List */}
+        <div className="max-h-[60vh] overflow-y-auto">
+          {displayNotifications.length > 0 ? (
+            <AnimatePresence mode="popLayout">
+              {displayNotifications.map((notification) => (
+                <NotificationItem
+                  key={notification.id}
+                  notification={notification}
+                  onMarkRead={onMarkRead}
+                  onNavigateToPost={onNavigateToPost}
+                  onNavigateToUser={onNavigateToUser}
+                />
+              ))}
+            </AnimatePresence>
+          ) : (
+            <div className="p-12 text-center">
+              <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <div className="text-sm text-gray-600 mb-1">No notifications yet</div>
+              <div className="text-xs text-gray-400">You're all caught up!</div>
+            </div>
+          )}
+        </div>
+      </motion.div>
     </AnimatePresence>
   );
 };

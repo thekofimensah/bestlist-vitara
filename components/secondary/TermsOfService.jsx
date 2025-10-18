@@ -24,7 +24,7 @@ const TermsOfService = ({ onBack }) => {
             <p className="text-sm text-gray-600 mb-6">Effective Date: August 2, 2025</p>
             
             <p className="text-sm text-gray-700 mb-4">
-              Welcome to bestlist ("we," "our," "us"). These Terms of Service ("Terms") govern your access to and use of the bestlist mobile application, website, and related services (collectively, the "Services"). PLEASE READ THESE TERMS CAREFULLY, AS THEY CONTAIN A BINDING ARBITRATION CLAUSE AND CLASS-ACTION WAIVER THAT AFFECT YOUR LEGAL RIGHTS.
+              Welcome to curate ("we," "our," "us"). These Terms of Service ("Terms") govern your access to and use of the bestlist mobile application, website, and related services (collectively, the "Services"). PLEASE READ THESE TERMS CAREFULLY, AS THEY CONTAIN A BINDING ARBITRATION CLAUSE AND CLASS-ACTION WAIVER THAT AFFECT YOUR LEGAL RIGHTS.
             </p>
 
             <hr className="my-6 border-gray-200" />
@@ -139,7 +139,7 @@ const TermsOfService = ({ onBack }) => {
             <p className="text-sm text-gray-700 mb-3">Questions? Contact us at:</p>
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
               <p className="text-sm text-gray-700 mb-2">
-                <strong>Attn:</strong> Legal bestlist
+                <strong>Attn:</strong> Legal curate
               </p>
               <p className="text-sm text-gray-700">
                 <strong>Email:</strong> legal@bestlist.com

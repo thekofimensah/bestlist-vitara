@@ -9,13 +9,13 @@
 
 export const splashScreenTokens = {
   // Colors
-  backgroundColor: '#88b7b5', // Teal background from LoadingScreen
-  iconFilter: 'brightness(0) saturate(100%) invert(100%)', // White icon
-  textColor: '#FFFFFF',
+  backgroundColor: '#F6F6F4', 
+  iconFilter: 'brightness(0) saturate(100%)',
+  textColor: '#000000',
   
   // Typography
-  fontFamily: 'lateef',
-  appName: 'bestlist',
+  fontFamily: 'arsenal-sc',
+  appName: 'CURATE',
   fontSize: {
     mobile: '5xl', // text-5xl in Tailwind
     tablet: '6xl', // text-6xl 
@@ -42,13 +42,13 @@ export const splashScreenTokens = {
   native: {
     // iOS LaunchScreen
     ios: {
-      backgroundColorHex: '#88b7b5',
+      backgroundColorHex: '#F6F6F4',
       systemBackgroundColor: false // Use custom color instead
     },
     
     // Android splash
     android: {
-      backgroundColorHex: '#88b7b5',
+      backgroundColorHex: '#F6F6F4',
       splashDrawable: '@drawable/splash',
       theme: 'AppTheme.NoActionBarLaunch'
     },
@@ -56,7 +56,7 @@ export const splashScreenTokens = {
     // Capacitor config
     capacitor: {
       launchAutoHide: false,
-      backgroundColor: '#88b7b5',
+      backgroundColor: '#F6F6F4',
       showSpinner: false,
       fadeOutDuration: 200
     }

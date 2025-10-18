@@ -1,6 +1,6 @@
-import React, { useState, memo, useEffect } from 'react';
+import React, { useState, memo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Star, Heart, MessageCircle, Share, X, UserPlus, UserMinus } from 'lucide-react';
+import { Star, Heart, MessageCircle, Share, X, UserPlus, UserMinus, Bookmark } from 'lucide-react';
 import ProgressiveImage from './ui/ProgressiveImage';
 import { likePost, unlikePost, followUser, unfollowUser, supabase } from '../lib/supabase';
 import FirstInWorldBadge from './gamification/FirstInWorldBadge';
@@ -51,6 +51,54 @@ const clearFollowStateCache = async (followerId, followingId) => {
     await Preferences.remove({ key });
   } catch (error) {
     console.warn('Failed to clear follow state cache:', error);
+  }
+};
+
+// Saved state cache functions (similar to follow state)
+const SAVED_STATE_KEY = (userId, postId) => `saved_state_${userId}_${postId}`;
+
+const saveSavedStateCache = async (userId, postId, isSaved) => {
+  if (!userId || !postId) return;
+  try {
+    const key = SAVED_STATE_KEY(userId, postId);
+    const cacheData = {
+      isSaved,
+      timestamp: Date.now()
+    };
+    await Preferences.set({
+      key,
+      value: JSON.stringify(cacheData)
+    });
+  } catch (error) {
+    console.warn('Failed to save saved state to cache:', error);
+  }
+};
+
+const getSavedStateCache = async (userId, postId) => {
+  if (!userId || !postId) return null;
+  try {
+    const key = SAVED_STATE_KEY(userId, postId);
+    const { value } = await Preferences.get({ key });
+    if (value) {
+      const parsed = JSON.parse(value);
+      // Cache for 24 hours
+      if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+        return parsed.isSaved;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load saved state from cache:', error);
+  }
+  return null;
+};
+
+const clearSavedStateCache = async (userId, postId) => {
+  if (!userId || !postId) return;
+  try {
+    const key = SAVED_STATE_KEY(userId, postId);
+    await Preferences.remove({ key });
+  } catch (error) {
+    console.warn('Failed to clear saved state cache:', error);
   }
 };
 
@@ -125,6 +173,8 @@ const OptimizedPostCard = memo(({
   const [showFirstInWorldPopup, setShowFirstInWorldPopup] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
+  const [isSaved, setIsSaved] = useState(post?.user_saved || false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Initialize follow state with caching
   useEffect(() => {
@@ -159,6 +209,39 @@ const OptimizedPostCard = memo(({
       }
     })();
   }, [post?.user_id]);
+
+  // Initialize saved state with caching
+  useEffect(() => {
+    (async () => {
+      try {
+        const user = (await supabase.auth.getUser()).data.user;
+        if (!user || !post?.id) return;
+
+        // First check cache
+        const cachedSavedState = await getSavedStateCache(user.id, post.id);
+        if (cachedSavedState !== null) {
+          setIsSaved(cachedSavedState);
+          return;
+        }
+
+        // If not in cache, fetch from database
+        const { data, error } = await supabase
+          .rpc('user_has_saved_post', { 
+            p_user_id: user.id,
+            p_post_id: post.id 
+          });
+
+        if (!error && data !== null) {
+          const isSavedPost = data === true;
+          setIsSaved(isSavedPost);
+          // Save to cache
+          await saveSavedStateCache(user.id, post.id, isSavedPost);
+        }
+      } catch (error) {
+        console.warn('Error initializing saved state:', error);
+      }
+    })();
+  }, [post?.id]);
 
   // Listen for global follow/unfollow events to keep state in sync across app
   useEffect(() => {
@@ -203,6 +286,84 @@ const OptimizedPostCard = memo(({
       } catch (_) {}
     };
   }, [post?.user_id]);
+
+  // Listen for global save/unsave events to keep state in sync across app
+  useEffect(() => {
+    let currentUserId = null;
+    let currentPostId = post?.id || null;
+    (async () => {
+      try {
+        const authUser = (await supabase.auth.getUser()).data.user;
+        currentUserId = authUser?.id || null;
+      } catch (_) {}
+    })();
+
+    const handlePostSavedChanged = (e) => {
+      const postId = e?.detail?.postId;
+      const saved = e?.detail?.saved;
+      if (!currentPostId || postId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Syncing saved state:', { postId: currentPostId, saved });
+      setIsSaved(saved === true);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, saved === true).catch(() => {});
+      }
+    };
+    
+    const handleItemSaved = (e) => {
+      const postId = e?.detail?.postId;
+      if (!currentPostId || postId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Item saved, updating bookmark:', { postId: currentPostId });
+      setIsSaved(true);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, true).catch(() => {});
+      }
+    };
+    
+    const handleItemUnsaved = (e) => {
+      const postId = e?.detail?.postId;
+      if (!currentPostId || postId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Item unsaved, updating bookmark:', { postId: currentPostId });
+      setIsSaved(false);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, false).catch(() => {});
+      }
+    };
+    
+    const handleItemDeleted = (e) => {
+      const savedFromPostId = e?.detail?.savedFromPostId;
+      if (!currentPostId || savedFromPostId !== currentPostId) return;
+      
+      console.log('🔄 [OptimizedPostCard] Saved item deleted, removing bookmark:', { postId: currentPostId });
+      setIsSaved(false);
+      
+      if (currentUserId) {
+        saveSavedStateCache(currentUserId, currentPostId, false).catch(() => {});
+      }
+    };
+
+    try {
+      window.addEventListener('bestlist:post-saved-changed', handlePostSavedChanged);
+      window.addEventListener('bestlist:item-saved', handleItemSaved);
+      window.addEventListener('bestlist:item-unsaved', handleItemUnsaved);
+      window.addEventListener('bestlist:item-deleted', handleItemDeleted);
+    } catch (_) {}
+
+    return () => {
+      try {
+        window.removeEventListener('bestlist:post-saved-changed', handlePostSavedChanged);
+        window.removeEventListener('bestlist:item-saved', handleItemSaved);
+        window.removeEventListener('bestlist:item-unsaved', handleItemUnsaved);
+        window.removeEventListener('bestlist:item-deleted', handleItemDeleted);
+      } catch (_) {}
+    };
+  }, [post?.id]);
+
 
   // Show skeleton while loading
   if (skeletonOnly || !post) {
@@ -283,6 +444,160 @@ const OptimizedPostCard = memo(({
       setIsFollowing(!isFollowing);
     } finally {
       setIsFollowLoading(false);
+    }
+  };
+
+  const handleSaveToggle = async (e) => {
+    e.stopPropagation();
+    if (isSaving) return;
+
+    try {
+      setIsSaving(true);
+      const newSavedState = !isSaved;
+      
+      // Optimistic update
+      setIsSaved(newSavedState);
+      
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return;
+
+      // Update cache immediately for consistency across tabs
+      await saveSavedStateCache(user.id, post.id, newSavedState);
+
+      // Use the toggle_save_post function for simpler implementation
+      const { data, error } = await supabase
+        .rpc('toggle_save_post', { 
+          p_user_id: user.id,
+          p_post_id: post.id 
+        });
+
+      if (error) throw error;
+
+      // The function returns { saved: boolean, message: string }
+      if (data.saved !== newSavedState) {
+        // Something went wrong, revert the optimistic update
+        setIsSaved(data.saved);
+        // Update cache with correct state
+        await saveSavedStateCache(user.id, post.id, data.saved);
+      }
+
+      // Broadcast events to update other parts of the app without manual refresh
+      try {
+        // Notify other cards in feed about saved state change
+        window.dispatchEvent(new CustomEvent('bestlist:post-saved-changed', { 
+          detail: { postId: post.id, saved: data.saved === true } 
+        }));
+      } catch (_) {}
+
+      if (data.saved === true) {
+        // If saved, notify ListsView to optimistically add the item to Saved Items list
+        try {
+          // Get saved list id
+          const { data: savedListId } = await supabase.rpc('get_or_create_saved_items_list', { p_user_id: user.id });
+          if (savedListId) {
+            // Ensure we have a valid item ID from the server response
+            const itemId = data.new_item_id || `temp_saved_${post.id}_${Date.now()}`;
+            
+            const itemObj = {
+              id: itemId,
+              list_id: savedListId,
+              name: post.item_name || post.items?.name || 'Untitled',
+              image_url: post.image || post.items?.image_url || post.thumbnail_image,
+              image: post.image || post.items?.image_url || post.thumbnail_image, // Duplicate for compatibility
+              rating: post.rating || post.items?.rating || null,
+              notes: post.snippet || post.items?.notes || null,
+              is_stay_away: post.items?.is_stay_away || false,
+              place_name: post.items?.place_name || null,
+              ai_product_name: post.items?.ai_product_name || null,
+              ai_brand: post.items?.ai_brand || null,
+              ai_category: post.items?.ai_category || null,
+              ai_confidence: post.items?.ai_confidence || null,
+              ai_description: post.items?.ai_description || null,
+              ai_tags: post.items?.ai_tags || null,
+              user_product_name: post.items?.user_product_name || null,
+              user_description: post.items?.user_description || null,
+              user_tags: post.items?.user_tags || null,
+              detailed_breakdown: post.items?.detailed_breakdown || null,
+              price: post.items?.price || null,
+              currency_code: post.items?.currency_code || null,
+              saved_from_post_id: post.id,
+              original_creator_id: post.user_id,
+              is_saved_item: true,
+              created_at: new Date().toISOString(),
+              // Additional fields for proper display
+              category: post.items?.category || null,
+              species: post.items?.species || null,
+              certainty: post.items?.certainty || null,
+              tags: post.items?.tags || null,
+              location: post.items?.location || null,
+              latitude: post.items?.latitude || null,
+              longitude: post.items?.longitude || null,
+              rarity: post.items?.rarity || null,
+              photo_date_time: post.items?.photo_date_time || null,
+              photo_location_source: post.items?.photo_location_source || null,
+              is_public: post.items?.is_public || false,
+              ai_allergens: post.items?.ai_allergens || null,
+              ai_lookup_status: post.items?.ai_lookup_status || null,
+              user_allergens: post.items?.user_allergens || null,
+              is_first_in_world: post.items?.is_first_in_world || false,
+              first_in_world_achievement_id: post.items?.first_in_world_achievement_id || null
+            };
+            
+            console.log('✅ [OptimizedPostCard] Dispatching item-saved event with complete item data:', {
+              itemId,
+              listId: savedListId,
+              postId: post.id,
+              itemName: itemObj.name
+            });
+            
+            try {
+              // Immediate optimistic update for UI responsiveness
+              window.dispatchEvent(new CustomEvent('bestlist:item-saved', { 
+                detail: { item: itemObj, listId: savedListId, postId: post.id } 
+              }));
+              
+              // Completion event to trigger smart refresh after DB operation
+              window.dispatchEvent(new CustomEvent('bestlist:save-completed', {
+                detail: { 
+                  postId: post.id, 
+                  saved: true, 
+                  listId: savedListId,
+                  itemId: itemId
+                }
+              }));
+            } catch (_) {}
+          }
+        } catch (error) {
+          console.error('⚠️ [OptimizedPostCard] Error creating saved item object:', error);
+        }
+      } else {
+        // If unsaved, notify ListsView to remove it from Saved Items
+        try { 
+          window.dispatchEvent(new CustomEvent('bestlist:item-unsaved', { 
+            detail: { postId: post.id } 
+          }));
+          
+          // Completion event for unsave operation
+          window.dispatchEvent(new CustomEvent('bestlist:save-completed', {
+            detail: { 
+              postId: post.id, 
+              saved: false
+            }
+          }));
+        } catch (_) {}
+      }
+
+    } catch (error) {
+      console.error('Save/unsave error:', error);
+      // Revert optimistic update on error
+      setIsSaved(!isSaved);
+      // Clear cache on error
+      const user = (await supabase.auth.getUser()).data.user;
+      if (user) {
+        await clearSavedStateCache(user.id, post.id);
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -419,6 +734,17 @@ const OptimizedPostCard = memo(({
                 onClick={() => setShowFirstInWorldPopup(true)}
               />
             )}
+            {/* Save button left of Share */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSaveToggle(e);
+              }}
+              className={`text-gray-500 hover:text-purple-600 transition-colors ${isSaved ? 'text-purple-600' : ''}`}
+              aria-label="Save"
+            >
+              <Bookmark className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -477,6 +803,7 @@ const OptimizedPostCard = memo(({
             <MessageCircle className="w-5 h-5" />
           </button>
         </div>
+        
       </div>
 
       {/* Likes count */}

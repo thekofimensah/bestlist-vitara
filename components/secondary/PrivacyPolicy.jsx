@@ -24,7 +24,7 @@ const PrivacyPolicy = ({ onBack }) => {
             <p className="text-sm text-gray-600 mb-6">Last Updated: August 2, 2025</p>
             
             <p className="text-sm text-gray-700 mb-4">
-              Welcome to bestlist ("we," "our," "us"). We respect your privacy and are committed to protecting your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application, related websites, and any associated services (collectively, the "Services"). By accessing or using the Services, you agree to the practices described below.
+              Welcome to curate ("we," "our," "us"). We respect your privacy and are committed to protecting your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application, related websites, and any associated services (collectively, the "Services"). By accessing or using the Services, you agree to the practices described below.
             </p>
 
             <hr className="my-6 border-gray-200" />
@@ -180,10 +180,10 @@ const PrivacyPolicy = ({ onBack }) => {
             <h3 className="text-lg font-semibold text-gray-900 mb-3">11. Contact Us</h3>
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
               <p className="text-sm text-gray-700 mb-2">
-                <strong>Attn:</strong> Privacy Team bestlist
+                <strong>Attn:</strong> Privacy Team curate
               </p>
               <p className="text-sm text-gray-700">
-                <strong>Email:</strong> privacy@bestlist.com
+                <strong>Email:</strong> privacy@curate.com
               </p>
             </div>
 

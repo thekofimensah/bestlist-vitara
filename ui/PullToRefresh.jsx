@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const PullToRefresh = ({ 
   children, 
   onRefresh, 
-  threshold = 70, // Reduced from 90 to make it easier to trigger
+  threshold = 60, // Optimized threshold
   disabled = false,
   className = '',
 }) => {
@@ -20,7 +20,6 @@ const PullToRefresh = ({
   const startX = useRef(0);
   const pullStarted = useRef(false);
   const pullDistanceRef = useRef(0);
-  const lastPullDistance = useRef(0);
   const lastScrollTop = useRef(0);
 
   // Keep pullDistance in sync with ref for event handlers
@@ -87,10 +86,7 @@ const PullToRefresh = ({
       startY.current = e.touches[0].clientY;
       startX.current = e.touches[0].clientX;
       pullStarted.current = true;
-      lastPullDistance.current = 0;
       lastScrollTop.current = scrollTop;
-      
-      console.log('🔄 PullToRefresh: Pull started at top, scrollTop:', scrollTop);
     };
 
     const handleTouchMove = (e) => {
@@ -116,16 +112,15 @@ const PullToRefresh = ({
       const deltaX = Math.abs(currentX - startX.current);
       const scrollDelta = currentScrollTop - lastScrollTop.current;
 
-      // If scrolling up (negative delta) or away from top, cancel immediately (strict check)
-      if (scrollDelta < 0 || currentScrollTop > 0) { // No tolerance - must be at exact top
+      // If scrolling up or away from top, cancel
+      if (currentScrollTop > 0) {
         pullStarted.current = false;
         setPullDistance(0);
         setIsPulling(false);
-        console.log('🔄 PullToRefresh: Cancelled - scrolling up or away from top, scrollTop:', currentScrollTop, 'scrollDelta:', scrollDelta);
         return;
       }
 
-      // Cancel if too much horizontal movement (allow native back gesture)
+      // Cancel if too much horizontal movement
       if (deltaX > Math.abs(deltaY) && deltaX > 20) {
         pullStarted.current = false;
         setPullDistance(0);
@@ -135,21 +130,16 @@ const PullToRefresh = ({
 
       // Only respond to downward pulls
       if (deltaY > 0) {
-        // Improved resistance curve - more responsive at start, smoother overall
-        const resistance = 1 + (deltaY / 80) * 0.4; // Reduced resistance for easier pulling
-        const maxDistance = threshold * 2.2;
+        // Natural resistance curve for smooth pulling
+        const resistance = 1 + (deltaY / 100) * 0.5;
+        const maxDistance = threshold * 2.5;
         const distance = Math.min(deltaY / resistance, maxDistance);
         
-        // More responsive smoothing for better performance
-        const smoothingFactor = 0.6; // Increased from 0.3 for more responsiveness
-        const smoothDistance = lastPullDistance.current + (distance - lastPullDistance.current) * smoothingFactor;
-        lastPullDistance.current = smoothDistance;
+        setPullDistance(distance);
+        setIsPulling(distance > 10);
         
-        setPullDistance(smoothDistance);
-        setIsPulling(smoothDistance > threshold);
-
-        // Prevent scroll when pulling (more aggressive prevention for better grab)
-        if (smoothDistance > 2 && deltaX < Math.abs(deltaY)) { // Reduced threshold from 5 to 2
+        // Prevent scroll when pulling
+        if (distance > 5) {
           e.preventDefault();
         }
       }
@@ -170,34 +160,28 @@ const PullToRefresh = ({
       const finalDistance = pullDistanceRef.current;
       
       if (finalDistance > threshold && !isRefreshing) {
-        console.log('🔄 PullToRefresh: Starting refresh...');
         setIsRefreshing(true);
         setIsPulling(false);
         
-        // Trigger refresh and reset camera state with improved Android Camera2 API handling
+        // Keep the indicator visible during refresh
+        setPullDistance(threshold);
+        
+        // Trigger refresh
         Promise.resolve(onRefresh()).finally(() => {
-          // Reset camera state to guarantee it works even if failing
-          console.log('🔄 PullToRefresh: Resetting camera state');
-          
-          // Extended delay for Android Camera2 API to properly cleanup before reset
+          // Emit camera reset event
           setTimeout(() => {
-            // Emit camera reset event for the camera manager
             const resetEvent = new CustomEvent('camera:reset');
             window.dispatchEvent(resetEvent);
+          }, 500);
 
-            // Also emit the legacy event for backward compatibility
-            const legacyResetEvent = new CustomEvent('feed:reset-camera');
-            window.dispatchEvent(legacyResetEvent);
-          }, 1000); // Wait 1s before triggering camera reset
-
+          // Smooth completion
           setTimeout(() => {
-            console.log('🔄 PullToRefresh: Refresh completed');
             setIsRefreshing(false);
             setPullDistance(0);
-          }, 1500); // Extended completion delay to allow camera reset to process
+          }, 1000);
         });
       } else {
-        // Smooth reset animation
+        // Smooth spring back
         setIsPulling(false);
         setPullDistance(0);
       }
@@ -215,10 +199,9 @@ const PullToRefresh = ({
     };
   }, [threshold, onRefresh, isRefreshing, isDisabled]);
 
-  // Calculate spinner properties with smooth easing - optimized for performance
-  const spinnerHeight = isRefreshing ? 60 : Math.max(pullDistance, 0);
-  const spinnerOpacity = isRefreshing ? 1 : Math.min(pullDistance / 30, 1); // Faster opacity transition
-  const spinnerRotation = isRefreshing ? 360 : pullDistance * 2; // Reduced rotation multiplier for smoother animation
+  // Calculate progress (0 to 1)
+  const progress = Math.min(pullDistance / threshold, 1);
+  const opacity = Math.min(pullDistance / 20, 1);
 
   return (
     <div 
@@ -228,55 +211,119 @@ const PullToRefresh = ({
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      {/* Optimized spinner that comes down */}
-      {pullDistance > 0 && (
-        <motion.div 
-          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center"
-          style={{ 
-            pointerEvents: 'none',
-            willChange: 'transform, opacity' // Optimize for animations
-          }}
-          animate={{
-            y: Math.min(pullDistance - 15, 70), // Slightly reduced travel distance
-            opacity: spinnerOpacity,
-            scale: 0.85 + (spinnerOpacity * 0.15) // Reduced scale range for smoother animation
-          }}
-          transition={{
-            type: "tween", // Use tween instead of spring for better performance
-            duration: 0.1, // Very fast transition
-            ease: "easeOut"
-          }}
-        >
-          {/* Optimized spinner with smooth rotation */}
-          <motion.div
-            className="w-10 h-10 border-4 border-gray-300 rounded-full bg-white shadow-sm" // Slightly smaller for better performance
-            style={{
-              borderTopColor: '#1F6D5A',
-              willChange: 'transform' // Optimize for rotation
-            }}
+      {/* Modern pull indicator */}
+      <AnimatePresence>
+        {(pullDistance > 0 || isRefreshing) && (
+          <motion.div 
+            className="fixed top-0 left-0 right-0 z-50 pointer-events-none"
+            initial={{ y: -60, opacity: 0 }}
             animate={{
-              rotate: isRefreshing ? 360 : spinnerRotation
+              y: Math.min(pullDistance * 0.6, 50),
+              opacity: opacity,
             }}
+            exit={{ y: -60, opacity: 0 }}
             transition={{
-              type: isRefreshing ? "tween" : "tween", // Always use tween for consistency
-              duration: isRefreshing ? 1 : 0.1, // Fast transition for pull, smooth for refresh
-              ease: isRefreshing ? "linear" : "easeOut",
-              repeat: isRefreshing ? Infinity : 0
+              type: "spring",
+              stiffness: 400,
+              damping: 30,
             }}
-          />
-        </motion.div>
-      )}
+          >
+            <div className="flex flex-col items-center justify-center">
+              <div className="relative">
+                {/* White background circle */}
+                <motion.div
+                  className="bg-white rounded-full shadow-lg flex items-center justify-center"
+                  style={{
+                    width: 46,
+                    height: 46,
+                  }}
+                  animate={{
+                    scale: isRefreshing ? 1 : 0.85 + (progress * 0.15),
+                  }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 20,
+                  }}
+                >
+                  {/* Inner content - dots or spinner */}
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    {isRefreshing ? (
+                      // Modern circular spinner
+                      <motion.div
+                        className="absolute inset-0 rounded-full"
+                        style={{
+                          background: `conic-gradient(from 0deg, transparent, #1F6D5A)`,
+                          mask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 3px))',
+                          WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 3px))',
+                        }}
+                        animate={{
+                          rotate: 360,
+                        }}
+                        transition={{
+                          duration: 1,
+                          ease: "linear",
+                          repeat: Infinity,
+                        }}
+                      />
+                    ) : (null)}
+                     </div>
+                    </motion.div>
 
-      {/* Content */}
-      {children}
+                {/* Progress ring */}
+                {!isRefreshing && (
+                  <svg
+                    className="absolute inset-0 pointer-events-none"
+                    style={{ 
+                      width: 46, 
+                      height: 46,
+                      transform: 'rotate(-90deg)',
+                    }}
+                  >
+                    <circle
+                      cx="23"
+                      cy="23"
+                      r="20"
+                      fill="none"
+                      stroke="rgba(229, 231, 235, 0.5)"
+                      strokeWidth="2.5"
+                    />
+                    <circle
+                      cx="23"
+                      cy="23"
+                      r="20"
+                      fill="none"
+                      stroke="#1F6D5A"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeDasharray={`${progress * 126} 126`}
+                      style={{
+                        transition: 'stroke-dasharray 0.15s ease-out',
+                        filter: 'drop-shadow(0 0 6px rgba(31, 109, 90, 0.3))',
+                      }}
+                    />
+                  </svg>
+                )}
+              </div>
+              
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* CSS for spinner animation */}
-      <style jsx>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      {/* Content with smooth transform */}
+      <motion.div
+        animate={{
+          y: isRefreshing ? threshold * 0.5 : 0,
+        }}
+        transition={{
+          type: "spring",
+          stiffness: 400,
+          damping: 30,
+        }}
+      >
+        {children}
+      </motion.div>
     </div>
   );
 };

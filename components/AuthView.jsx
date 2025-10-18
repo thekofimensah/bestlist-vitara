@@ -173,15 +173,15 @@ const AuthView = () => {
           >
             <img 
               src={iconUrl} 
-              alt="Bestlist Logo"
+              alt="CURATE Logo"
               width="36" 
               height="36" 
               className="drop-shadow-sm"
               style={{ filter: `brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(1234%) hue-rotate(118deg) brightness(95%) contrast(86%)` }}
             />
           </div>
-          <h1 className="text-2xl tracking-tight font-medium text-gray-900">
-            bestlist
+          <h1 className="text-2xl tracking-tight font-medium text-gray-900 font-arsenal-sc">
+            curate
           </h1>
           <p className="text-sm text-gray-600 mt-1">
             {signUp ? 'Create your account' : 'Welcome back'}

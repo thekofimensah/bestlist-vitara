@@ -303,3 +303,9 @@ Feed shows the lists being generated. Then you can like track the progress of th
 
 
 When creating a list you should be able to make it private, and it will force all items to be private
+
+When I delete an item from the saved items from the lsit view, it doesn't uncheck from the feed
+
+Delete slider should only work when starting on the left side and dragging
+
+Fix up the lists adding part in additem modal

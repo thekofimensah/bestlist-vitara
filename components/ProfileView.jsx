@@ -557,7 +557,7 @@ const ProfileView = React.forwardRef(({ onBack, isRefreshing = false, onEditItem
         }}
       >
         <div className="px-6 mb-3 flex items-center justify-between">
-          <span className="text-5xl text-gray-600 font-lateef">Profile</span>
+          <span className="text-title-header text-gray-600 font-arsenal-sc">profile</span>
           <button 
             onClick={() => setShowSettings(true)}
             className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-700 hover:text-gray-900 transition-colors"
